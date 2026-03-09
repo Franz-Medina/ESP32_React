@@ -1,13 +1,71 @@
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+* {
+  box-sizing: border-box;
+  font-family: 'Poppins', sans-serif;
 }
 
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100vh;
+}
+
+.login-page {
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+  overflow: hidden;
+}
+
+.login-left {
+  flex: 1;
+  background: #f4f4f4;
+}
+
+.login-right {
+  width: 700px;
+  margin-left: -140px;
+  background: #ffffff;
+  clip-path: polygon(140px 0, 100% 0, 100% 100%, 0 100%);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.login-right-content {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  padding-left: 70px;
+  transform: translateY(-70px);
+}
+
+.login-logo {
+  width: 300px;
+  height: auto;
+  display: block;
+  margin-bottom: 125px;
+}
+
+.login-text-group {
+  transform: translateY(-90px);
+}
+
+.login-title {
+  margin: 0 0 5px;
+  font-size: 20px;
+  font-weight: 500;
+  color: #1f1f1f;
+}
+
+.login-text {
+  margin: 0;
+  max-width: 360px;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: #6b6b6b;
 }
