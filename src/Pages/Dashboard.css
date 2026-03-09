@@ -1,0 +1,115 @@
+.dashboard-layout {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #f1f3f5;
+}
+
+.sidebar-card,
+.topbar-card {
+  background: white;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+}
+
+.sidebar-card {
+  width: 280px;
+  min-width: 280px;
+  height: fit-content;
+  max-height: calc(100vh - 2rem);
+  position: sticky;
+  top: 1rem;
+  align-self: flex-start;
+}
+
+.sidebar-header {
+  background: linear-gradient(135deg, #ffffff, #f8f9fa);
+}
+
+.logo {
+  width: 52px;
+  height: 52px;
+  object-fit: contain;
+  border-radius: 12px;
+}
+
+.sidebar-section-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #6b7280;
+  margin-bottom: 0.75rem;
+  padding-left: 0.25rem;
+}
+
+.nav-link {
+  color: #374151;
+  border-radius: 12px;
+  padding: 0.75rem 1.25rem;
+  display: flex;
+  align-items: center;
+  transition: all 0.18s ease;
+}
+
+.nav-link:hover {
+  background-color: #f1f3f5;
+  color: #111827;
+}
+
+.nav-link.active {
+  background-color: #ad1010;
+  color: white;
+  font-weight: 500;
+}
+
+.nav-link i {
+  font-size: 1.35rem;
+  width: 1.6em;
+  text-align: center;
+}
+
+.topbar-card {
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+}
+
+.topbar {
+  padding: 1rem 1.5rem;
+  min-height: 72px;
+  background: white;
+}
+
+.search-input {
+  max-width: 420px;
+  min-width: 220px;
+  background: #f8f9fa !important;
+  border: 1px solid #e5e7eb !important;
+}
+
+.search-input:focus {
+  border-color: #dc2626 !important;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12) !important;
+  background: white !important;
+}
+
+.avatar {
+  width: 42px;
+  height: 42px;
+}
+
+.user-email {
+  line-height: 1.1;
+}
+
+.promo-card {
+  background: linear-gradient(135deg, #1e40af, #3b82f6);
+}
+
+@media (max-width: 991.98px) {
+  .sidebar-card {
+    display: none !important;
+  }
+  .dashboard-layout {
+    padding: 1rem;
+  }
+}

@@ -1,0 +1,13 @@
+.servo-container{
+  background:#ffffff;
+  padding:20px;
+  border-radius:10px;
+  width:300px;
+  margin:20px auto;
+  text-align:center;
+  box-shadow:0 4px 10px rgba(0,0,0,0.2);
+}
+
+input[type="range"]{
+  width:100%;
+}
