@@ -1,7 +1,17 @@
-import Login from './Pages/Login'
+import { useState } from 'react'
+import Login from './Pages/Login.jsx'
+import Dashboard from './Pages/Dashboard.jsx'
 
 function App() {
-  return <Login />
+  const [isAuthenticated, setIsAuthenticated] = useState(
+    () => !!sessionStorage.getItem('tbToken')
+  )
+
+  return isAuthenticated ? (
+    <Dashboard />
+  ) : (
+    <Login onLoginSuccess={() => setIsAuthenticated(true)} />
+  )
 }
 
 export default App
