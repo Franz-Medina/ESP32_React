@@ -1,21 +1,20 @@
 .dashboard-layout {
-  background: #f1f3f5;
+  background: #ffffff;
   min-height: 100vh;
 }
 
 .sidebar-card {
   width: 280px;
   min-width: 280px;
-  background: white;
-  border-radius: 16px;
+  background: #f5f5f5;
+  border-radius: 25px;
   overflow: hidden;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
   display: flex;
   flex-direction: column;
 }
 
 .sidebar-header {
-  background: linear-gradient(135deg, #ffffff, #ffffff);
+  background: linear-gradient(135deg, #f5f5f5, #f5f5f5);
 }
 
 .logo {
@@ -49,39 +48,52 @@
 }
 
 .nav-link.active {
-  background-color: #dc2626;
-  color: white;
-  font-weight: 500;
+  color: #9b1717;
+  font-weight: 600;
+  background: transparent;
 }
 
-.nav-link i {
-  font-size: 1.35rem;
-  width: 1.6em;
-  text-align: center;
+.nav-link {
+  position: relative;
+  color: #374151;
+  border-radius: 12px;
+  padding: 0.75rem 1.25rem;
+  display: flex;
+  align-items: center;
+  transition: all 0.18s ease;
+}
+
+.nav-link.active::before {
+  content: "";
+  position: absolute;
+  left: -23px;
+  top: 6px;
+  bottom: 8px;
+  width: 15px;
+  background: linear-gradient(190deg, #c13030, #680202);
+  border-radius: 10px;
 }
 
 .topbar-card {
-  border-radius: 16px;
+  border-radius: 25px;
   overflow: hidden;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
 }
 
 .topbar {
   padding: 1rem 1.5rem;
   min-height: 72px;
-  background: white;
+  background: rgb(245, 245, 245);;
 }
 
 .search-input {
   max-width: 420px;
   min-width: 220px;
-  background: #f8f9fa !important;
-  border: 1px solid #e5e7eb !important;
+  background: #ffffff !important;
+  border: 1px solid #ffffff !important;
 }
 
 .search-input:focus {
   border-color: #dc2626 !important;
-  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12) !important;
   background: white !important;
 }
 
@@ -100,10 +112,9 @@
 }
 
 .dashboard-card .card {
-  border-radius: 16px;
+  border-radius: 25px;
   overflow: hidden;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
-  background: white;
+  background: #f5f5f5;
 }
 
 .dashboard-card .card-body {

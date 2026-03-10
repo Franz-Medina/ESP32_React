@@ -3,11 +3,13 @@ import logo from '../Pictures/Avinya.png';
 import PumpControl from '../devices/PumpControl';
 import ServoMotor from '../devices/ServoMotor';
 import UltraSonicWidget from '../devices/UltraSonic';
+import { TbLayoutDashboardFilled, TbBrandGoogleAnalytics, TbCalendarDue, TbUsers, TbWheel, TbLogout, TbSettings, TbNews } from "react-icons/tb";
+
 import './Dashboard.css';
 
 const Dashboard = () => {
   return (
-    <div className="dashboard-layout min-vh-100 bg-light d-flex flex-column p-3 p-md-4">
+    <div className="dashboard-layout min-vh-100 d-flex flex-column p-3 p-md-4">
       <div className="d-flex flex-grow-1 gap-4">
         <aside className="sidebar-card d-none d-lg-flex flex-column">
           <div className="sidebar-header p-4 pb-3">
@@ -21,45 +23,45 @@ const Dashboard = () => {
             </div>
           </div>
 
-          <div className="sidebar-body flex-grow-1 d-flex flex-column p-3 pt-2">
+          <div className="sidebar-body flex-grow-1 d-flex flex-column p-3 pt-1">
             <div className="sidebar-section-title">MENU</div>
 
-            <nav className="nav flex-column gap-2 mb-auto">
+            <nav className="nav flex-column mb-2">
               <a href="#" className="nav-link active">
-                <i className="bi bi-grid-1x2-fill me-3"></i>
+                <TbLayoutDashboardFilled className="me-2" size={22} />
                 Dashboard
               </a>
               <a href="#" className="nav-link">
-                <i className="bi bi-check2-square me-3"></i>
-                Tasks
+                <TbNews className="me-2" size={22} />
+                News
               </a>
               <a href="#" className="nav-link">
-                <i className="bi bi-calendar-event me-3"></i>
+                <TbCalendarDue className="me-2" size={22} />
                 Calendar
               </a>
               <a href="#" className="nav-link">
-                <i className="bi bi-bar-chart-line me-3"></i>
+                <TbBrandGoogleAnalytics className="me-2" size={22} />
                 Analytics
               </a>
               <a href="#" className="nav-link">
-                <i className="bi bi-people-fill me-3"></i>
+                <TbUsers className="me-2" size={22} />
                 Team
               </a>
             </nav>
 
             <div className="sidebar-section-title">GENERAL</div>
 
-            <nav className="nav flex-column gap-2">
+            <nav className="nav flex-column">
               <a href="#" className="nav-link">
-                <i className="bi bi-gear me-3"></i>
+                <TbSettings className="me-2" size={22} />
                 Settings
               </a>
               <a href="#" className="nav-link">
-                <i className="bi bi-question-circle me-3"></i>
+                <TbWheel className="me-2" size={22} />
                 Help
               </a>
               <a href="#" className="nav-link text-danger">
-                <i className="bi bi-box-arrow-right me-3"></i>
+                <TbLogout className="me-2" size={22} />
                 Logout
               </a>
             </nav>
@@ -72,7 +74,7 @@ const Dashboard = () => {
               <input
                 type="text"
                 placeholder="Search task..."
-                className="search-input form-control rounded-pill bg-white border px-4 py-2 shadow-sm"
+                className="search-input form-control rounded-pill bg-white border px-4 py-2"
               />
 
               <div className="d-flex align-items-center gap-3 gap-md-4">
@@ -94,29 +96,29 @@ const Dashboard = () => {
             </header>
           </div>
 
-          <main className="dashboard-card flex-grow-1 mt-4">
-            <div className="card h-100 border-0 shadow">
+          <main className="dashboard-card flex-grow-1 mt-2">
+            <div className="card h-100 border-0">
               <div className="card-body p-4 p-md-5">
                 <h4 className="mb-4 fw-bold">Dashboard</h4>
                 <p className="text-muted mb-4">
                   Control your devices and monitor status in real time.
                 </p>
 
-                <div className="row g-4">
+                <div className="row g-3">
                   <div className="col-lg-6">
-                    <div className="bg-white rounded-4 shadow-sm p-4 border">
+                    <div className="bg-white rounded-4 p-4 border">
                       <PumpControl />
                     </div>
                   </div>
 
                   <div className="col-lg-6">
-                    <div className="bg-white rounded-4 shadow-sm p-4 border">
+                    <div className="bg-white rounded-4 p-4 border">
                       <ServoMotor />
                     </div>
                   </div>
 
                   <div className="col-lg-6">
-                    <div className="bg-white rounded-4 shadow-sm p-4 border">
+                    <div className="bg-white rounded-4 p-4 border">
                       <UltraSonicWidget />
                     </div>
                   </div>
