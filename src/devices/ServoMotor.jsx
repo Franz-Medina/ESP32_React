@@ -2,8 +2,6 @@ import React, { useState } from "react";
 import "./ServoMotor.css";
 
 const TB_URL = "https://thingsboard.cloud";
-
-/* CHANGE THESE */
 const TB_EMAIL = "aldrinmarquezblas@gmail.com";
 const TB_PASSWORD = "asdfghjkl;'";
 const DEVICE_ID = "6bdeabb0-179f-11f1-840f-e9bf6f45218f";
@@ -79,8 +77,6 @@ function ServoMotor() {
         value={angle}
         onChange={handleChange}
       />
-
-      {loading && <p>Sending command...</p>}
 
     </div>
 

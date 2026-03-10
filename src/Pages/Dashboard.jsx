@@ -1,5 +1,8 @@
 import React from 'react';
 import logo from '../Pictures/Avinya.png';
+import PumpControl from '../devices/PumpControl';
+import ServoMotor from '../devices/ServoMotor';
+import UltraSonicWidget from '../devices/UltraSonic';
 import './Dashboard.css';
 
 const Dashboard = () => {
@@ -18,10 +21,10 @@ const Dashboard = () => {
             </div>
           </div>
 
-          <div className="sidebar-body p-3 pt-2 flex-grow-1 d-flex flex-column">
+          <div className="sidebar-body flex-grow-1 d-flex flex-column p-3 pt-2">
             <div className="sidebar-section-title">MENU</div>
 
-            <nav className="nav flex-column gap-1 mb-auto">
+            <nav className="nav flex-column gap-2 mb-auto">
               <a href="#" className="nav-link active">
                 <i className="bi bi-grid-1x2-fill me-3"></i>
                 Dashboard
@@ -44,11 +47,9 @@ const Dashboard = () => {
               </a>
             </nav>
 
-
-
             <div className="sidebar-section-title">GENERAL</div>
 
-            <nav className="nav flex-column gap-1">
+            <nav className="nav flex-column gap-2">
               <a href="#" className="nav-link">
                 <i className="bi bi-gear me-3"></i>
                 Settings
@@ -62,7 +63,6 @@ const Dashboard = () => {
                 Logout
               </a>
             </nav>
-
           </div>
         </aside>
 
@@ -94,11 +94,39 @@ const Dashboard = () => {
             </header>
           </div>
 
-          <main className="content-area flex-grow-1 mt-4">
-            <div>
-              
+          <main className="dashboard-card flex-grow-1 mt-4">
+            <div className="card h-100 border-0 shadow">
+              <div className="card-body p-4 p-md-5">
+                <h4 className="mb-4 fw-bold">Dashboard</h4>
+                <p className="text-muted mb-4">
+                  Control your devices and monitor status in real time.
+                </p>
+
+                <div className="row g-4">
+                  <div className="col-lg-6">
+                    <div className="bg-white rounded-4 shadow-sm p-4 border">
+                      <PumpControl />
+                    </div>
+                  </div>
+
+                  <div className="col-lg-6">
+                    <div className="bg-white rounded-4 shadow-sm p-4 border">
+                      <ServoMotor />
+                    </div>
+                  </div>
+
+                  <div className="col-lg-6">
+                    <div className="bg-white rounded-4 shadow-sm p-4 border">
+                      <UltraSonicWidget />
+                    </div>
+                  </div>
+
+                </div>
+                
+              </div>
             </div>
           </main>
+          
         </div>
       </div>
     </div>

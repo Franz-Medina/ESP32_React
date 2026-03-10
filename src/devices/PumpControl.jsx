@@ -3,8 +3,6 @@ import React, { useState } from "react";
 import "./PumpControl.css";
 
 const TB_URL = "https://thingsboard.cloud";
-
-/* REPLACE THESE */
 const TB_EMAIL = "aldrinmarquezblas@gmail.com";
 const TB_PASSWORD = "asdfghjkl;'";
 const DEVICE_ID = "a2a4c6a0-15f3-11f1-ad13-23db93f4d850";
@@ -84,8 +82,6 @@ function PumpControl() {
         <span className="slider"></span>
 
       </label>
-
-      {loading && <p>Sending command...</p>}
 
     </div>
 
