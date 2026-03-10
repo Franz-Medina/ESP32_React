@@ -4,7 +4,7 @@ import "./ServoMotor.css";
 const TB_URL = import.meta.env.VITE_TB_URL;
 const TB_EMAIL = import.meta.env.VITE_TB_EMAIL;
 const TB_PASSWORD = import.meta.env.VITE_TB_PASSWORD;
-const DEVICE_ID = import.meta.env.VITE_DEVICE_ID_ULTRASONIC;
+const DEVICE_ID = import.meta.env.VITE_DEVICE_ID_ESP32US;
 
 function ServoMotor() {
 
@@ -17,7 +17,6 @@ function ServoMotor() {
 
       setLoading(true);
 
-      // Login to ThingsBoard
       const loginResponse = await fetch(`${TB_URL}/api/auth/login`, {
         method: "POST",
         headers: {
@@ -32,7 +31,6 @@ function ServoMotor() {
       const loginData = await loginResponse.json();
       const token = loginData.token;
 
-      // Send RPC command to ESP32
       await fetch(`${TB_URL}/api/plugins/rpc/oneway/${DEVICE_ID}`, {
         method: "POST",
         headers: {

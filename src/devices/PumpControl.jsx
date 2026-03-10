@@ -18,7 +18,6 @@ function PumpControl() {
 
       setLoading(true);
 
-      // Login to ThingsBoard
       const loginResponse = await fetch(`${TB_URL}/api/auth/login`, {
         method: "POST",
         headers: {
@@ -33,7 +32,6 @@ function PumpControl() {
       const loginData = await loginResponse.json();
       const token = loginData.token;
 
-      // Send RPC command
       await fetch(`${TB_URL}/api/plugins/rpc/oneway/${DEVICE_ID}`, {
         method: "POST",
         headers: {

@@ -6,7 +6,7 @@ import { format } from "d3-format";
 const TB_URL = import.meta.env.VITE_TB_URL;
 const TB_EMAIL = import.meta.env.VITE_TB_EMAIL;
 const TB_PASSWORD = import.meta.env.VITE_TB_PASSWORD;
-const DEVICE_ID = import.meta.env.VITE_DEVICE_ID_ULTRASONIC;
+const DEVICE_ID = import.meta.env.VITE_DEVICE_ID_ESP32US;
 
 //https://2019.wattenberger.com/blog
 const UltraSonicGauge = ({
@@ -79,15 +79,12 @@ const UltraSonicGauge = ({
   );
 };
 
-/* ------------------ MAIN COMPONENT ------------------ */
-
 const UltraSonic = () => {
 
   const [distance, setDistance] = useState(null);
   const [token, setToken] = useState(null);
   const [error, setError] = useState(null);
 
-  /* LOGIN ONCE */
 
   useEffect(() => {
 
@@ -123,8 +120,6 @@ const UltraSonic = () => {
     login();
 
   }, []);
-
-  /* FETCH TELEMETRY EVERY 2 SECONDS */
 
   useEffect(() => {
 
