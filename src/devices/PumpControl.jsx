@@ -2,10 +2,10 @@ PumpControl.js
 import React, { useState } from "react";
 import "./PumpControl.css";
 
-const TB_URL = "https://thingsboard.cloud";
-const TB_EMAIL = "aldrinmarquezblas@gmail.com";
-const TB_PASSWORD = "asdfghjkl;'";
-const DEVICE_ID = "a2a4c6a0-15f3-11f1-ad13-23db93f4d850";
+const TB_URL = import.meta.env.VITE_TB_URL;
+const TB_EMAIL = import.meta.env.VITE_TB_EMAIL;
+const TB_PASSWORD = import.meta.env.VITE_TB_PASSWORD;
+const DEVICE_ID = import.meta.env.VITE_DEVICE_ID_PUMP;
 
 function PumpControl() {
 

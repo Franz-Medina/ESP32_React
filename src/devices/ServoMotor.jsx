@@ -1,10 +1,10 @@
 import React, { useState } from "react";
 import "./ServoMotor.css";
 
-const TB_URL = "https://thingsboard.cloud";
-const TB_EMAIL = "aldrinmarquezblas@gmail.com";
-const TB_PASSWORD = "asdfghjkl;'";
-const DEVICE_ID = "6bdeabb0-179f-11f1-840f-e9bf6f45218f";
+const TB_URL = import.meta.env.VITE_TB_URL;
+const TB_EMAIL = import.meta.env.VITE_TB_EMAIL;
+const TB_PASSWORD = import.meta.env.VITE_TB_PASSWORD;
+const DEVICE_ID = import.meta.env.VITE_DEVICE_ID_ULTRASONIC;
 
 function ServoMotor() {
 

@@ -3,13 +3,12 @@ import { arc } from "d3-shape";
 import { scaleLinear } from "d3-scale";
 import { format } from "d3-format";
 
-const TB_URL = "https://thingsboard.cloud";
-const TB_EMAIL = "aldrinmarquezblas@gmail.com";
-const TB_PASSWORD = "asdfghjkl;'";
-const DEVICE_ID = "6bdeabb0-179f-11f1-840f-e9bf6f45218f";
+const TB_URL = import.meta.env.VITE_TB_URL;
+const TB_EMAIL = import.meta.env.VITE_TB_EMAIL;
+const TB_PASSWORD = import.meta.env.VITE_TB_PASSWORD;
+const DEVICE_ID = import.meta.env.VITE_DEVICE_ID_ULTRASONIC;
 
-/* ------------------ GAUGE COMPONENT ------------------ */
-
+//https://2019.wattenberger.com/blog
 const UltraSonicGauge = ({
   value = 0,
   min = 0,
