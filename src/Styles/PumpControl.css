@@ -1,4 +1,4 @@
-.pump-widget {
+/* .pump-widget {
   text-align: center;
   margin-top: 80px;
   font-family: Arial;
@@ -47,4 +47,4 @@ input:checked + .slider {
 
 input:checked + .slider:before {
   transform: translateX(30px);
-}
+} */

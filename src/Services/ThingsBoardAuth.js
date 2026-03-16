@@ -1,3 +1,5 @@
+const parseJsonSafely = async (response) => response.json().catch(() => ({}))
+
 export async function loginToThingsBoard(username, password) {
   const response = await fetch('/api/auth/login', {
     method: 'POST',
@@ -11,10 +13,14 @@ export async function loginToThingsBoard(username, password) {
     })
   })
 
-  const data = await response.json().catch(() => ({}))
+  const data = await parseJsonSafely(response)
 
   if (!response.ok) {
     throw new Error(data.message || `Login failed. Status: ${response.status}`)
+  }
+
+  if (!data.token || !data.refreshToken) {
+    throw new Error('Login response did not include authentication tokens.')
   }
 
   return data
@@ -29,7 +35,7 @@ export async function getCurrentThingsBoardUser(token) {
     }
   })
 
-  const data = await response.json().catch(() => ({}))
+  const data = await parseJsonSafely(response)
 
   if (!response.ok) {
     throw new Error(data.message || `Unable to get user information. Status: ${response.status}`)

@@ -1,10 +1,17 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import logo from '../Pictures/Avinya.png'
 import '../Styles/Login.css'
 import {
   loginToThingsBoard,
   getCurrentThingsBoardUser
 } from '../Services/ThingsBoardAuth.js'
+import {
+  UserIcon,
+  LockIcon,
+  EyeOpenIcon,
+  EyeClosedIcon,
+  ErrorIcon
+} from '../Components/LoginIcons.jsx'
 
 function Login({ onLoginSuccess }) {
   const [email, setEmail] = useState('')
@@ -15,6 +22,10 @@ function Login({ onLoginSuccess }) {
   const [passwordError, setPasswordError] = useState('')
   const [authError, setAuthError] = useState('')
 
+  useEffect(() => {
+    document.title = 'Avinya | Login'
+  }, [])
+
   const handleSubmit = async (event) => {
     event.preventDefault()
 
@@ -22,14 +33,20 @@ function Login({ onLoginSuccess }) {
     setPasswordError('')
     setAuthError('')
 
+    const trimmedEmail = email.trim()
+    const rawPassword = password
+
     let hasError = false
 
-    if (!email.trim()) {
+    if (!trimmedEmail) {
       setEmailError('Please enter your email.')
+      hasError = true
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setEmailError('Please enter a valid email address.')
       hasError = true
     }
 
-    if (!password.trim()) {
+    if (!rawPassword.trim()) {
       setPasswordError('Please enter your password.')
       hasError = true
     }
@@ -41,7 +58,7 @@ function Login({ onLoginSuccess }) {
     try {
       setLoading(true)
 
-      const authData = await loginToThingsBoard(email.trim(), password)
+      const authData = await loginToThingsBoard(trimmedEmail, rawPassword)
 
       sessionStorage.setItem('tbToken', authData.token)
       sessionStorage.setItem('tbRefreshToken', authData.refreshToken)
@@ -50,12 +67,16 @@ function Login({ onLoginSuccess }) {
       sessionStorage.setItem('tbUser', JSON.stringify(user))
 
       onLoginSuccess()
-    } catch (err) {
+    } catch {
       setAuthError('Invalid email or password. Please try again.')
     } finally {
       setLoading(false)
     }
   }
+
+  const hasEmailFieldError = Boolean(emailError || authError)
+  const passwordFieldMessage = passwordError || authError
+  const hasPasswordFieldError = Boolean(passwordFieldMessage)
 
   return (
     <main className="login-page">
@@ -72,32 +93,32 @@ function Login({ onLoginSuccess }) {
             </p>
           </div>
 
-          <form className="login-form" onSubmit={handleSubmit}>
+          <form className="login-form" onSubmit={handleSubmit} noValidate>
             <div className="login-field-group">
-              <div className={`login-field ${emailError ? 'login-field-error' : ''}`}>
+              <div className={`login-field ${hasEmailFieldError ? 'login-field-error' : ''}`}>
                 <span className="login-field-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M20 21a8 8 0 0 0-16 0"></path>
-                    <circle cx="12" cy="8" r="4"></circle>
-                  </svg>
+                  <UserIcon />
                 </span>
 
                 <input
-                  type="text"
+                  type="email"
                   className="login-input"
                   placeholder="Email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => {
+                    setEmail(e.target.value)
+                    if (emailError) setEmailError('')
+                    if (authError) setAuthError('')
+                  }}
                   autoComplete="username"
+                  aria-invalid={hasEmailFieldError}
                 />
               </div>
 
               {emailError && (
                 <div className="login-error-row">
                   <span className="login-error-icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Zm1 15h-2v-2h2Zm0-4h-2V7h2Z"></path>
-                    </svg>
+                    <ErrorIcon />
                   </span>
                   <span>{emailError}</span>
                 </div>
@@ -105,12 +126,9 @@ function Login({ onLoginSuccess }) {
             </div>
 
             <div className="login-field-group">
-              <div className={`login-field ${passwordError || authError ? 'login-field-error' : ''}`}>
+              <div className={`login-field ${hasPasswordFieldError ? 'login-field-error' : ''}`}>
                 <span className="login-field-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <rect x="5" y="11" width="14" height="10" rx="2"></rect>
-                    <path d="M8 11V8a4 4 0 1 1 8 0v3"></path>
-                  </svg>
+                  <LockIcon />
                 </span>
 
                 <input
@@ -118,41 +136,31 @@ function Login({ onLoginSuccess }) {
                   className="login-input"
                   placeholder="Password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => {
+                    setPassword(e.target.value)
+                    if (passwordError) setPasswordError('')
+                    if (authError) setAuthError('')
+                  }}
                   autoComplete="current-password"
+                  aria-invalid={hasPasswordFieldError}
                 />
 
                 <button
                   type="button"
                   className="login-field-action"
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  onClick={() => setShowPassword(!showPassword)}
+                  onClick={() => setShowPassword((prev) => !prev)}
                 >
-                  {showPassword ? (
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M3 3l18 18"></path>
-                      <path d="M10.58 10.58a2 2 0 1 0 2.83 2.83"></path>
-                      <path d="M9.88 5.09A9.77 9.77 0 0 1 12 5c7 0 11 7 11 7a19.08 19.08 0 0 1-3.04 3.81"></path>
-                      <path d="M6.71 6.72C3.61 8.41 1 12 1 12a18.7 18.7 0 0 0 5.12 5.11"></path>
-                      <path d="M14.12 14.12A3 3 0 0 1 9.88 9.88"></path>
-                    </svg>
-                  ) : (
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"></path>
-                      <circle cx="12" cy="12" r="3"></circle>
-                    </svg>
-                  )}
+                  {showPassword ? <EyeClosedIcon /> : <EyeOpenIcon />}
                 </button>
               </div>
 
-              {(passwordError || authError) && (
+              {hasPasswordFieldError && (
                 <div className="login-error-row">
                   <span className="login-error-icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Zm1 15h-2v-2h2Zm0-4h-2V7h2Z"></path>
-                    </svg>
+                    <ErrorIcon />
                   </span>
-                  <span>{passwordError || authError}</span>
+                  <span>{passwordFieldMessage}</span>
                 </div>
               )}
             </div>
@@ -172,7 +180,7 @@ function Login({ onLoginSuccess }) {
               {loading ? (
                 <span className="login-button-loading">
                   <span className="login-spinner"></span>
-                  <span>Signing in...</span>
+                  <span>Logging In</span>
                 </span>
               ) : (
                 'Login'

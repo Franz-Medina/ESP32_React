@@ -1,0 +1,85 @@
+.app-shell {
+  position: relative;
+  min-height: 100dvh;
+  overflow: hidden;
+}
+
+.app-transition {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.58);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 0.45s ease,
+    visibility 0s linear 0.45s;
+  z-index: 9999;
+}
+
+.app-transition.active {
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 0s;
+}
+
+.app-transition-card {
+  width: min(88vw, 220px);
+  padding: 24px 22px;
+  border: 1px solid #ececec;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  transform: translateY(10px) scale(0.98);
+  transition: transform 0.45s ease;
+}
+
+.app-transition.active .app-transition-card {
+  transform: translateY(0) scale(1);
+}
+
+.app-transition-logo {
+  width: 88px;
+  height: auto;
+  display: block;
+}
+
+.app-transition-loader {
+  width: 120px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(152, 0, 0, 0.12);
+  overflow: hidden;
+}
+
+.app-transition-loader span {
+  display: block;
+  width: 40%;
+  height: 100%;
+  border-radius: 999px;
+  background: #980000;
+  animation: appTransitionMove 1s ease-in-out infinite;
+}
+
+@keyframes appTransitionMove {
+  0% {
+    transform: translateX(-120%);
+  }
+
+  50% {
+    transform: translateX(120%);
+  }
+
+  100% {
+    transform: translateX(320%);
+  }
+}

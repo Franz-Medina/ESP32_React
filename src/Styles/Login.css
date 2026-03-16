@@ -1,4 +1,6 @@
-* {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
@@ -34,7 +36,6 @@ a {
   color: #ffffff;
 }
 
-.login-input,
 .login-button {
   -webkit-user-select: none;
   -ms-user-select: none;
@@ -224,7 +225,7 @@ a {
   align-items: center;
   gap: 8px;
   font-size: 14px;
-  color: #3f3f3f;
+  color: #6b6b6b;
   cursor: pointer;
 }
 
@@ -235,7 +236,7 @@ a {
   height: 18px;
   margin: 0;
   border: 1.5px solid #8d8d8d;
-  border-radius: 4px;
+  border-radius: 5px;
   background: #ffffff;
   display: grid;
   place-content: center;
@@ -274,7 +275,7 @@ a {
 }
 
 .login-link:hover {
-  color: #245dff;
+  color: #3574ff;
   transform: translateY(-1px);
 }
 
@@ -294,6 +295,9 @@ a {
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   transition: background-color 0.25s ease, transform 0.15s ease, box-shadow 0.25s ease;
 }
 
@@ -326,21 +330,6 @@ a {
   width: 18px;
   height: auto;
   display: block;
-}
-
-.login-message {
-  width: 100%;
-  margin-top: 12px;
-  font-size: 13px;
-  text-align: left;
-}
-
-.login-message-error {
-  color: #980000;
-}
-
-.login-message-success {
-  color: #1f7a3f;
 }
 
 .login-button:disabled {
@@ -388,12 +377,6 @@ a {
   width: 100%;
   height: 100%;
   display: block;
-}
-
-.login-button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .login-button-loading {
@@ -579,5 +562,143 @@ a {
   .login-powered {
     margin-top: 12px;
     margin-bottom: 30px;
+  }
+}
+
+.login-page,
+.login-right,
+.login-title,
+.login-text,
+.login-powered {
+  transition:
+    background-color 0.35s ease,
+    border-color 0.35s ease,
+    color 0.35s ease;
+}
+
+[data-theme='dark'] body {
+  background: #0f1115;
+}
+
+[data-theme='dark'] .login-page {
+  background: #0f1115;
+}
+
+[data-theme='dark'] .login-left {
+  background-image:
+    linear-gradient(rgba(0, 0, 0, 0.32), rgba(0, 0, 0, 0.32)),
+    url("../Pictures/Login Background [1].png");
+}
+
+[data-theme='dark'] .login-right {
+  background: #111318;
+}
+
+[data-theme='dark'] .login-title,
+[data-theme='dark'] .login-powered-brand {
+  color: #ffffff;
+}
+
+[data-theme='dark'] .login-text,
+[data-theme='dark'] .login-powered,
+[data-theme='dark'] .login-remember {
+  color: #98a2b3;
+}
+
+[data-theme='dark'] .login-field {
+  background: rgba(21, 24, 31, 0.96);
+  border-color: #262b35;
+}
+
+[data-theme='dark'] .login-field:hover {
+  border-color: #323947;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.18);
+}
+
+[data-theme='dark'] .login-field:focus-within {
+  border-color: #c52a2a;
+  box-shadow: 0 0 0 3px rgba(197, 42, 42, 0.16);
+}
+
+[data-theme='dark'] .login-field-icon,
+[data-theme='dark'] .login-field-action {
+  color: #98a2b3;
+}
+
+[data-theme='dark'] .login-field:hover .login-field-icon,
+[data-theme='dark'] .login-field:focus-within .login-field-icon,
+[data-theme='dark'] .login-field:focus-within .login-field-action {
+  color: #ffdddd;
+}
+
+[data-theme='dark'] .login-input {
+  color: #ffffff;
+}
+
+[data-theme='dark'] .login-input::placeholder {
+  color: #717b8d;
+}
+
+[data-theme='dark'] .login-field:focus-within .login-input::placeholder {
+  color: #cda1a1;
+}
+
+[data-theme='dark'] .login-check {
+  background: #171b22;
+  border-color: #465062;
+}
+
+[data-theme='dark'] .login-check:checked {
+  background: #c52a2a;
+  border-color: #c52a2a;
+}
+
+[data-theme='dark'] .login-link {
+  color: #8ca9ff;
+}
+
+[data-theme='dark'] .login-link:hover {
+  color: #8ca9ff;
+}
+
+[data-theme='dark'] .login-button {
+  background: #b61f1f;
+}
+
+[data-theme='dark'] .login-button:hover {
+  background: #cf2e2e;
+  box-shadow: 0 8px 18px rgba(182, 31, 31, 0.22);
+}
+
+[data-theme='dark'] .login-field-error {
+  border-color: #ff7676;
+  box-shadow: 0 0 0 3px rgba(255, 118, 118, 0.14);
+}
+
+[data-theme='dark'] .login-field-error .login-field-icon,
+[data-theme='dark'] .login-field-error .login-field-action,
+[data-theme='dark'] .login-error-row {
+  color: #ff8b8b;
+}
+
+@media (max-width: 767px) {
+  [data-theme='dark'] .login-right {
+    background-image:
+      linear-gradient(rgba(15, 17, 21, 0.84), rgba(15, 17, 21, 0.84)),
+      url("../Pictures/Login Background [1].png");
+    background-position: center;
+    background-size: cover;
+    background-repeat: no-repeat;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 540px) {
+  [data-theme='dark'] .login-right {
+    background-image:
+      linear-gradient(rgba(15, 17, 21, 0.84), rgba(15, 17, 21, 0.84)),
+      url("../Pictures/Login Background [1].png");
+    background-position: center;
+    background-size: cover;
+    background-repeat: no-repeat;
   }
 }
