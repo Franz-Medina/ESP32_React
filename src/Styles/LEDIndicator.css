@@ -1,0 +1,37 @@
+.led-widget{
+  background: white;
+  padding: 25px;
+  border-radius: 12px;
+  width: 320px;
+  text-align: center;
+  box-shadow: 0px 4px 10px rgba(0,0,0,0.15);
+}
+
+.device-input input{
+  width: 100%;
+  padding: 10px;
+  margin-top: 10px;
+  margin-bottom: 15px;
+}
+
+.device-input button{
+  padding: 8px 15px;
+  cursor: pointer;
+}
+
+.led-light{
+  width: 45px;
+  height: 45px;
+  border-radius: 50%;
+  margin: 20px auto;
+  border: 2px solid #333;
+}
+
+.led-light.on{
+  background-color: #00ff00;
+  box-shadow: 0 0 15px #00ff00;
+}
+
+.led-light.off{
+  background-color: #555;
+}
