@@ -2,12 +2,19 @@ import { useEffect, useRef, useState } from 'react'
 import Login from './Pages/Login.jsx'
 import Dashboard from './Pages/Dashboard.jsx'
 import Register from './Pages/Register.jsx'
+import Devices from './Pages/Devices.jsx'
+import Users from './Pages/Users.jsx'
+import Logs from './Pages/Logs.jsx'
+import Account from './Pages/Account.jsx'
 import logo from './Pictures/Avinya.png'
 import './Styles/App.css'
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(
     () => !!sessionStorage.getItem('tbToken')
+  )
+  const [currentPage, setCurrentPage] = useState(
+    () => sessionStorage.getItem('avinya-current-page') || 'dashboard'
   )
   const [isSwitching, setIsSwitching] = useState(true)
   const [isDarkMode, setIsDarkMode] = useState(
@@ -24,6 +31,10 @@ function App() {
   }, [isDarkMode])
 
   useEffect(() => {
+    sessionStorage.setItem('avinya-current-page', currentPage)
+  }, [currentPage])
+
+  useEffect(() => {
     transitionEndTimeoutRef.current = window.setTimeout(() => {
       setIsSwitching(false)
     }, 720)
@@ -34,40 +45,86 @@ function App() {
     }
   }, [])
 
-  const runPageTransition = (nextAuthState) => {
+
+  const runAppTransition = (callback) => {
     window.clearTimeout(authSwitchTimeoutRef.current)
     window.clearTimeout(transitionEndTimeoutRef.current)
 
     setIsSwitching(true)
 
     authSwitchTimeoutRef.current = window.setTimeout(() => {
-      setIsAuthenticated(nextAuthState)
-    }, 220)
+      callback()
+    }, 240)
 
     transitionEndTimeoutRef.current = window.setTimeout(() => {
       setIsSwitching(false)
-    }, 720)
+    }, 780)
   }
-
   const handleLoginSuccess = () => {
-    runPageTransition(true)
+    runAppTransition(() => {
+      setCurrentPage('dashboard')
+      setIsAuthenticated(true)
+    })
   }
-
+  
   const handleLogout = () => {
     sessionStorage.removeItem('tbToken')
     sessionStorage.removeItem('tbRefreshToken')
     sessionStorage.removeItem('tbUser')
-    runPageTransition(false)
+    sessionStorage.removeItem('avinya-current-page')
+
+    runAppTransition(() => {
+      setCurrentPage('dashboard')
+      setIsAuthenticated(false)
+    })
+  }
+
+  
+  const handlePageChange = (nextPage) => {
+    if (nextPage === currentPage) return
+
+    runAppTransition(() => {
+      setCurrentPage(nextPage)
+    })
   }
 
   return (
     <div className="app-shell">
       {isAuthenticated ? (
+        currentPage === 'devices' ? (
+          <Devices
+            onLogout={handleLogout}
+            onNavigate={handlePageChange}
+            isDarkMode={isDarkMode}
+            onThemeToggle={() => setIsDarkMode((prev) => !prev)}
+          />
+        ) : currentPage === 'users' ? (
+          <Users
+            onLogout={handleLogout}
+            onNavigate={handlePageChange}
+            isDarkMode={isDarkMode}
+            onThemeToggle={() => setIsDarkMode((prev) => !prev)}
+          />
+        ) : currentPage === 'logs' ? (
+          <Logs
+            onLogout={handleLogout}
+            onNavigate={handlePageChange}
+            isDarkMode={isDarkMode}
+            onThemeToggle={() => setIsDarkMode((prev) => !prev)}
+          />
+        ) : currentPage === 'account' ? (
+          <Account
+            onLogout={handleLogout}
+            onNavigate={handlePageChange}
+            isDarkMode={isDarkMode}
+            onThemeToggle={() => setIsDarkMode((prev) => !prev)}
+          />
+        ) : (
         <Dashboard
           onLogout={handleLogout}
           isDarkMode={isDarkMode}
           onThemeToggle={() => setIsDarkMode((prev) => !prev)}
-        />
+        />)
       ) : (
         <Login onLoginSuccess={handleLoginSuccess} />
       )}
