@@ -1,3 +1,4 @@
+
 *,
 *::before,
 *::after {
@@ -701,4 +702,84 @@ a {
     background-size: cover;
     background-repeat: no-repeat;
   }
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  opacity: 0;
+  transition: opacity 0.3s ease-out;
+  pointer-events: none;
+}
+
+.modal-overlay.modal-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.modal-overlay.modal-closing {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.modal-content {
+  background: #fff;
+  padding: 2.5rem 2rem;
+  border-radius: 16px;
+  width: 90%;
+  max-width: 420px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
+  position: relative;
+  text-align: center;
+  opacity: 0;
+  transform: translateY(-30px) scale(0.95);
+  transition: all 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.modal-content.modal-open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.modal-content.modal-closing {
+  opacity: 0;
+  transform: translateY(20px) scale(0.95);
+}
+
+.modal-close {
+  position: absolute;
+  top: 1rem;
+  right: 1.5rem;
+  font-size: 1.8rem;
+  background: none;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.modal-close:hover {
+  color: #ef4444;
+}
+
+.modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.login-logo,
+.login-powered-logo,
+.modal-logo {
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
 }

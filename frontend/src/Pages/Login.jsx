@@ -13,6 +13,8 @@ import {
   ErrorIcon
 } from '../Components/LoginIcons.jsx'
 
+const API_URL = "http://localhost:5000";
+
 function Login({ onLoginSuccess }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -22,9 +24,29 @@ function Login({ onLoginSuccess }) {
   const [passwordError, setPasswordError] = useState('')
   const [authError, setAuthError] = useState('')
 
+  const [showRegisterModal, setShowRegisterModal] = useState(false)
+  const [isClosing, setIsClosing] = useState(false)
+  const [regEmail, setRegEmail] = useState('')
+  const [regPassword, setRegPassword] = useState('')
+  const [showRegPassword, setShowRegPassword] = useState(false)
+  const [regLoading, setRegLoading] = useState(false)
+  const [regError, setRegError] = useState('')
+
   useEffect(() => {
     document.title = 'Avinya | Login'
   }, [])
+
+  useEffect(() => {
+    const handleEsc = (e) => {
+      if (e.key === 'Escape' && showRegisterModal && !isClosing) {
+        closeModal()
+      }
+    }
+    if (showRegisterModal) {
+      window.addEventListener('keydown', handleEsc)
+    }
+    return () => window.removeEventListener('keydown', handleEsc)
+  }, [showRegisterModal, isClosing])
 
   const handleSubmit = async (event) => {
     event.preventDefault()
@@ -58,6 +80,27 @@ function Login({ onLoginSuccess }) {
     try {
       setLoading(true)
 
+      // 🔐 Backend login first
+      const res = await fetch(`${API_URL}/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: trimmedEmail,
+          password: rawPassword,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.message || "Login failed");
+      }
+
+      console.log("Backend login success:", data);
+
+      // 🔗 ThingsBoard login
       const authData = await loginToThingsBoard(trimmedEmail, rawPassword)
 
       sessionStorage.setItem('tbToken', authData.token)
@@ -67,10 +110,85 @@ function Login({ onLoginSuccess }) {
       sessionStorage.setItem('tbUser', JSON.stringify(user))
 
       onLoginSuccess()
-    } catch {
+    } catch (err) {
+      console.error(err)
       setAuthError('Invalid email or password. Please try again.')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const openRegisterModal = () => {
+    setShowRegisterModal(true)
+    setIsClosing(false)
+    setRegEmail('')
+    setRegPassword('')
+    setRegError('')
+    setShowRegPassword(false)
+  }
+
+  const closeModal = () => {
+    setIsClosing(true)
+    setTimeout(() => {
+      setShowRegisterModal(false)
+      setIsClosing(false)
+      setRegEmail('')
+      setRegPassword('')
+      setRegError('')
+      setShowRegPassword(false)
+    }, 350)
+  }
+
+  const handleRegister = async (event) => {
+    event.preventDefault()
+    setRegError('')
+
+    const trimmedRegEmail = regEmail.trim()
+    const rawRegPassword = regPassword
+
+    if (!trimmedRegEmail) {
+      setRegError('Please enter your email.')
+      return
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedRegEmail)) {
+      setRegError('Please enter a valid email address.')
+      return
+    }
+    if (!rawRegPassword.trim()) {
+      setRegError('Please enter your password.')
+      return
+    }
+
+    try {
+      setRegLoading(true)
+
+      const res = await fetch(`${API_URL}/register`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: trimmedRegEmail,
+          password: rawRegPassword,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.message || "Registration failed");
+      }
+
+      console.log("Registered user:", data);
+
+      alert("Account created successfully!")
+
+      closeModal()
+    } catch (err) {
+      console.error(err)
+      setRegError("Registration failed. Try a different email.")
+    } finally {
+      setRegLoading(false)
     }
   }
 
@@ -186,6 +304,15 @@ function Login({ onLoginSuccess }) {
                 'Login'
               )}
             </button>
+
+            <button
+              type="button"
+              className="login-button"
+              onClick={openRegisterModal}
+              disabled={loading}
+            >
+              Register
+            </button>
           </form>
 
           <div className="login-powered">
@@ -196,6 +323,109 @@ function Login({ onLoginSuccess }) {
           </div>
         </div>
       </section>
+
+      {showRegisterModal && (
+        <div
+          className={`modal-overlay ${isClosing ? 'modal-closing' : 'modal-open'}`}
+          onClick={closeModal}
+        >
+          <div
+            className={`modal-content ${isClosing ? 'modal-closing' : 'modal-open'}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+           
+            <img src={logo} alt="Avinya Logo" className="login-logo img-fluid modal-logo" />
+
+            <div className="login-text-group">
+              <h2 className="login-title">Create Account</h2>
+              <p className="login-text">
+                Join Avinya and start managing your ThingsBoard devices.
+              </p>
+            </div>
+
+            <form className="modal-form" onSubmit={handleRegister} noValidate>
+              <div className="login-field-group">
+                <div className={`login-field ${regError ? 'login-field-error' : ''}`}>
+                  <span className="login-field-icon" aria-hidden="true">
+                    <UserIcon />
+                  </span>
+                  <input
+                    type="email"
+                    className="login-input"
+                    placeholder="Email"
+                    value={regEmail}
+                    onChange={(e) => {
+                      setRegEmail(e.target.value)
+                      if (regError) setRegError('')
+                    }}
+                    autoComplete="username"
+                  />
+                </div>
+              </div>
+
+              <div className="login-field-group">
+                <div className={`login-field ${regError ? 'login-field-error' : ''}`}>
+                  <span className="login-field-icon" aria-hidden="true">
+                    <LockIcon />
+                  </span>
+                  <input
+                    type={showRegPassword ? 'text' : 'password'}
+                    className="login-input"
+                    placeholder="Password"
+                    value={regPassword}
+                    onChange={(e) => {
+                      setRegPassword(e.target.value)
+                      if (regError) setRegError('')
+                    }}
+                    autoComplete="new-password"
+                  />
+                  <button
+                    type="button"
+                    className="login-field-action"
+                    aria-label={showRegPassword ? 'Hide password' : 'Show password'}
+                    onClick={() => setShowRegPassword((prev) => !prev)}
+                  >
+                    {showRegPassword ? <EyeClosedIcon /> : <EyeOpenIcon />}
+                  </button>
+                </div>
+              </div>
+
+              {regError && (
+                <div className="login-error-row">
+                  <span className="login-error-icon" aria-hidden="true">
+                    <ErrorIcon />
+                  </span>
+                  <span>{regError}</span>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                className="login-button"
+                disabled={regLoading}
+              >
+                {regLoading ? (
+                  <span className="login-button-loading">
+                    <span className="login-spinner"></span>
+                    <span>Creating Account</span>
+                  </span>
+                ) : (
+                  'Create Account'
+                )}
+              </button>
+
+              <button
+                type="button"
+                className="login-button"
+                style={{ backgroundColor: '#6b7280', marginTop: '0.5rem' }}
+                onClick={closeModal}
+              >
+                Cancel
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </main>
   )
 }
