@@ -36,7 +36,7 @@ app.post("/register", async (req, res) => {
         console.log("USER CREATED:", result.rows[0]);
         res.status(201).json({ message: "User created successfully" });
     } catch (err) {
-        console.error("REGISTER ERROR:", err.message);
+        console.error("REGISTER ERROR:", err);
         res.status(500).json({ error: "Server error" });
     }
 });
@@ -65,7 +65,7 @@ app.post("/login", async (req, res) => {
 
     res.json({ message: "Login successful" });
   } catch (err) {
-        console.error(err.message);
+        console.error(err);
         res.status(500).json({ error: "Server error" });
   }
 });
