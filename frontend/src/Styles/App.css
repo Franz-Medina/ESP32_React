@@ -17,8 +17,8 @@
   visibility: hidden;
   pointer-events: none;
   transition:
-    opacity 0.45s ease,
-    visibility 0s linear 0.45s;
+    opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s linear 0.55s;
   z-index: 9999;
 }
 
@@ -39,8 +39,8 @@
   flex-direction: column;
   align-items: center;
   gap: 16px;
-  transform: translateY(10px) scale(0.98);
-  transition: transform 0.45s ease;
+  transform: translateY(14px) scale(0.96);
+  transition: transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .app-transition.active .app-transition-card {
@@ -67,7 +67,7 @@
   height: 100%;
   border-radius: 999px;
   background: #980000;
-  animation: appTransitionMove 1s ease-in-out infinite;
+  animation: appTransitionMove 1.1s cubic-bezier(0.22, 1, 0.36, 1) infinite;
 }
 
 @keyframes appTransitionMove {
