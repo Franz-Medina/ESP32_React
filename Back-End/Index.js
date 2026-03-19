@@ -6,8 +6,15 @@ const cors = require("cors");
 const nodemailer = require("nodemailer");
 const crypto = require("crypto");
 require("dotenv").config();
+const authenticateToken = require("./middleware/authMiddleware");
+require("./config/validateENV");
+
 
 const app = express();
+
+if (!process.env.JWT_SECRET) {
+  throw new Error("JWT_SECRET is not defined");
+}
 
 app.use(
   cors({
@@ -295,75 +302,40 @@ app.delete("/otp/pending-user", async (req, res) => {
   }
 });
 
-app.post("/login", async (req, res) => {
+const authRoutes = require("./routes/authRoutes");
+app.use("/", authRoutes);
+
+app.put("/profile", authenticateToken, async (req, res) => {
   try {
-    const trimmedEmail = normalizeEmail(req.body.email);
-    const trimmedPassword = req.body.password?.trim();
+    const { firstName, lastName } = req.body;
 
-    if (!trimmedEmail || !trimmedPassword) {
+    if (!firstName || !lastName) {
       return res.status(400).json({
-        message: "Email and password are required.",
+        message: "First and last name are required",
       });
     }
 
-    const result = await pool.query(
-      `SELECT id, first_name, last_name, email, password, is_verified
-       FROM users
-       WHERE email = $1`,
-      [trimmedEmail]
+    await pool.query(
+      `UPDATE users
+       SET first_name = $1,
+           last_name = $2
+       WHERE id = $3`,
+      [firstName.trim(), lastName.trim(), req.user.id]
     );
 
-    if (result.rows.length === 0) {
-      return res.status(400).json({
-        message: "Invalid email or password. Please try again.",
-      });
-    }
-
-    const user = result.rows[0];
-
-    const isMatch = await bcrypt.compare(trimmedPassword, user.password);
-
-    if (!isMatch) {
-      return res.status(400).json({
-        message: "Invalid email or password. Please try again.",
-      });
-    }
-
-    if (!user.is_verified) {
-      return res.status(403).json({
-        message: "Please verify your account first before logging in.",
-      });
-    }
-
-    const token = jwt.sign(
-      {
-        id: user.id,
-        email: user.email,
-      },
-      process.env.JWT_SECRET,
-      {
-        expiresIn: "1d",
-      }
-    );
-
-    return res.status(200).json({
-      message: "Login successful.",
-      token,
-      user: {
-        id: user.id,
-        firstName: user.first_name,
-        lastName: user.last_name,
-        email: user.email,
-        isVerified: user.is_verified,
-      },
+    res.json({
+      message: "Profile updated successfully",
     });
-  } catch (error) {
-    console.error("LOGIN ERROR:", error);
-    return res.status(500).json({
-      message: "Login failed. Please try again.",
+  } catch (err) {
+    console.error("PROFILE UPDATE ERROR:", err);
+    res.status(500).json({
+      message: "Failed to update profile",
     });
   }
 });
+
+const errorHandler = require("./middleware/errorHandler");
+app.use(errorHandler);
 
 app.listen(process.env.PORT, () => {
   console.log(`Server running on port ${process.env.PORT}`);
