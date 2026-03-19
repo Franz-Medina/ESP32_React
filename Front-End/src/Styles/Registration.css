@@ -1,0 +1,200 @@
+@import './Login.css';
+
+.registration-name-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.registration-name-col {
+  min-width: 0;
+}
+
+.registration-privacy-group {
+  margin-top: 14px;
+  text-align: left;
+}
+
+.registration-privacy-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  cursor: pointer;
+}
+
+.registration-privacy-text {
+  flex: 1;
+  display: block;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #6b6b6b;
+  text-align: justify;
+  text-justify: inter-word;
+}
+
+.registration-privacy-link {
+  border: none;
+  background: transparent;
+  padding: 0;
+  font-size: 14px;
+  color: #3574ff;
+  cursor: pointer;
+  text-decoration: none;
+  transition: color 0.25s ease, opacity 0.25s ease, transform 0.15s ease;
+}
+
+.registration-privacy-link:hover {
+  color: #3574ff;
+  transform: translateY(-1px);
+}
+
+.registration-privacy-link:active {
+  transform: translateY(0);
+  opacity: 0.85;
+}
+
+.registration-privacy-link:focus-visible {
+  outline: none;
+  text-decoration: underline;
+}
+
+.registration-swal-popup {
+  border-radius: 5px !important;
+  padding: 24px 24px 20px !important;
+}
+
+.registration-swal-title {
+  font-size: 20px !important;
+  font-weight: 600 !important;
+  color: #1f1f1f !important;
+  text-align: justify !important;
+}
+
+.registration-swal-text {
+  font-size: 14px !important;
+  font-weight: 400 !important;
+  line-height: 1.7 !important;
+  color: #555555 !important;
+  margin-top: 8px !important;
+  text-align: justify !important;
+}
+
+.registration-swal-text p {
+  margin: 0 0 14px !important;
+  text-align: justify !important;
+}
+
+.registration-swal-text p:last-child {
+  margin-bottom: 0 !important;
+}
+
+.registration-swal-actions {
+  margin-top: 20px !important;
+  gap: 10px !important;
+}
+
+.registration-swal-confirm {
+  min-width: 120px;
+  height: 42px;
+  border-radius: 5px;
+  font-size: 14px !important;
+  font-weight: 600;
+  border: 1px solid transparent;
+  background: #980000;
+  color: #ffffff;
+  transition:
+    background-color 0.25s ease,
+    border-color 0.25s ease,
+    color 0.25s ease,
+    box-shadow 0.25s ease,
+    transform 0.15s ease;
+}
+
+.registration-swal-confirm:hover {
+  background: #7d0000;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px rgba(152, 0, 0, 0.18);
+}
+
+.registration-swal-confirm:active {
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+.registration-swal-close {
+  position: absolute !important;
+  top: 32px !important;
+  right: 32px !important;
+  width: 32px !important;
+  height: 32px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  line-height: 1 !important;
+  color: #7a7a7a !important;
+  font-size: 28px !important;
+  transition: color 0.2s ease, transform 0.15s ease !important;
+}
+
+.registration-swal-close:hover {
+  color: #980000 !important;
+  transform: scale(1.05);
+}
+
+@media (max-width: 540px) {
+  .registration-name-row {
+    grid-template-columns: 1fr;
+  }
+
+  .registration-swal-title {
+    font-size: 20px !important;
+  }
+}
+
+[data-theme='dark'] .registration-privacy-text {
+  color: #98a2b3;
+}
+
+[data-theme='dark'] .registration-privacy-link {
+  color: #8ca9ff;
+}
+
+[data-theme='dark'] .registration-privacy-link:hover {
+  color: #8ca9ff;
+  transform: translateY(-1px);
+}
+
+[data-theme='dark'] .registration-swal-popup {
+  background: rgba(21, 24, 31, 0.96) !important;
+  border: 1px solid #262b35 !important;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28) !important;
+}
+
+[data-theme='dark'] .registration-swal-title {
+  color: #ffffff !important;
+}
+
+[data-theme='dark'] .registration-swal-text {
+  color: #b7c0cf !important;
+}
+
+[data-theme='dark'] .registration-swal-close {
+  color: #98a2b3 !important;
+}
+
+[data-theme='dark'] .registration-swal-close:hover {
+  color: #ffffff !important;
+}
+
+[data-theme='dark'] .registration-swal-confirm {
+  background: #b61f1f;
+}
+
+[data-theme='dark'] .registration-swal-confirm:hover {
+  background: #cf2e2e;
+  box-shadow: 0 6px 14px rgba(197, 42, 42, 0.26);
+}

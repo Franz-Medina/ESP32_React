@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import Login from './Pages/Login.jsx'
+import Registration from './Pages/Registration.jsx'
+import OTPVerification from './Pages/OTPVerification.jsx'
 import Dashboard from './Pages/Dashboard.jsx'
-import Register from './Pages/Register.jsx'
 import Devices from './Pages/Devices.jsx'
 import Users from './Pages/Users.jsx'
 import Logs from './Pages/Logs.jsx'
@@ -14,7 +15,10 @@ function App() {
     () => !!sessionStorage.getItem('tbToken')
   )
   const [currentPage, setCurrentPage] = useState(
-    () => sessionStorage.getItem('avinya-current-page') || 'dashboard'
+    () => sessionStorage.getItem('avinya-current-page') || 'login'
+  )
+  const [pendingVerificationEmail, setPendingVerificationEmail] = useState(
+    () => sessionStorage.getItem('avinya-pending-verification-email') || ''
   )
   const [isSwitching, setIsSwitching] = useState(true)
   const [isDarkMode, setIsDarkMode] = useState(
@@ -35,6 +39,14 @@ function App() {
   }, [currentPage])
 
   useEffect(() => {
+    if (pendingVerificationEmail) {
+      sessionStorage.setItem('avinya-pending-verification-email', pendingVerificationEmail)
+    } else {
+      sessionStorage.removeItem('avinya-pending-verification-email')
+    }
+  }, [pendingVerificationEmail])
+
+  useEffect(() => {
     transitionEndTimeoutRef.current = window.setTimeout(() => {
       setIsSwitching(false)
     }, 720)
@@ -44,7 +56,6 @@ function App() {
       window.clearTimeout(transitionEndTimeoutRef.current)
     }
   }, [])
-
 
   const runAppTransition = (callback) => {
     window.clearTimeout(authSwitchTimeoutRef.current)
@@ -60,31 +71,54 @@ function App() {
       setIsSwitching(false)
     }, 780)
   }
+
   const handleLoginSuccess = () => {
     runAppTransition(() => {
       setCurrentPage('dashboard')
       setIsAuthenticated(true)
     })
   }
-  
+
   const handleLogout = () => {
     sessionStorage.removeItem('tbToken')
     sessionStorage.removeItem('tbRefreshToken')
     sessionStorage.removeItem('tbUser')
     sessionStorage.removeItem('avinya-current-page')
+    sessionStorage.removeItem('avinya-pending-verification-email')
 
     runAppTransition(() => {
-      setCurrentPage('dashboard')
+      setPendingVerificationEmail('')
+      setCurrentPage('login')
       setIsAuthenticated(false)
     })
   }
 
-  
   const handlePageChange = (nextPage) => {
     if (nextPage === currentPage) return
 
     runAppTransition(() => {
       setCurrentPage(nextPage)
+    })
+  }
+
+  const handleGoToRegister = () => {
+    runAppTransition(() => {
+      setPendingVerificationEmail('')
+      setCurrentPage('register')
+    })
+  }
+
+  const handleRegistrationSuccess = (registeredEmail) => {
+    runAppTransition(() => {
+      setPendingVerificationEmail(registeredEmail)
+      setCurrentPage('otp-verification')
+    })
+  }
+
+  const handleGoToLogin = () => {
+    runAppTransition(() => {
+      setPendingVerificationEmail('')
+      setCurrentPage('login')
     })
   }
 
@@ -120,13 +154,30 @@ function App() {
             onThemeToggle={() => setIsDarkMode((prev) => !prev)}
           />
         ) : (
-        <Dashboard
-          onLogout={handleLogout}
+          <Dashboard
+            onLogout={handleLogout}
+            onNavigate={handlePageChange}
+            isDarkMode={isDarkMode}
+            onThemeToggle={() => setIsDarkMode((prev) => !prev)}
+          />
+        )
+      ) : currentPage === 'register' ? (
+        <Registration
+          onGoToLogin={handleGoToLogin}
+          onRegistrationSuccess={handleRegistrationSuccess}
           isDarkMode={isDarkMode}
-          onThemeToggle={() => setIsDarkMode((prev) => !prev)}
-        />)
+        />
+      ) : currentPage === 'otp-verification' ? (
+        <OTPVerification
+          verificationEmail={pendingVerificationEmail}
+          onGoToLogin={handleGoToLogin}
+          onGoToRegister={handleGoToRegister}
+        />
       ) : (
-        <Login onLoginSuccess={handleLoginSuccess} />
+        <Login
+          onLoginSuccess={handleLoginSuccess}
+          onGoToRegister={handleGoToRegister}
+        />
       )}
 
       <div className={`app-transition ${isSwitching ? 'active' : ''}`}>

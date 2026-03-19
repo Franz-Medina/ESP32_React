@@ -168,7 +168,7 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                 </span>
               </button>
 
-              <div className={`dashboard-sidebar-submenu ${isEntitiesOpen ? 'open' : ''}`}>
+              <div className={`dashboard-sidebar-submenu submenu-active ${isEntitiesOpen ? 'open' : ''}`}>
                 <button
                     type="button"
                     className="dashboard-sidebar-sublink active"
