@@ -11,10 +11,47 @@ import {
 
 const API_URL = 'http://localhost:5000'
 
-function Login({ onLoginSuccess, onGoToRegister }) {
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+const getLoginEmailValidationError = (value) => {
+  if (!value) {
+    return 'Please enter your email.'
+  }
+
+  if (/\s/.test(value)) {
+    return 'Email address must not contain spaces.'
+  }
+
+  if (value.length > 254) {
+    return 'Email address is too long.'
+  }
+
+  if (!EMAIL_REGEX.test(value)) {
+    return 'Please enter a valid email address.'
+  }
+
+  return ''
+}
+
+const getLoginPasswordValidationError = (value) => {
+  if (!value) {
+    return 'Please enter your password.'
+  }
+
+  if (value !== value.trim()) {
+    return 'Password must not start or end with spaces.'
+  }
+
+  return ''
+}
+
+function Login({ onLoginSuccess, onGoToRegister, onGoToForgotPassword }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+  const [rememberMe, setRememberMe] = useState(
+    () => localStorage.getItem('avinya-remember-me') === 'true'
+  )
   const [loading, setLoading] = useState(false)
   const [emailError, setEmailError] = useState('')
   const [passwordError, setPasswordError] = useState('')
@@ -31,21 +68,22 @@ function Login({ onLoginSuccess, onGoToRegister }) {
     setPasswordError('')
     setAuthError('')
 
+    const rawEmail = email
     const trimmedEmail = email.trim()
     const rawPassword = password
 
+    const emailValidationError = getLoginEmailValidationError(rawEmail)
+    const passwordValidationError = getLoginPasswordValidationError(rawPassword)
+
     let hasError = false
 
-    if (!trimmedEmail) {
-      setEmailError('Please enter your email.')
-      hasError = true
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
-      setEmailError('Please enter a valid email address.')
+    if (emailValidationError) {
+      setEmailError(emailValidationError)
       hasError = true
     }
 
-    if (!rawPassword.trim()) {
-      setPasswordError('Please enter your password.')
+    if (passwordValidationError) {
+      setPasswordError(passwordValidationError)
       hasError = true
     }
 
@@ -63,24 +101,39 @@ function Login({ onLoginSuccess, onGoToRegister }) {
         },
         body: JSON.stringify({
           email: trimmedEmail,
-          password: rawPassword
+          password: rawPassword,
+          rememberMe
         })
       })
 
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.message || 'Invalid email or password. Please try again.')
+        throw new Error(data.message || 'Something went wrong while logging in. Please try again.')
       }
 
-      sessionStorage.setItem('tbToken', data.token)
-      sessionStorage.setItem('tbUser', JSON.stringify(data.user))
-      sessionStorage.removeItem('tbRefreshToken')
+      const targetStorage = rememberMe ? localStorage : sessionStorage
+      const otherStorage = rememberMe ? sessionStorage : localStorage
+
+      otherStorage.removeItem('tbToken')
+      otherStorage.removeItem('tbUser')
+      otherStorage.removeItem('tbRefreshToken')
+      otherStorage.removeItem('avinya-current-page')
+
+      targetStorage.setItem('tbToken', data.token)
+      targetStorage.setItem('tbUser', JSON.stringify(data.user))
+      targetStorage.removeItem('tbRefreshToken')
+
+      localStorage.setItem('avinya-remember-me', rememberMe ? 'true' : 'false')
       sessionStorage.removeItem('avinya-otp-expiry-at')
 
       onLoginSuccess()
     } catch (error) {
-      setAuthError(error.message || 'Invalid email or password. Please try again.')
+      if (error instanceof TypeError || error.message === 'Failed to fetch') {
+        setAuthError('Unable to connect to the server. Please check your internet connection and try again.')
+      } else {
+        setAuthError(error.message || 'Something went wrong while logging in. Please try again.')
+      }
     } finally {
       setLoading(false)
     }
@@ -89,6 +142,12 @@ function Login({ onLoginSuccess, onGoToRegister }) {
   const handleRegisterClick = () => {
     if (onGoToRegister) {
       onGoToRegister()
+    }
+  }
+
+  const handleForgotPasswordClick = () => {
+    if (onGoToForgotPassword) {
+      onGoToForgotPassword()
     }
   }
 
@@ -113,28 +172,34 @@ function Login({ onLoginSuccess, onGoToRegister }) {
 
           <form className="login-form" onSubmit={handleSubmit} noValidate>
             <div className="login-field-group">
-              <div className={`login-field ${hasEmailFieldError ? 'login-field-error' : ''}`}>
+              <div className={`login-field login-floating-field ${hasEmailFieldError ? 'login-field-error' : ''}`}>
                 <span className="login-field-icon" aria-hidden="true">
                   <UserIcon />
                 </span>
 
-                <input
-                  type="email"
-                  className="login-input"
-                  placeholder="Email"
-                  value={email}
-                  onChange={(e) => {
-                    setEmail(e.target.value)
-                    if (emailError) setEmailError('')
-                    if (authError) setAuthError('')
-                  }}
-                  autoComplete="username"
-                  aria-invalid={hasEmailFieldError}
-                />
+                <div className="login-floating-control">
+                  <input
+                    id="login-email"
+                    type="email"
+                    className="login-input login-floating-input"
+                    placeholder=" "
+                    value={email}
+                    onChange={(e) => {
+                      setEmail(e.target.value)
+                      if (emailError) setEmailError('')
+                      if (authError) setAuthError('')
+                    }}
+                    autoComplete="username"
+                    aria-invalid={hasEmailFieldError}
+                  />
+                  <label htmlFor="login-email" className="login-floating-label">
+                    Email
+                  </label>
+                </div>
               </div>
 
               {emailError && (
-                <div className="login-error-row">
+                <div className="login-error-row login-error-row-animated">
                   <span className="login-error-icon" aria-hidden="true">
                     <ErrorIcon />
                   </span>
@@ -144,24 +209,30 @@ function Login({ onLoginSuccess, onGoToRegister }) {
             </div>
 
             <div className="login-field-group">
-              <div className={`login-field ${hasPasswordFieldError ? 'login-field-error' : ''}`}>
+              <div className={`login-field login-floating-field ${hasPasswordFieldError ? 'login-field-error' : ''}`}>
                 <span className="login-field-icon" aria-hidden="true">
                   <LockIcon />
                 </span>
 
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  className="login-input"
-                  placeholder="Password"
-                  value={password}
-                  onChange={(e) => {
-                    setPassword(e.target.value)
-                    if (passwordError) setPasswordError('')
-                    if (authError) setAuthError('')
-                  }}
-                  autoComplete="current-password"
-                  aria-invalid={hasPasswordFieldError}
-                />
+                <div className="login-floating-control">
+                  <input
+                    id="login-password"
+                    type={showPassword ? 'text' : 'password'}
+                    className="login-input login-floating-input"
+                    placeholder=" "
+                    value={password}
+                    onChange={(e) => {
+                      setPassword(e.target.value)
+                      if (passwordError) setPasswordError('')
+                      if (authError) setAuthError('')
+                    }}
+                    autoComplete="current-password"
+                    aria-invalid={hasPasswordFieldError}
+                  />
+                  <label htmlFor="login-password" className="login-floating-label">
+                    Password
+                  </label>
+                </div>
 
                 <button
                   type="button"
@@ -174,7 +245,7 @@ function Login({ onLoginSuccess, onGoToRegister }) {
               </div>
 
               {hasPasswordFieldError && (
-                <div className="login-error-row">
+                <div className="login-error-row login-error-row-animated">
                   <span className="login-error-icon" aria-hidden="true">
                     <ErrorIcon />
                   </span>
@@ -185,13 +256,22 @@ function Login({ onLoginSuccess, onGoToRegister }) {
 
             <div className="login-options">
               <label className="login-remember">
-                <input type="checkbox" className="login-check" />
+                <input
+                  type="checkbox"
+                  className="login-check"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                />
                 <span>Remember Me</span>
               </label>
 
-              <a href="#" className="login-link">
+              <button
+                type="button"
+                className="login-link login-link-button"
+                onClick={handleForgotPasswordClick}
+              >
                 Forgot Password?
-              </a>
+              </button>
             </div>
 
             <button type="submit" className="login-button" disabled={loading}>
