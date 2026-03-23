@@ -10,7 +10,7 @@ import {
   ErrorIcon
 } from '../Components/LoginIcons.jsx'
 
-const API_URL = 'http://localhost:5000'
+import { API_URL } from '../Config/API'
 
 const PASSWORD_UPPERCASE_REGEX = /[A-Z]/
 const PASSWORD_LOWERCASE_REGEX = /[a-z]/

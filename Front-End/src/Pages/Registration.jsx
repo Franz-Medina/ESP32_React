@@ -11,7 +11,7 @@ import {
   ErrorIcon
 } from '../Components/LoginIcons.jsx'
 
-const API_URL = 'http://localhost:5000'
+import { API_URL } from '../Config/API'
 
 const NAME_REGEX = /^[A-Za-zÀ-ÖØ-öø-ÿ]+(?:[ '-][A-Za-zÀ-ÖØ-öø-ÿ]+)*$/
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/

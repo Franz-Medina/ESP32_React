@@ -9,6 +9,10 @@ CREATE TABLE IF NOT EXISTS users (
   otp_expires_at TIMESTAMP,
   password_reset_token_hash TEXT,
   password_reset_expires_at TIMESTAMP,
+  pending_password_encrypted TEXT,
+  tb_password_encrypted TEXT,
+  tb_customer_id UUID,
+  tb_user_id UUID,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -32,3 +36,15 @@ ADD COLUMN IF NOT EXISTS password_reset_token_hash TEXT;
 
 ALTER TABLE users
 ADD COLUMN IF NOT EXISTS password_reset_expires_at TIMESTAMP;
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS pending_password_encrypted TEXT;
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS tb_password_encrypted TEXT;
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS tb_customer_id UUID;
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS tb_user_id UUID;

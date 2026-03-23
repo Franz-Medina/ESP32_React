@@ -3,7 +3,7 @@ import logo from '../Pictures/Avinya.png'
 import '../Styles/OTPVerification.css'
 import { ErrorIcon } from '../Components/LoginIcons.jsx'
 
-const API_URL = 'http://localhost:5000'
+import { API_URL } from '../Config/API'
 
 const OTP_CODE_REGEX = /^[A-Z0-9]{6}$/
 

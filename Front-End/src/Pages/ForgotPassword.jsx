@@ -5,7 +5,7 @@ import logo from '../Pictures/Avinya.png'
 import '../Styles/ForgotPassword.css'
 import { UserIcon, ErrorIcon } from '../Components/LoginIcons.jsx'
 
-const API_URL = 'http://localhost:5000'
+import { API_URL } from '../Config/API'
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 const getEmailValidationError = (value) => {

@@ -8,22 +8,15 @@ const crypto = require("crypto");
 const path = require("path");
 const rateLimit = require("express-rate-limit");
 require("dotenv").config();
-const authenticateToken = require("./middleware/authMiddleware");
-require("./config/validateENV");
-
 
 const app = express();
 
-if (!process.env.JWT_SECRET) {
-  throw new Error("JWT_SECRET is not defined");
-}
+const PORT = Number(process.env.PORT || 5000);
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 
 app.use(
   cors({
-    origin:
-      process.env.NODE_ENV === "production"
-        ? process.env.FRONTEND_URL
-        : "http://localhost:5173",
+    origin: FRONTEND_URL,
   })
 );
 
@@ -56,6 +49,32 @@ const PASSWORD_NUMBER_REGEX = /[0-9]/;
 const PASSWORD_SPECIAL_REGEX = /[^A-Za-z0-9\s]/;
 const OTP_CODE_REGEX = /^[A-Z0-9]{6}$/;
 const PASSWORD_RESET_TOKEN_REGEX = /^[a-f0-9]{64}$/i;
+
+const APP_ENCRYPTION_KEY = Buffer.from(process.env.APP_ENCRYPTION_KEY || "", "hex");
+const TB_BASE_URL = (process.env.TB_BASE_URL || "").replace(/\/$/, "");
+const TB_TENANT_USERNAME = process.env.TB_TENANT_USERNAME || "";
+const TB_TENANT_PASSWORD = process.env.TB_TENANT_PASSWORD || "";
+const TB_CUSTOMER_ADMIN_GROUP_NAME = "Customer Administrators";
+
+const getTbEntityId = (entity) => entity?.id?.id || entity?.id || null;
+
+const assertRequiredConfig = () => {
+  if (!process.env.JWT_SECRET) {
+    throw new Error("JWT_SECRET is required.");
+  }
+
+  if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
+    throw new Error("SMTP configuration is incomplete.");
+  }
+
+  if (APP_ENCRYPTION_KEY.length !== 32) {
+    throw new Error("APP_ENCRYPTION_KEY must be a 64-character hex string.");
+  }
+
+  if (!TB_BASE_URL || !TB_TENANT_USERNAME || !TB_TENANT_PASSWORD) {
+    throw new Error("ThingsBoard configuration is incomplete.");
+  }
+};
 
 const getNameValidationError = (value, label) => {
   if (!value) {
@@ -229,6 +248,67 @@ const AVINYA_EMAIL_LOGO_PATH = path.join(
   "../Front-End/src/Pictures/Avinya.png"
 );
 
+const encryptSecret = (plainText = "") => {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", APP_ENCRYPTION_KEY, iv);
+  const encrypted = Buffer.concat([
+    cipher.update(plainText, "utf8"),
+    cipher.final(),
+  ]);
+  const authTag = cipher.getAuthTag();
+
+  return [
+    iv.toString("hex"),
+    authTag.toString("hex"),
+    encrypted.toString("hex"),
+  ].join(":");
+};
+
+const decryptSecret = (encryptedValue = "") => {
+  const [ivHex, authTagHex, encryptedHex] = encryptedValue.split(":");
+
+  if (!ivHex || !authTagHex || !encryptedHex) {
+    throw new Error("Encrypted pending password is invalid.");
+  }
+
+  const decipher = crypto.createDecipheriv(
+    "aes-256-gcm",
+    APP_ENCRYPTION_KEY,
+    Buffer.from(ivHex, "hex")
+  );
+
+  decipher.setAuthTag(Buffer.from(authTagHex, "hex"));
+
+  const decrypted = Buffer.concat([
+    decipher.update(Buffer.from(encryptedHex, "hex")),
+    decipher.final(),
+  ]);
+
+  return decrypted.toString("utf8");
+};
+
+const ensureUsersTableExists = async () => {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      first_name VARCHAR(100) NOT NULL,
+      last_name VARCHAR(100) NOT NULL,
+      email VARCHAR(255) UNIQUE NOT NULL,
+      password TEXT NOT NULL,
+      is_verified BOOLEAN NOT NULL DEFAULT FALSE,
+      otp_code VARCHAR(6),
+      otp_expires_at TIMESTAMP,
+      password_reset_token_hash TEXT,
+      password_reset_expires_at TIMESTAMP,
+      pending_password_encrypted TEXT,
+      tb_password_encrypted TEXT,
+      tb_customer_id UUID,
+      tb_user_id UUID,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+};
+
 const ensureUsersTableSchema = async () => {
   await pool.query(`
     ALTER TABLE users
@@ -238,6 +318,26 @@ const ensureUsersTableSchema = async () => {
   await pool.query(`
     ALTER TABLE users
     ADD COLUMN IF NOT EXISTS password_reset_expires_at TIMESTAMP;
+  `);
+
+  await pool.query(`
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS pending_password_encrypted TEXT;
+  `);
+
+  await pool.query(`
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS tb_password_encrypted TEXT;
+  `);
+
+  await pool.query(`
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS tb_customer_id UUID;
+  `);
+
+  await pool.query(`
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS tb_user_id UUID;
   `);
 };
 
@@ -744,6 +844,264 @@ const sendPasswordResetEmail = async ({ firstName, email, resetLink }) => {
   });
 };
 
+const tbRequest = async (
+  pathname,
+  { method = "GET", token = "", body, isText = false } = {}
+) => {
+  const response = await fetch(`${TB_BASE_URL}${pathname}`, {
+    method,
+    headers: {
+      Accept: isText ? "text/plain" : "application/json",
+      ...(body ? { "Content-Type": "application/json" } : {}),
+      ...(token ? { "X-Authorization": `Bearer ${token}` } : {}),
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+
+  const data = isText
+    ? await response.text()
+    : await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    console.error("THINGSBOARD REQUEST ERROR:", {
+      pathname,
+      method,
+      status: response.status,
+      body,
+      response: data,
+    });
+
+    throw new Error(
+      typeof data === "string"
+        ? data
+        : data.message || `ThingsBoard request failed: ${pathname}`
+    );
+  }
+
+  return data;
+};
+
+const tbLogin = async () => {
+  const data = await tbRequest("/api/auth/login", {
+    method: "POST",
+    body: {
+      username: TB_TENANT_USERNAME,
+      password: TB_TENANT_PASSWORD,
+    },
+  });
+
+  return data.token;
+};
+
+const tbGetUserToken = async (adminToken, userId) => {
+  return tbRequest(`/api/user/${userId}/token`, {
+    token: adminToken,
+  });
+};
+
+const tbChangeCurrentUserPassword = async (
+  userToken,
+  currentPassword,
+  newPassword
+) => {
+  return tbRequest("/api/auth/changePassword", {
+    method: "POST",
+    token: userToken,
+    body: {
+      currentPassword,
+      newPassword,
+    },
+  });
+};
+
+const findTbCustomerByTitle = async (token, title) => {
+  const data = await tbRequest(
+    `/api/customers?pageSize=100&page=0&textSearch=${encodeURIComponent(title)}`,
+    { token }
+  );
+
+  return (
+    data?.data?.find(
+      (item) => item.title?.toLowerCase() === title.toLowerCase()
+    ) || null
+  );
+};
+
+const findOrCreateTbCustomer = async (token, title) => {
+  const existingCustomer = await findTbCustomerByTitle(token, title);
+
+  if (existingCustomer) {
+    return existingCustomer;
+  }
+
+  return tbRequest("/api/customer", {
+    method: "POST",
+    token,
+    body: { title },
+  });
+};
+
+const findTbCustomerUserByEmail = async (token, customerId, email) => {
+  const data = await tbRequest(
+    `/api/customer/${customerId}/users?pageSize=100&page=0&textSearch=${encodeURIComponent(email)}`,
+    { token }
+  );
+
+  return (
+    data?.data?.find(
+      (item) => item.email?.toLowerCase() === email.toLowerCase()
+    ) || null
+  );
+};
+
+const findTbCustomerAdminGroup = async (token, customerId) => {
+  const groupsResponse = await tbRequest(
+    `/api/entityGroups/CUSTOMER/${customerId}/USER`,
+    { token }
+  );
+
+  const groups = Array.isArray(groupsResponse)
+    ? groupsResponse
+    : groupsResponse?.data || [];
+
+  return (
+    groups.find(
+      (group) =>
+        group.name?.trim().toLowerCase() ===
+        TB_CUSTOMER_ADMIN_GROUP_NAME.toLowerCase()
+    ) || null
+  );
+};
+
+const addTbUserToGroup = async (token, entityGroupId, userId) => {
+  return tbRequest(`/api/entityGroup/${entityGroupId}/addEntities`, {
+    method: "POST",
+    token,
+    body: [userId],
+  });
+};
+
+const createTbCustomerUser = async (
+  token,
+  customerId,
+  { email, firstName, lastName }
+) => {
+  return tbRequest("/api/user?sendActivationMail=false", {
+    method: "POST",
+    token,
+    body: {
+      authority: "CUSTOMER_USER",
+      email,
+      firstName,
+      lastName,
+      customerId: {
+        entityType: "CUSTOMER",
+        id: customerId,
+      },
+    },
+  });
+};
+
+const getTbUserActivationLink = async (token, userId) => {
+  return tbRequest(`/api/user/${userId}/activationLink`, {
+    token,
+    isText: true,
+  });
+};
+
+const activateTbUser = async (activationToken, password) => {
+  return tbRequest("/api/noauth/activate?sendActivationMail=false", {
+    method: "POST",
+    body: {
+      activateToken: activationToken,
+      password,
+    },
+  });
+};
+
+const syncVerifiedUserToThingsBoard = async ({
+  firstName,
+  lastName,
+  email,
+  pendingPasswordEncrypted,
+  existingTbCustomerId,
+  existingTbUserId,
+}) => {
+  const adminToken = await tbLogin();
+  const plainPassword = decryptSecret(pendingPasswordEncrypted);
+
+  const normalizedFirstName = (firstName || "")
+    .trim()
+    .split(/\s+/)[0]
+    .toUpperCase();
+
+  const customerTitle = `AVINYA - ${normalizedFirstName || "USER"}`;
+
+  const customer = existingTbCustomerId
+    ? { id: { id: existingTbCustomerId } }
+    : await findOrCreateTbCustomer(adminToken, customerTitle);
+
+  const tbCustomerId = getTbEntityId(customer);
+
+  let tbUser = existingTbUserId
+    ? { id: { id: existingTbUserId } }
+    : await findTbCustomerUserByEmail(adminToken, tbCustomerId, email);
+
+  if (!tbUser) {
+    tbUser = await createTbCustomerUser(adminToken, tbCustomerId, {
+      email,
+      firstName,
+      lastName,
+    });
+
+    const activationLink = await getTbUserActivationLink(
+      adminToken,
+      getTbEntityId(tbUser)
+    );
+
+    const activationToken = new URL(activationLink).searchParams.get("activateToken");
+
+    if (!activationToken) {
+      throw new Error("ThingsBoard activation token was not returned.");
+    }
+
+    await activateTbUser(activationToken, plainPassword);
+  }
+
+  const customerAdminGroup = await findTbCustomerAdminGroup(
+    adminToken,
+    tbCustomerId
+  );
+
+  if (!customerAdminGroup) {
+    throw new Error(
+      'ThingsBoard "Customer Administrators" group was not found for this customer.'
+    );
+  }
+
+  const customerAdminGroupId = getTbEntityId(customerAdminGroup);
+  const tbUserId = getTbEntityId(tbUser);
+
+  console.log("TB GROUP ASSIGNMENT:", {
+    customerId: tbCustomerId,
+    groupName: TB_CUSTOMER_ADMIN_GROUP_NAME,
+    customerAdminGroupId,
+    tbUserId,
+    email,
+  });
+
+  await addTbUserToGroup(
+    adminToken,
+    customerAdminGroupId,
+    tbUserId
+  );
+
+  return {
+    tbCustomerId,
+    tbUserId: getTbEntityId(tbUser),
+  };
+};
+
 app.post("/register", registrationLimiter, async (req, res) => {
   const client = await pool.connect();
 
@@ -800,13 +1158,23 @@ app.post("/register", registrationLimiter, async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(rawPassword, 10);
+    const pendingPasswordEncrypted = encryptSecret(rawPassword);
     const otpCode = generateOtpCode();
     const otpExpiresAt = getOtpExpiryDate();
 
     const result = await client.query(
-      `INSERT INTO users (first_name, last_name, email, password, otp_code, otp_expires_at, is_verified)
-       VALUES ($1, $2, $3, $4, $5, $6, FALSE)
-       RETURNING id, first_name, last_name, email, is_verified, created_at`,
+      `INSERT INTO users (
+          first_name,
+          last_name,
+          email,
+          password,
+          otp_code,
+          otp_expires_at,
+          is_verified,
+          pending_password_encrypted
+        )
+      VALUES ($1, $2, $3, $4, $5, $6, FALSE, $7)
+      RETURNING id, first_name, last_name, email, is_verified, created_at`,
       [
         trimmedFirstName,
         trimmedLastName,
@@ -814,6 +1182,7 @@ app.post("/register", registrationLimiter, async (req, res) => {
         hashedPassword,
         otpCode,
         otpExpiresAt,
+        pendingPasswordEncrypted,
       ]
     );
 
@@ -883,9 +1252,19 @@ app.post("/otp/verify", otpVerificationLimiter, async (req, res) => {
     }
 
     const result = await pool.query(
-      `SELECT id, email, is_verified, otp_code, otp_expires_at
-       FROM users
-       WHERE email = $1`,
+      `SELECT
+          id,
+          first_name,
+          last_name,
+          email,
+          is_verified,
+          otp_code,
+          otp_expires_at,
+          pending_password_encrypted,
+          tb_customer_id,
+          tb_user_id
+      FROM users
+      WHERE email = $1`,
       [trimmedEmail]
     );
 
@@ -921,22 +1300,47 @@ app.post("/otp/verify", otpVerificationLimiter, async (req, res) => {
       });
     }
 
+    if (!user.pending_password_encrypted && !user.tb_user_id) {
+      return res.status(500).json({
+        message: "Pending password data is missing. Please register again.",
+      });
+    }
+
+    const { tbCustomerId, tbUserId } = await syncVerifiedUserToThingsBoard({
+      firstName: user.first_name,
+      lastName: user.last_name,
+      email: user.email,
+      pendingPasswordEncrypted: user.pending_password_encrypted,
+      existingTbCustomerId: user.tb_customer_id,
+      existingTbUserId: user.tb_user_id,
+    });
+
     await pool.query(
       `UPDATE users
-       SET is_verified = TRUE,
-           otp_code = NULL,
-           otp_expires_at = NULL
-       WHERE id = $1`,
-      [user.id]
+      SET is_verified = TRUE,
+          otp_code = NULL,
+          otp_expires_at = NULL,
+          tb_password_encrypted = $4,
+          pending_password_encrypted = NULL,
+          tb_customer_id = $2,
+          tb_user_id = $3
+      WHERE id = $1`,
+      [user.id, tbCustomerId, tbUserId, user.pending_password_encrypted]
     );
 
     return res.status(200).json({
       message: "Account verified successfully.",
     });
   } catch (error) {
-    console.error("OTP VERIFY ERROR:", error);
+    console.error("OTP VERIFY ERROR:", {
+      message: error.message,
+      stack: error.stack,
+    });
+
     return res.status(500).json({
-      message: "Something went wrong while verifying your code. Please try again.",
+      message:
+        error.message ||
+        "Something went wrong while verifying your code. Please try again.",
     });
   }
 });
@@ -1074,8 +1478,7 @@ app.post("/password-reset/request", passwordResetRequestLimiter, async (req, res
     const rawResetToken = generatePasswordResetToken();
     const hashedResetToken = hashPasswordResetToken(rawResetToken);
     const resetExpiresAt = getPasswordResetExpiryDate();
-    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
-    const resetLink = `${frontendUrl}/?page=create-new-password&token=${encodeURIComponent(rawResetToken)}`;
+    const resetLink = `${FRONTEND_URL}/?page=create-new-password&token=${encodeURIComponent(rawResetToken)}`;
 
     await pool.query(
       `UPDATE users
@@ -1161,12 +1564,12 @@ app.post("/password-reset/confirm", passwordResetConfirmLimiter, async (req, res
     const hashedToken = hashPasswordResetToken(rawToken);
 
     const result = await pool.query(
-      `SELECT id, email
-       FROM users
-       WHERE password_reset_token_hash = $1
-         AND password_reset_expires_at IS NOT NULL
-         AND password_reset_expires_at > NOW()
-         AND is_verified = TRUE`,
+      `SELECT id, email, tb_user_id, tb_password_encrypted
+      FROM users
+      WHERE password_reset_token_hash = $1
+        AND password_reset_expires_at IS NOT NULL
+        AND password_reset_expires_at > NOW()
+        AND is_verified = TRUE`,
       [hashedToken]
     );
 
@@ -1177,6 +1580,13 @@ app.post("/password-reset/confirm", passwordResetConfirmLimiter, async (req, res
     }
 
     const user = result.rows[0];
+
+    if (!user.tb_user_id) {
+      return res.status(409).json({
+        message: "This account is not linked to ThingsBoard yet.",
+      });
+    }
+
     const passwordValidationError = getPasswordValidationError(rawPassword, user.email);
 
     if (passwordValidationError) {
@@ -1186,23 +1596,56 @@ app.post("/password-reset/confirm", passwordResetConfirmLimiter, async (req, res
     }
 
     const hashedPassword = await bcrypt.hash(rawPassword, 10);
+    const nextTbPasswordEncrypted = encryptSecret(rawPassword);
+
+    if (user.tb_user_id) {
+      if (!user.tb_password_encrypted) {
+        return res.status(500).json({
+          message: "ThingsBoard password sync data is missing for this account.",
+        });
+      }
+
+      const currentTbPassword = decryptSecret(user.tb_password_encrypted);
+      const adminToken = await tbLogin();
+      const userTokenData = await tbGetUserToken(adminToken, user.tb_user_id);
+      const userToken = userTokenData.token;
+
+      await tbChangeCurrentUserPassword(
+        userToken,
+        currentTbPassword,
+        rawPassword
+      );
+    }
 
     await pool.query(
       `UPDATE users
-       SET password = $1,
-           password_reset_token_hash = NULL,
-           password_reset_expires_at = NULL
-       WHERE id = $2`,
-      [hashedPassword, user.id]
+      SET password = $1,
+          password_reset_token_hash = NULL,
+          password_reset_expires_at = NULL,
+          tb_password_encrypted = $3
+      WHERE id = $2`,
+      [hashedPassword, user.id, nextTbPasswordEncrypted]
     );
 
     return res.status(200).json({
       message: "Password updated successfully.",
     });
   } catch (error) {
-    console.error("PASSWORD RESET CONFIRM ERROR:", error);
+    console.error("PASSWORD RESET CONFIRM ERROR:", {
+      message: error.message,
+      stack: error.stack,
+    });
+
+    const normalizedErrorMessage = String(error.message || "");
+
+    if (normalizedErrorMessage.includes("WRITE") && normalizedErrorMessage.includes("PROFILE")) {
+      return res.status(403).json({
+        message: "ThingsBoard user does not have permission to change its password yet. Assign a role with Profile Write permission to this customer user in ThingsBoard Cloud first.",
+      });
+    }
+
     return res.status(500).json({
-      message: "Something went wrong while updating your password. Please try again.",
+      message: error.message || "Something went wrong while updating your password. Please try again.",
     });
   }
 });
@@ -1229,12 +1672,11 @@ app.post("/login", loginLimiter, async (req, res) => {
       });
     }
 
-    await pool.query(
-      `UPDATE users
-       SET first_name = $1,
-           last_name = $2
-       WHERE id = $3`,
-      [firstName.trim(), lastName.trim(), req.user.id]
+    const result = await pool.query(
+      `SELECT id, first_name, last_name, email, password, is_verified
+       FROM users
+       WHERE email = $1`,
+      [trimmedEmail]
     );
 
     if (result.rows.length === 0) {
@@ -1291,10 +1733,12 @@ app.post("/login", loginLimiter, async (req, res) => {
 
 const startServer = async () => {
   try {
+    assertRequiredConfig();
+    await ensureUsersTableExists();
     await ensureUsersTableSchema();
 
-    app.listen(process.env.PORT, () => {
-      console.log(`Server running on port ${process.env.PORT}`);
+    app.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
     });
   } catch (error) {
     console.error("STARTUP ERROR:", error);
