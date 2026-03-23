@@ -3,6 +3,7 @@
 .registration-name-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
   gap: 12px;
   margin-bottom: 12px;
 }
@@ -58,6 +59,98 @@
 .registration-privacy-link:focus-visible {
   outline: none;
   text-decoration: underline;
+}
+
+.registration-floating-field {
+  min-height: 48px;
+  padding-top: 0;
+  padding-bottom: 0;
+  overflow: visible;
+}
+
+.registration-floating-control {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: stretch;
+}
+
+.registration-floating-input {
+  width: 100%;
+  height: 100%;
+  display: block;
+  padding: 20px 0 5px;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.registration-floating-input::placeholder {
+  color: transparent !important;
+  opacity: 0 !important;
+}
+
+.registration-floating-label {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  transform: translateY(-50%);
+  transform-origin: left center;
+  pointer-events: none;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.1;
+  color: #b8b8b8;
+  transition:
+    top 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    font-size 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    color 0.25s ease,
+    opacity 0.25s ease;
+}
+
+.registration-floating-field:hover .registration-floating-label {
+  color: #980000;
+}
+
+.registration-floating-input:focus + .registration-floating-label,
+.registration-floating-input:not(:placeholder-shown) + .registration-floating-label {
+  top: 6px;
+  transform: translateY(0);
+  font-size: 12px;
+  color: #980000;
+}
+
+.login-field-error .registration-floating-label {
+  color: #d93025;
+}
+
+.registration-error-row {
+  margin-top: 8px;
+  text-align: justify;
+  text-justify: inter-word;
+  transform-origin: top left;
+  animation: registrationErrorReveal 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+
+.registration-error-row span:last-child {
+  flex: 1;
+  text-align: justify;
+  text-justify: inter-word;
+}
+
+@keyframes registrationErrorReveal {
+  0% {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .registration-swal-popup {
@@ -166,6 +259,23 @@
 [data-theme='dark'] .registration-privacy-link:hover {
   color: #8ca9ff;
   transform: translateY(-1px);
+}
+
+[data-theme='dark'] .registration-floating-label {
+  color: #717b8d;
+}
+
+[data-theme='dark'] .registration-floating-field:hover .registration-floating-label {
+  color: #ffdddd;
+}
+
+[data-theme='dark'] .registration-floating-input:focus + .registration-floating-label,
+[data-theme='dark'] .registration-floating-input:not(:placeholder-shown) + .registration-floating-label {
+  color: #ffdddd;
+}
+
+[data-theme='dark'] .login-field-error .registration-floating-label {
+  color: #ff8b8b;
 }
 
 [data-theme='dark'] .registration-swal-popup {

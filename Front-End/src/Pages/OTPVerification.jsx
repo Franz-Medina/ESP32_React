@@ -5,10 +5,27 @@ import { ErrorIcon } from '../Components/LoginIcons.jsx'
 
 const API_URL = 'http://localhost:5000'
 
+const OTP_CODE_REGEX = /^[A-Z0-9]{6}$/
+
+const getOtpValidationError = (value) => {
+  if (!value) {
+    return 'Please enter the 6-character verification code.'
+  }
+
+  if (value.length !== 6) {
+    return 'Verification code must be exactly 6 characters.'
+  }
+
+  if (!OTP_CODE_REGEX.test(value)) {
+    return 'Verification code must contain letters and numbers only.'
+  }
+
+  return ''
+}
+
 function OTPVerification({ verificationEmail, onGoToLogin, onGoToRegister }) {
   const [otpValues, setOtpValues] = useState(['', '', '', '', '', ''])
   const [otpError, setOtpError] = useState('')
-  const [otpInfo, setOtpInfo] = useState('')
   const [isVerifying, setIsVerifying] = useState(false)
   const [isResending, setIsResending] = useState(false)
   const [isLeaving, setIsLeaving] = useState(false)
@@ -58,7 +75,6 @@ function OTPVerification({ verificationEmail, onGoToLogin, onGoToRegister }) {
 
   const clearOtpFeedback = () => {
     if (otpError) setOtpError('')
-    if (otpInfo) setOtpInfo('')
   }
 
   const handleOtpChange = (value, index) => {
@@ -115,21 +131,21 @@ function OTPVerification({ verificationEmail, onGoToLogin, onGoToRegister }) {
     event.preventDefault()
 
     const otpCode = otpValues.join('').trim().toUpperCase()
+    const otpValidationError = getOtpValidationError(otpCode)
 
     if (!verificationEmail) {
       setOtpError('No pending verification email was found. Please register again.')
       return
     }
 
-    if (otpCode.length !== 6) {
-      setOtpError('Please enter the 6-character verification code.')
+    if (otpValidationError) {
+      setOtpError(otpValidationError)
       return
     }
 
     try {
       setIsVerifying(true)
       setOtpError('')
-      setOtpInfo('')
 
       const response = await fetch(`${API_URL}/otp/verify`, {
         method: 'POST',
@@ -145,7 +161,7 @@ function OTPVerification({ verificationEmail, onGoToLogin, onGoToRegister }) {
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.message || 'Verification failed.')
+        throw new Error(data.message || 'Something went wrong while verifying your code. Please try again.')
       }
 
       sessionStorage.removeItem('avinya-otp-expiry-at')
@@ -154,19 +170,29 @@ function OTPVerification({ verificationEmail, onGoToLogin, onGoToRegister }) {
         onGoToLogin()
       }
     } catch (error) {
-      setOtpError(error.message || 'Verification failed. Please try again.')
+      if (error instanceof TypeError || error.message === 'Failed to fetch') {
+        setOtpError('Unable to connect to the server. Please check your internet connection and try again.')
+      } else {
+        setOtpError(error.message || 'Something went wrong while verifying your code. Please try again.')
+      }
     } finally {
       setIsVerifying(false)
     }
   }
 
   const handleResendCode = async () => {
-    if (!verificationEmail || secondsLeft > 0) return
+    if (!verificationEmail) {
+      setOtpError('No pending verification email was found. Please register again.')
+      return
+    }
+
+    if (secondsLeft > 0) {
+      return
+    }
 
     try {
       setIsResending(true)
       setOtpError('')
-      setOtpInfo('')
 
       const response = await fetch(`${API_URL}/otp/resend`, {
         method: 'POST',
@@ -181,11 +207,10 @@ function OTPVerification({ verificationEmail, onGoToLogin, onGoToRegister }) {
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.message || 'Failed to resend the verification code.')
+        throw new Error(data.message || 'Something went wrong while resending the verification code. Please try again.')
       }
 
       setOtpValues(['', '', '', '', '', ''])
-      setOtpInfo('A new verification code has been sent to your email.')
 
       if (data.otpExpiresAt) {
         sessionStorage.setItem('avinya-otp-expiry-at', data.otpExpiresAt)
@@ -194,7 +219,11 @@ function OTPVerification({ verificationEmail, onGoToLogin, onGoToRegister }) {
 
       inputRefs.current[0]?.focus()
     } catch (error) {
-      setOtpError(error.message || 'Failed to resend the verification code.')
+      if (error instanceof TypeError || error.message === 'Failed to fetch') {
+        setOtpError('Unable to connect to the server. Please check your internet connection and try again.')
+      } else {
+        setOtpError(error.message || 'Something went wrong while resending the verification code. Please try again.')
+      }
     } finally {
       setIsResending(false)
     }
@@ -285,17 +314,11 @@ function OTPVerification({ verificationEmail, onGoToLogin, onGoToRegister }) {
               </div>
 
               {otpError && (
-                <div className="login-error-row">
+                <div className="login-error-row otp-error-row">
                   <span className="login-error-icon" aria-hidden="true">
                     <ErrorIcon />
                   </span>
                   <span>{otpError}</span>
-                </div>
-              )}
-
-              {otpInfo && (
-                <div className="otp-info-row">
-                  <span>{otpInfo}</span>
                 </div>
               )}
             </div>

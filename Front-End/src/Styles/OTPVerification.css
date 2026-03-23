@@ -8,6 +8,7 @@
   line-height: 1.5;
   color: #6b6b6b;
   text-align: center;
+  transition: color 0.25s ease;
 }
 
 .otp-helper-email {
@@ -38,11 +39,13 @@
   font-weight: 600;
   color: #1f1f1f;
   text-transform: uppercase;
+  will-change: border-color, box-shadow, transform, background-color;
   transition:
-    border-color 0.25s ease,
-    box-shadow 0.25s ease,
-    transform 0.15s ease,
-    background-color 0.25s ease;
+    border-color 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.18s cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    color 0.25s ease;
 }
 
 .otp-code-input:hover {
@@ -70,13 +73,18 @@
   color: #d93025;
 }
 
-.otp-info-row {
-  width: 100%;
-  margin-top: 10px;
-  font-size: 14px;
-  line-height: 1.4;
-  text-align: left;
-  color: #15803d;
+.otp-error-row {
+  text-align: justify;
+  text-justify: inter-word;
+  transform-origin: top left;
+  animation: otpFeedbackReveal 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+
+.otp-error-row span:last-child {
+  flex: 1;
+  text-align: justify;
+  text-justify: inter-word;
 }
 
 .otp-resend-row {
@@ -102,7 +110,10 @@
   color: #980000;
   cursor: pointer;
   text-decoration: none;
-  transition: color 0.25s ease, opacity 0.25s ease, transform 0.15s ease;
+  transition:
+    color 0.25s ease,
+    opacity 0.25s ease,
+    transform 0.18s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .otp-resend-button:hover {
@@ -124,6 +135,18 @@
 
 .otp-secondary-row {
   margin-top: 14px;
+}
+
+@keyframes otpFeedbackReveal {
+  0% {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 @media (max-width: 540px) {
@@ -186,8 +209,8 @@
   color: #ff8b8b;
 }
 
-[data-theme='dark'] .otp-info-row {
-  color: #86efac;
+[data-theme='dark'] .otp-error-row {
+  color: #ff8b8b;
 }
 
 [data-theme='dark'] .otp-resend-text {

@@ -13,6 +13,93 @@ import {
 
 const API_URL = 'http://localhost:5000'
 
+const NAME_REGEX = /^[A-Za-zÀ-ÖØ-öø-ÿ]+(?:[ '-][A-Za-zÀ-ÖØ-öø-ÿ]+)*$/
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const PASSWORD_UPPERCASE_REGEX = /[A-Z]/
+const PASSWORD_LOWERCASE_REGEX = /[a-z]/
+const PASSWORD_NUMBER_REGEX = /[0-9]/
+const PASSWORD_SPECIAL_REGEX = /[^A-Za-z0-9\s]/
+
+const getNameValidationError = (value, label) => {
+  if (!value) {
+    return `Please enter your ${label.toLowerCase()}.`
+  }
+
+  if (value.length < 2) {
+    return `${label} must be at least 2 characters.`
+  }
+
+  if (value.length > 50) {
+    return `${label} must not exceed 50 characters.`
+  }
+
+  if (!NAME_REGEX.test(value)) {
+    return `${label} contains invalid characters.`
+  }
+
+  return ''
+}
+
+const getEmailValidationError = (value) => {
+  if (!value) {
+    return 'Please enter your email.'
+  }
+
+  if (/\s/.test(value)) {
+    return 'Email address must not contain spaces.'
+  }
+
+  if (value.length > 254) {
+    return 'Email address is too long.'
+  }
+
+  if (!EMAIL_REGEX.test(value)) {
+    return 'Please enter a valid email address.'
+  }
+
+  return ''
+}
+
+const getPasswordValidationError = (value, email) => {
+  if (!value) {
+    return 'Please enter your password.'
+  }
+
+  if (value !== value.trim()) {
+    return 'Password must not start or end with spaces.'
+  }
+
+  if (value.length < 8) {
+    return 'Password must be at least 8 characters.'
+  }
+
+  if (value.length > 72) {
+    return 'Password must not exceed 72 characters.'
+  }
+
+  if (!PASSWORD_UPPERCASE_REGEX.test(value)) {
+    return 'Password must include at least one uppercase letter.'
+  }
+
+  if (!PASSWORD_LOWERCASE_REGEX.test(value)) {
+    return 'Password must include at least one lowercase letter.'
+  }
+
+  if (!PASSWORD_NUMBER_REGEX.test(value)) {
+    return 'Password must include at least one number.'
+  }
+
+  if (!PASSWORD_SPECIAL_REGEX.test(value)) {
+    return 'Password must include at least one special character.'
+  }
+
+  if (email && value.toLowerCase() === email.toLowerCase()) {
+    return 'Password must not be the same as your email address.'
+  }
+
+  return ''
+}
+
 function Registration({ onGoToLogin, onRegistrationSuccess }) {
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
@@ -94,38 +181,40 @@ function Registration({ onGoToLogin, onRegistrationSuccess }) {
     const trimmedFirstName = firstName.trim()
     const trimmedLastName = lastName.trim()
     const trimmedEmail = email.trim()
-    const trimmedPassword = password.trim()
-    const trimmedConfirmPassword = confirmPassword.trim()
+    const rawPassword = password
+    const rawConfirmPassword = confirmPassword
 
     let hasError = false
 
-    if (!trimmedFirstName) {
-      setFirstNameError('Please enter your first name.')
+    const firstNameValidationError = getNameValidationError(trimmedFirstName, 'First name')
+    const lastNameValidationError = getNameValidationError(trimmedLastName, 'Last name')
+    const emailValidationError = getEmailValidationError(trimmedEmail)
+    const passwordValidationError = getPasswordValidationError(rawPassword, trimmedEmail)
+
+    if (firstNameValidationError) {
+      setFirstNameError(firstNameValidationError)
       hasError = true
     }
 
-    if (!trimmedLastName) {
-      setLastNameError('Please enter your last name.')
+    if (lastNameValidationError) {
+      setLastNameError(lastNameValidationError)
       hasError = true
     }
 
-    if (!trimmedEmail) {
-      setEmailError('Please enter your email.')
-      hasError = true
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
-      setEmailError('Please enter a valid email address.')
+    if (emailValidationError) {
+      setEmailError(emailValidationError)
       hasError = true
     }
 
-    if (!trimmedPassword) {
-      setPasswordError('Please enter your password.')
+    if (passwordValidationError) {
+      setPasswordError(passwordValidationError)
       hasError = true
     }
 
-    if (!trimmedConfirmPassword) {
+    if (!rawConfirmPassword) {
       setConfirmPasswordError('Please confirm your password.')
       hasError = true
-    } else if (trimmedPassword !== trimmedConfirmPassword) {
+    } else if (rawPassword !== rawConfirmPassword) {
       setConfirmPasswordError('Passwords do not match.')
       hasError = true
     }
@@ -151,7 +240,7 @@ function Registration({ onGoToLogin, onRegistrationSuccess }) {
           firstName: trimmedFirstName,
           lastName: trimmedLastName,
           email: trimmedEmail,
-          password: trimmedPassword
+          password: rawPassword
         })
       })
 
@@ -179,7 +268,11 @@ function Registration({ onGoToLogin, onRegistrationSuccess }) {
       }
 
     } catch (error) {
-      setRegistrationError(error.message || 'Registration failed. Please try again.')
+      if (error instanceof TypeError || error.message === 'Failed to fetch') {
+        setRegistrationError('Unable to connect to the server. Please check your internet connection and try again.')
+      } else {
+        setRegistrationError(error.message || 'Something went wrong while creating your account. Please try again.')
+      }
     } finally {
       setIsSubmitting(false)
     }
@@ -191,11 +284,17 @@ function Registration({ onGoToLogin, onRegistrationSuccess }) {
     }
   }
 
-  const hasFirstNameFieldError = Boolean(firstNameError || registrationError)
-  const hasLastNameFieldError = Boolean(lastNameError || registrationError)
-  const hasEmailFieldError = Boolean(emailError || registrationError)
-  const hasPasswordFieldError = Boolean(passwordError || registrationError)
-  const hasConfirmPasswordFieldError = Boolean(confirmPasswordError || registrationError)
+  const normalizedRegistrationError = registrationError.trim().toLowerCase()
+
+  const hasFirstNameFieldError = Boolean(firstNameError)
+  const hasLastNameFieldError = Boolean(lastNameError)
+  const hasEmailFieldError = Boolean(
+    emailError ||
+    normalizedRegistrationError.includes('email') ||
+    normalizedRegistrationError.includes('verification')
+  )
+  const hasPasswordFieldError = Boolean(passwordError)
+  const hasConfirmPasswordFieldError = Boolean(confirmPasswordError)
 
   return (
     <main className="login-page">
@@ -215,28 +314,32 @@ function Registration({ onGoToLogin, onRegistrationSuccess }) {
           <form className="login-form" onSubmit={handleSubmit} noValidate>
             <div className="registration-name-row">
               <div className="registration-name-col">
-                <div className={`login-field ${hasFirstNameFieldError ? 'login-field-error' : ''}`}>
+                <div className={`login-field registration-floating-field ${hasFirstNameFieldError ? 'login-field-error' : ''}`}>
                   <span className="login-field-icon" aria-hidden="true">
                     <UserIcon />
                   </span>
 
-                  <input
-                    type="text"
-                    className="login-input"
-                    placeholder="First Name"
-                    value={firstName}
-                    onChange={(e) => {
-                      setFirstName(e.target.value)
-                      clearRegistrationFeedback()
-                      if (firstNameError) setFirstNameError('')
-                    }}
-                    autoComplete="given-name"
-                    aria-invalid={hasFirstNameFieldError}
-                  />
+                  <div className="registration-floating-control">
+                    <input
+                      type="text"
+                      className="login-input registration-floating-input"
+                      placeholder=" "
+                      value={firstName}
+                      onChange={(e) => {
+                        setFirstName(e.target.value)
+                        clearRegistrationFeedback()
+                        if (firstNameError) setFirstNameError('')
+                      }}
+                      autoComplete="given-name"
+                      aria-label="First Name"
+                      aria-invalid={hasFirstNameFieldError}
+                    />
+                    <span className="registration-floating-label">First Name</span>
+                  </div>
                 </div>
 
                 {firstNameError && (
-                  <div className="login-error-row">
+                  <div className="login-error-row registration-error-row">
                     <span className="login-error-icon" aria-hidden="true">
                       <ErrorIcon />
                     </span>
@@ -246,28 +349,32 @@ function Registration({ onGoToLogin, onRegistrationSuccess }) {
               </div>
 
               <div className="registration-name-col">
-                <div className={`login-field ${hasLastNameFieldError ? 'login-field-error' : ''}`}>
+                <div className={`login-field registration-floating-field ${hasLastNameFieldError ? 'login-field-error' : ''}`}>
                   <span className="login-field-icon" aria-hidden="true">
                     <UserIcon />
                   </span>
 
-                  <input
-                    type="text"
-                    className="login-input"
-                    placeholder="Last Name"
-                    value={lastName}
-                    onChange={(e) => {
-                      setLastName(e.target.value)
-                      clearRegistrationFeedback()
-                      if (lastNameError) setLastNameError('')
-                    }}
-                    autoComplete="family-name"
-                    aria-invalid={hasLastNameFieldError}
-                  />
+                  <div className="registration-floating-control">
+                    <input
+                      type="text"
+                      className="login-input registration-floating-input"
+                      placeholder=" "
+                      value={lastName}
+                      onChange={(e) => {
+                        setLastName(e.target.value)
+                        clearRegistrationFeedback()
+                        if (lastNameError) setLastNameError('')
+                      }}
+                      autoComplete="family-name"
+                      aria-label="Last Name"
+                      aria-invalid={hasLastNameFieldError}
+                    />
+                    <span className="registration-floating-label">Last Name</span>
+                  </div>
                 </div>
 
                 {lastNameError && (
-                  <div className="login-error-row">
+                  <div className="login-error-row registration-error-row">
                     <span className="login-error-icon" aria-hidden="true">
                       <ErrorIcon />
                     </span>
@@ -278,28 +385,32 @@ function Registration({ onGoToLogin, onRegistrationSuccess }) {
             </div>
 
             <div className="login-field-group">
-              <div className={`login-field ${hasEmailFieldError ? 'login-field-error' : ''}`}>
+              <div className={`login-field registration-floating-field ${hasEmailFieldError ? 'login-field-error' : ''}`}>
                 <span className="login-field-icon" aria-hidden="true">
                   <UserIcon />
                 </span>
 
-                <input
-                  type="email"
-                  className="login-input"
-                  placeholder="Email"
-                  value={email}
-                  onChange={(e) => {
-                    setEmail(e.target.value)
-                    clearRegistrationFeedback()
-                    if (emailError) setEmailError('')
-                  }}
-                  autoComplete="username"
-                  aria-invalid={hasEmailFieldError}
-                />
+                <div className="registration-floating-control">
+                  <input
+                    type="email"
+                    className="login-input registration-floating-input"
+                    placeholder=" "
+                    value={email}
+                    onChange={(e) => {
+                      setEmail(e.target.value)
+                      clearRegistrationFeedback()
+                      if (emailError) setEmailError('')
+                    }}
+                    autoComplete="username"
+                    aria-label="Email"
+                    aria-invalid={hasEmailFieldError}
+                  />
+                  <span className="registration-floating-label">Email</span>
+                </div>
               </div>
 
               {emailError && (
-                <div className="login-error-row">
+                <div className="login-error-row registration-error-row">
                   <span className="login-error-icon" aria-hidden="true">
                     <ErrorIcon />
                   </span>
@@ -309,24 +420,28 @@ function Registration({ onGoToLogin, onRegistrationSuccess }) {
             </div>
 
             <div className="login-field-group">
-              <div className={`login-field ${hasPasswordFieldError ? 'login-field-error' : ''}`}>
+              <div className={`login-field registration-floating-field ${hasPasswordFieldError ? 'login-field-error' : ''}`}>
                 <span className="login-field-icon" aria-hidden="true">
                   <LockIcon />
                 </span>
 
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  className="login-input"
-                  placeholder="Password"
-                  value={password}
-                  onChange={(e) => {
-                    setPassword(e.target.value)
-                    clearRegistrationFeedback()
-                    if (passwordError) setPasswordError('')
-                  }}
-                  autoComplete="new-password"
-                  aria-invalid={hasPasswordFieldError}
-                />
+                <div className="registration-floating-control">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    className="login-input registration-floating-input"
+                    placeholder=" "
+                    value={password}
+                    onChange={(e) => {
+                      setPassword(e.target.value)
+                      clearRegistrationFeedback()
+                      if (passwordError) setPasswordError('')
+                    }}
+                    autoComplete="new-password"
+                    aria-label="Password"
+                    aria-invalid={hasPasswordFieldError}
+                  />
+                  <span className="registration-floating-label">Password</span>
+                </div>
 
                 <button
                   type="button"
@@ -339,7 +454,7 @@ function Registration({ onGoToLogin, onRegistrationSuccess }) {
               </div>
 
               {passwordError && (
-                <div className="login-error-row">
+                <div className="login-error-row registration-error-row">
                   <span className="login-error-icon" aria-hidden="true">
                     <ErrorIcon />
                   </span>
@@ -349,24 +464,28 @@ function Registration({ onGoToLogin, onRegistrationSuccess }) {
             </div>
 
             <div className="login-field-group">
-              <div className={`login-field ${hasConfirmPasswordFieldError ? 'login-field-error' : ''}`}>
+              <div className={`login-field registration-floating-field ${hasConfirmPasswordFieldError ? 'login-field-error' : ''}`}>
                 <span className="login-field-icon" aria-hidden="true">
                   <LockIcon />
                 </span>
 
-                <input
-                  type={showConfirmPassword ? 'text' : 'password'}
-                  className="login-input"
-                  placeholder="Confirm Password"
-                  value={confirmPassword}
-                  onChange={(e) => {
-                    setConfirmPassword(e.target.value)
-                    clearRegistrationFeedback()
-                    if (confirmPasswordError) setConfirmPasswordError('')
-                  }}
-                  autoComplete="new-password"
-                  aria-invalid={hasConfirmPasswordFieldError}
-                />
+                <div className="registration-floating-control">
+                  <input
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    className="login-input registration-floating-input"
+                    placeholder=" "
+                    value={confirmPassword}
+                    onChange={(e) => {
+                      setConfirmPassword(e.target.value)
+                      clearRegistrationFeedback()
+                      if (confirmPasswordError) setConfirmPasswordError('')
+                    }}
+                    autoComplete="new-password"
+                    aria-label="Confirm Password"
+                    aria-invalid={hasConfirmPasswordFieldError}
+                  />
+                  <span className="registration-floating-label">Confirm Password</span>
+                </div>
 
                 <button
                   type="button"
@@ -379,7 +498,7 @@ function Registration({ onGoToLogin, onRegistrationSuccess }) {
               </div>
 
               {confirmPasswordError && (
-                <div className="login-error-row">
+                <div className="login-error-row registration-error-row">
                   <span className="login-error-icon" aria-hidden="true">
                     <ErrorIcon />
                   </span>
@@ -418,7 +537,7 @@ function Registration({ onGoToLogin, onRegistrationSuccess }) {
               </label>
 
               {privacyError && (
-                <div className="login-error-row">
+                <div className="login-error-row registration-error-row">
                   <span className="login-error-icon" aria-hidden="true">
                     <ErrorIcon />
                   </span>
@@ -427,7 +546,7 @@ function Registration({ onGoToLogin, onRegistrationSuccess }) {
               )}
 
               {registrationError && (
-                <div className="login-error-row">
+                <div className="login-error-row registration-error-row">
                   <span className="login-error-icon" aria-hidden="true">
                     <ErrorIcon />
                   </span>

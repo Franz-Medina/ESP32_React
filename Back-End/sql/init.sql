@@ -7,6 +7,8 @@ CREATE TABLE IF NOT EXISTS users (
   is_verified BOOLEAN NOT NULL DEFAULT FALSE,
   otp_code VARCHAR(6),
   otp_expires_at TIMESTAMP,
+  password_reset_token_hash TEXT,
+  password_reset_expires_at TIMESTAMP,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -24,3 +26,9 @@ ADD COLUMN IF NOT EXISTS otp_code VARCHAR(6);
 
 ALTER TABLE users
 ADD COLUMN IF NOT EXISTS otp_expires_at TIMESTAMP;
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS password_reset_token_hash TEXT;
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS password_reset_expires_at TIMESTAMP;
