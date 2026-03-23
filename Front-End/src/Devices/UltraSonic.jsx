@@ -5,9 +5,10 @@ import { format } from "d3-format";
 
 const TB_URL = import.meta.env.VITE_TB_URL;
 const TB_API_KEY = import.meta.env.VITE_TB_API_KEY;
-const DEVICE_ID = import.meta.env.VITE_DEVICE_ID_ESP32US;
 
-//https://2019.wattenberger.com/blog
+// 👇 REMOVED fixed DEVICE_ID (now dynamic)
+
+// ===== YOUR ORIGINAL GAUGE (UNCHANGED) =====
 const UltraSonicGauge = ({
   value = 0,
   min = 0,
@@ -71,51 +72,95 @@ const UltraSonicGauge = ({
 };
 
 const UltraSonic = () => {
+  const [deviceId, setDeviceId] = useState("");
+  const [connected, setConnected] = useState(false);
+
   const [distance, setDistance] = useState(null);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    const fetchDistance = async () => {
-      try {
-        const res = await fetch(
-          `${TB_URL}/api/plugins/telemetry/DEVICE/${DEVICE_ID}/values/timeseries?keys=distance`,
-          {
-            headers: {
-              "X-Authorization": `ApiKey ${TB_API_KEY}`
-            }
+  const fetchDistance = async () => {
+    if (!deviceId) return;
+
+    try {
+      const res = await fetch(
+        `${TB_URL}/api/plugins/telemetry/DEVICE/${deviceId}/values/timeseries?keys=distance`,
+        {
+          headers: {
+            "X-Authorization": `ApiKey ${TB_API_KEY}`
           }
-        );
-
-        if (!res.ok) {
-          throw new Error(`HTTP error! status: ${res.status}`);
         }
+      );
 
-        const data = await res.json();
+      if (!res.ok) throw new Error();
 
-        if (data.distance && data.distance.length > 0) {
-          const latest = parseFloat(data.distance[0].value);
-          setDistance(latest);
-        }
-      } catch (err) {
-        console.error("Telemetry fetch failed:", err);
-        setError("Failed to fetch telemetry");
+      const data = await res.json();
+
+      if (data.distance && data.distance.length > 0) {
+        const latest = parseFloat(data.distance[0].value);
+        setDistance(latest);
       }
-    };
+    } catch (err) {
+      console.error("Telemetry fetch failed:", err);
+      setError("Failed to fetch telemetry");
+    }
+  };
+
+  useEffect(() => {
+    if (!connected) return;
 
     fetchDistance();
     const interval = setInterval(fetchDistance, 2000);
     return () => clearInterval(interval);
-  }, []);
+  }, [connected, deviceId]);
+
+  const connectDevice = () => {
+    if (!deviceId.trim()) {
+      alert("Please enter a Device ID");
+      return;
+    }
+    setConnected(true);
+  };
+
+  const disconnectDevice = () => {
+    setConnected(false);
+    setDeviceId("");
+    setDistance(null);
+  };
 
   return (
     <div className="text-center">
-      <h5>Ultrasonic Distance</h5>
-      {error ? (
-        <p className="text-danger">{error}</p>
-      ) : distance !== null ? (
-        <UltraSonicGauge value={distance} />
+      {!connected ? (
+        <>
+          <h5>Ultrasonic Distance</h5>
+
+          <input
+            type="text"
+            placeholder="Enter Device ID"
+            value={deviceId}
+            onChange={(e) => setDeviceId(e.target.value)}
+          />
+
+          <button onClick={connectDevice}>
+            Connect
+          </button>
+        </>
       ) : (
-        <p>Loading distance...</p>
+        <>
+          <h5>Ultrasonic Distance</h5>
+          <p>Device: {deviceId}</p>
+
+          {error ? (
+            <p className="text-danger">{error}</p>
+          ) : distance !== null ? (
+            <UltraSonicGauge value={distance} />
+          ) : (
+            <p>Loading distance...</p>
+          )}
+
+          <button onClick={disconnectDevice}>
+            Change Device
+          </button>
+        </>
       )}
     </div>
   );

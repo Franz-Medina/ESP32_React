@@ -1,50 +1,140 @@
-/* .pump-widget {
+.pump-control-widget {
+  width: 100%;
+  max-width: 380px;
+  margin: 1.5rem auto;
+  padding: 1.5rem 1.25rem;
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+  font-family: system-ui, sans-serif;
+}
+
+.widget-header {
   text-align: center;
-  margin-top: 80px;
-  font-family: Arial;
+  margin-bottom: 1.25rem;
 }
 
-.switch {
-  position: relative;
-  display: inline-block;
-  width: 70px;
-  height: 40px;
+h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  color: #60a5fa;
 }
 
-.switch input {
-  opacity: 0;
-  width: 0;
-  height: 0;
+.connect-screen,
+.control-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
 }
 
-.slider {
-  position: absolute;
+.input-group {
+  display: flex;
+  gap: 0.5rem;
+}
+
+input {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  background: #1e293b;
+  color: white;
+  font-size: 1rem;
+}
+
+input:focus {
+  outline: none;
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.2);
+}
+
+.btn {
+  padding: 0.75rem 1.25rem;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
   cursor: pointer;
-  background-color: #ccc;
-  border-radius: 40px;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  transition: 0.4s;
+  transition: all 0.15s;
 }
 
-.slider:before {
-  position: absolute;
-  content: "";
-  height: 30px;
-  width: 30px;
-  left: 5px;
-  bottom: 5px;
-  background-color: white;
-  border-radius: 50%;
-  transition: 0.4s;
+.btn.primary {
+  background: #3b82f6;
+  color: white;
 }
 
-input:checked + .slider {
-  background-color: #9b1717;
+.btn.primary:hover:not(.disabled) {
+  background: #2563eb;
 }
 
-input:checked + .slider:before {
-  transform: translateX(30px);
-} */
+.btn.secondary {
+  background: #475569;
+  color: #e2e8f0;
+}
+
+.btn.secondary:hover {
+  background: #64748b;
+}
+
+.btn.toggle {
+  font-size: 1.1rem;
+  padding: 1rem 2rem;
+  width: 100%;
+}
+
+.btn.toggle.on {
+  background: #22c55e;
+  color: white;
+}
+
+.btn.toggle.on:hover:not(.disabled) {
+  background: #16a34a;
+}
+
+.btn.toggle.off {
+  background: #ef4444;
+  color: white;
+}
+
+.btn.toggle.off:hover:not(.disabled) {
+  background: #dc2626;
+}
+
+.btn.disabled,
+.btn.disabled:hover {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.status-bar {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.95rem;
+  padding: 0.5rem 0;
+}
+
+.status-on {
+  color: #86efac;
+}
+
+.status-off {
+  color: #fca5a5;
+}
+
+.error-msg {
+  color: #f87171;
+  font-size: 0.9rem;
+  text-align: center;
+  margin: 0.5rem 0;
+}
+
+.loading {
+  display: inline-block;
+  animation: spin 1.4s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

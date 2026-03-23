@@ -1038,18 +1038,6 @@ app.delete("/otp/pending-user", async (req, res) => {
   }
 });
 
-<<<<<<< HEAD
-const authRoutes = require("./routes/authRoutes");
-app.use("/", authRoutes);
-
-app.put("/profile", authenticateToken, async (req, res) => {
-  try {
-    const { firstName, lastName } = req.body;
-
-    if (!firstName || !lastName) {
-      return res.status(400).json({
-        message: "First and last name are required",
-=======
 app.post("/password-reset/request", passwordResetRequestLimiter, async (req, res) => {
   try {
     const rawEmail = typeof req.body.email === "string" ? req.body.email : "";
@@ -1238,7 +1226,6 @@ app.post("/login", loginLimiter, async (req, res) => {
     if (passwordValidationError) {
       return res.status(400).json({
         message: passwordValidationError,
->>>>>>> 15430deaacc78e1bc4ce27cb75658b466f774052
       });
     }
 
@@ -1250,15 +1237,6 @@ app.post("/login", loginLimiter, async (req, res) => {
       [firstName.trim(), lastName.trim(), req.user.id]
     );
 
-<<<<<<< HEAD
-    res.json({
-      message: "Profile updated successfully",
-    });
-  } catch (err) {
-    console.error("PROFILE UPDATE ERROR:", err);
-    res.status(500).json({
-      message: "Failed to update profile",
-=======
     if (result.rows.length === 0) {
       return res.status(400).json({
         message: "Invalid email or password. Please try again.",
@@ -1307,19 +1285,10 @@ app.post("/login", loginLimiter, async (req, res) => {
     console.error("LOGIN ERROR:", error);
     return res.status(500).json({
       message: "Something went wrong while logging in. Please try again.",
->>>>>>> 15430deaacc78e1bc4ce27cb75658b466f774052
     });
   }
 });
 
-<<<<<<< HEAD
-const errorHandler = require("./middleware/errorHandler");
-app.use(errorHandler);
-
-app.listen(process.env.PORT, () => {
-  console.log(`Server running on port ${process.env.PORT}`);
-});
-=======
 const startServer = async () => {
   try {
     await ensureUsersTableSchema();
@@ -1334,4 +1303,3 @@ const startServer = async () => {
 };
 
 startServer();
->>>>>>> 15430deaacc78e1bc4ce27cb75658b466f774052

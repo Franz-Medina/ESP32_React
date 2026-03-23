@@ -1,111 +1,169 @@
 import React, { useState, useEffect } from "react";
-import "../Styles/LEDIndicator.css";
+import "./LEDIndicator.css";
 
 const TB_URL = import.meta.env.VITE_TB_URL;
 const TB_API_KEY = import.meta.env.VITE_TB_API_KEY;
 
-function LEDIndicator() {
+function LEDIndicator({ instanceId = "default" }) {
+  const STORAGE_KEY = `ledDeviceId_${instanceId}`;
 
   const [deviceId, setDeviceId] = useState("");
-  const [connected, setConnected] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
   const [ledState, setLedState] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
-  async function fetchLEDStatus() {
-    if (!deviceId) return;
+  const fetchLEDStatus = async () => {
+    if (!deviceId || !isConnected) return;
 
     try {
+      setIsLoading(true);
+      setErrorMessage("");
+
       const response = await fetch(
-        `${TB_URL}/api/plugins/telemetry/DEVICE/${deviceId}/values/timeseries?keys=ledState`,
+        `${TB_URL}/api/plugins/telemetry/DEVICE/${deviceId}/values/timeseries?keys=ledState&limit=1`,
         {
           headers: {
-            "Content-Type": "application/json",
-            "X-Authorization": `ApiKey ${TB_API_KEY}`
-          }
+            "X-Authorization": `ApiKey ${TB_API_KEY}`,
+          },
         }
       );
 
       if (!response.ok) {
-        throw new Error("Failed to fetch LED status");
+        throw new Error(`HTTP ${response.status}`);
       }
 
       const data = await response.json();
 
       if (data.ledState && data.ledState.length > 0) {
-        const latestValue = data.ledState[0].value === "true";
-        setLedState(latestValue);
+        const latest = data.ledState[0].value;
+        setLedState(latest === true || latest === "true" || latest === 1);
+      } else {
+        setLedState(false);
       }
-
-    } catch (error) {
-      console.error("Error fetching LED state:", error);
+    } catch (err) {
+      console.error("LED fetch failed:", err);
+      setErrorMessage("Failed to fetch LED status");
+    } finally {
+      setIsLoading(false);
     }
-  }
+  };
 
-  const connectDevice = async () => {
-    if (!deviceId) {
-      alert("Please enter a Device ID");
+  useEffect(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      setDeviceId(saved);
+      setIsConnected(true);
+    }
+  }, [STORAGE_KEY]);
+
+  useEffect(() => {
+    if (!isConnected || !deviceId) return;
+
+    fetchLEDStatus();
+
+    const interval = setInterval(fetchLEDStatus, 3000);
+    return () => clearInterval(interval);
+  }, [isConnected, deviceId]);
+
+  const handleConnect = () => {
+    if (!deviceId.trim()) {
+      setErrorMessage("Please enter a Device ID");
       return;
     }
 
-    setConnected(true);
-    setLoading(true);
-
-    await fetchLEDStatus();
-
-    setLoading(false);
+    localStorage.setItem(STORAGE_KEY, deviceId);
+    setIsConnected(true);
+    setErrorMessage("");
   };
 
-  // Auto refresh every 5 seconds
-  useEffect(() => {
-    if (!connected) return;
+  const handleDisconnect = () => {
+    setIsConnected(false);
+    setDeviceId("");
+    setLedState(false);
+    setErrorMessage("");
+    localStorage.removeItem(STORAGE_KEY);
+  };
 
-    const interval = setInterval(() => {
-      fetchLEDStatus();
-    }, 5000);
-
-    return () => clearInterval(interval);
-
-  }, [connected, deviceId]);
+  const handleRefresh = () => {
+    fetchLEDStatus();
+  };
 
   return (
-    <div className="led-widget">
+    <div className="led-control-widget">
+      <header className="widget-header">
+        <h2>LED Indicator</h2>
+      </header>
 
-      {!connected ? (
-        <div className="device-input">
+      {!isConnected ? (
+        <div className="connect-screen">
+          <div className="input-group">
+            <input
+              type="text"
+              placeholder="Device ID"
+              value={deviceId}
+              onChange={(e) => {
+                setDeviceId(e.target.value);
+                setErrorMessage("");
+              }}
+              onKeyDown={(e) => e.key === "Enter" && handleConnect()}
+              disabled={isLoading}
+              autoFocus
+            />
+            <button
+              className="btn primary"
+              onClick={handleConnect}
+              disabled={isLoading || !deviceId.trim()}
+            >
+              Connect
+            </button>
+          </div>
 
-          <h2>LED Indicator</h2>
-
-          <input
-            type="text"
-            placeholder="Enter Device ID"
-            value={deviceId}
-            onChange={(e) => setDeviceId(e.target.value)}
-          />
-
-          <button onClick={connectDevice}>
-            Connect
-          </button>
-
+          {errorMessage && <p className="error-msg">{errorMessage}</p>}
         </div>
       ) : (
-        <div className="led-display">
+        <div className="control-screen">
+          <div className="status-bar">
+            <div>
+              Device: <strong>{deviceId}</strong>
+            </div>
+          </div>
 
-          <h2>LED Indicator</h2>
-          <p>Device ID: {deviceId}</p>
+          <div className="led-container">
+            <div
+              className={`led-bulb ${ledState ? "on" : "off"} ${
+                isLoading ? "loading" : ""
+              }`}
+              aria-label={`LED is ${ledState ? "on" : "off"}`}
+            >
+              <div className="led-glow" />
+            </div>
+          </div>
 
-          {loading && <p>Checking status...</p>}
+          <p className="led-status">
+            Status: <strong className={ledState ? "status-on" : "status-off"}>
+              {ledState ? "ON" : "OFF"}
+            </strong>
+          </p>
 
-          <div className={`led-light ${ledState ? "on" : "off"}`}></div>
+          <div className="actions">
+            <button
+              className="btn refresh"
+              onClick={handleRefresh}
+              disabled={isLoading}
+            >
+              {isLoading ? "⋯" : "Refresh"}
+            </button>
 
-          <p>Status: <strong>{ledState ? "ON" : "OFF"}</strong></p>
+            <button className="btn secondary" onClick={handleDisconnect}>
+              Change Device
+            </button>
+          </div>
 
-          <button onClick={fetchLEDStatus}>
-            Refresh
-          </button>
-
+          {errorMessage && <p className="error-msg">{errorMessage}</p>}
+          {isLoading && <p className="loading-text">Updating...</p>}
         </div>
       )}
-
     </div>
   );
 }
