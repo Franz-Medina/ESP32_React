@@ -1,0 +1,112 @@
+.count-widgets-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+  padding: 1rem;
+}
+
+.count-card {
+  background: #0f172a;
+  border-radius: 12px;
+  padding: 1.25rem 1.5rem;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+  transition: transform 0.2s ease;
+}
+
+.count-card:hover {
+  transform: translateY(-4px);
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.25rem;
+}
+
+.card-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.card-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.latest-badge {
+  background: #334155;
+  color: #94a3b8;
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-weight: 500;
+}
+
+.info-btn {
+  background: none;
+  border: none;
+  color: #64748b;
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 2px;
+}
+
+.count-content {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.icon-wrapper {
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+}
+
+.alarm-icon {
+  background: #b91c1c33;
+  color: #f87171;
+}
+
+.entity-icon {
+  background: #c2410c33;
+  color: #fb923c;
+}
+
+.count-info {
+  flex: 1;
+}
+
+.count-label {
+  font-size: 0.95rem;
+  color: #94a3b8;
+  margin-bottom: 4px;
+}
+
+.count-value {
+  font-size: 2.8rem;
+  font-weight: 700;
+  line-height: 1;
+  color: #e2e8f0;
+}
+
+.alarm-card .count-value {
+  color: #f87171;
+}
+
+.entity-card .count-value {
+  color: #fb923c;
+}
+
+@media (max-width: 768px) {
+  .count-widgets-container {
+    grid-template-columns: 1fr;
+  }
+}

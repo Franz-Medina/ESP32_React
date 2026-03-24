@@ -4,9 +4,8 @@ import { scaleLinear } from "d3-scale";
 
 const TB_URL = import.meta.env.VITE_TB_URL;
 const TB_API_KEY = import.meta.env.VITE_TB_API_KEY;
-const DEVICE_ID = import.meta.env.VITE_DEVICE_ID_SPEED; // NEW DEVICE ID
+const DEVICE_ID = import.meta.env.VITE_DEVICE_ID_SPEED;
 
-// 🔵 Gauge UI Component
 const Gauge = ({
   value = 0,
   min = 0,
@@ -35,13 +34,12 @@ const Gauge = ({
     .startAngle(-Math.PI / 2)
     .endAngle(angle)();
 
-  // 🔥 Color zones like ThingsBoard
   const color =
     value < max * 0.5
-      ? "#22c55e" // green
+      ? "#22c55e"
       : value < max * 0.8
-      ? "#f59e0b" // yellow
-      : "#ef4444"; // red
+      ? "#f59e0b"
+      : "#ef4444";
 
   const marker = [
     Math.cos(angle - Math.PI / 2) * 0.85,
@@ -70,7 +68,6 @@ const Gauge = ({
   );
 };
 
-// 🔵 Main Widget Component
 const SpeedGauge = () => {
   const [speed, setSpeed] = useState(null);
   const [error, setError] = useState(null);

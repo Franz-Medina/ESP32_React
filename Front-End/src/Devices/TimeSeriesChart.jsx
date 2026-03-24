@@ -10,7 +10,7 @@ function TimeSeriesChart() {
   const [dataPoints, setDataPoints] = useState([]);
   const [error, setError] = useState(null);
 
-  const MAX_POINTS = 20; // keep it lightweight
+  const MAX_POINTS = 20;
 
   const fetchData = async () => {
     if (!deviceId) return;
@@ -68,7 +68,6 @@ function TimeSeriesChart() {
     setDataPoints([]);
   };
 
-  // 🔵 Simple SVG Line Chart
   const width = 250;
   const height = 100;
 

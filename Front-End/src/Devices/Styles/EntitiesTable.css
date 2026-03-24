@@ -1,0 +1,131 @@
+.entities-table-widget {
+  width: 100%;
+  background: #0f172a;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+  font-family: system-ui, sans-serif;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.widget-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid #334155;
+  background: #1e293b;
+}
+
+.widget-header h3 {
+  margin: 0;
+  font-size: 1.35rem;
+  color: #60a5fa;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  font-size: 0.9rem;
+  color: #94a3b8;
+}
+
+.btn-refresh {
+  background: none;
+  border: none;
+  color: #60a5fa;
+  font-size: 1.4rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.btn-refresh:hover:not(:disabled) {
+  background: #334155;
+  transform: rotate(180deg);
+}
+
+.table-container {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+  padding: 0 1.5rem 1.5rem;
+}
+
+.entities-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+
+.entities-table th {
+  text-align: left;
+  padding: 1rem 0.75rem;
+  color: #94a3b8;
+  font-weight: 600;
+  border-bottom: 2px solid #334155;
+  position: sticky;
+  top: 0;
+  background: #0f172a;
+  z-index: 10;
+}
+
+.entities-table td {
+  padding: 1rem 0.75rem;
+  border-bottom: 1px solid #1e293b;
+  color: #e2e8f0;
+}
+
+.entity-name {
+  font-weight: 500;
+}
+
+.entity-type {
+  padding: 4px 10px;
+  border-radius: 9999px;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.entity-type.device {
+  background: #22c55e33;
+  color: #86efac;
+}
+
+.entity-type.building {
+  background: #3b82f633;
+  color: #93c5fd;
+}
+
+.random-value {
+  font-family: monospace;
+  font-weight: 600;
+  color: #fcd34d;
+}
+
+.empty-row {
+  text-align: center;
+  color: #64748b;
+  padding: 3rem 1rem !important;
+}
+
+.loading-overlay,
+.error-message {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.95);
+  color: #94a3b8;
+  font-size: 1rem;
+  z-index: 20;
+}
+
+.error-message {
+  color: #f87171;
+}

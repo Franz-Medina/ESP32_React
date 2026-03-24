@@ -6,9 +6,6 @@ import { format } from "d3-format";
 const TB_URL = import.meta.env.VITE_TB_URL;
 const TB_API_KEY = import.meta.env.VITE_TB_API_KEY;
 
-// 👇 REMOVED fixed DEVICE_ID (now dynamic)
-
-// ===== YOUR ORIGINAL GAUGE (UNCHANGED) =====
 const UltraSonicGauge = ({
   value = 0,
   min = 0,
