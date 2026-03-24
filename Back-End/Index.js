@@ -6,6 +6,7 @@ const cors = require("cors");
 const nodemailer = require("nodemailer");
 const crypto = require("crypto");
 const path = require("path");
+const fs = require("fs");
 const rateLimit = require("express-rate-limit");
 require("dotenv").config();
 
@@ -16,7 +17,30 @@ const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 
 app.use(
   cors({
-    origin: FRONTEND_URL,
+    origin: (origin, callback) => {
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      const allowedOrigins = new Set([
+        FRONTEND_URL,
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+      ]);
+
+      if (allowedOrigins.has(origin)) {
+        return callback(null, true);
+      }
+
+      if (
+        IS_DEVELOPMENT &&
+        /^http:\/\/(?:localhost|127\.0\.0\.1|\d{1,3}(?:\.\d{1,3}){3})(:\d+)?$/.test(origin)
+      ) {
+        return callback(null, true);
+      }
+
+      return callback(new Error("Not allowed by CORS"));
+    },
   })
 );
 
@@ -29,15 +53,18 @@ const PASSWORD_RESET_EXPIRY_MINUTES = Number(
 const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
 const SMTP_SECURE = process.env.SMTP_SECURE === "true";
 
-const mailTransporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: SMTP_PORT,
-  secure: SMTP_SECURE,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-});
+const mailTransporter =
+  process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS
+    ? nodemailer.createTransport({
+        host: process.env.SMTP_HOST,
+        port: SMTP_PORT,
+        secure: SMTP_SECURE,
+        auth: {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASS,
+        },
+      })
+    : null;
 
 const normalizeEmail = (email = "") => email.trim().toLowerCase();
 
@@ -55,6 +82,43 @@ const TB_BASE_URL = (process.env.TB_BASE_URL || "").replace(/\/$/, "");
 const TB_TENANT_USERNAME = process.env.TB_TENANT_USERNAME || "";
 const TB_TENANT_PASSWORD = process.env.TB_TENANT_PASSWORD || "";
 const TB_CUSTOMER_ADMIN_GROUP_NAME = "Customer Administrators";
+const IS_DEVELOPMENT = process.env.NODE_ENV !== "production";
+const MAIL_REQUIRED = process.env.MAIL_REQUIRED === "true";
+
+const AVINYA_EMAIL_LOGO_CANDIDATES = [
+  path.join(__dirname, "Front-End", "src", "Pictures", "Avinya.png"),
+  path.join(__dirname, "../Front-End", "src", "Pictures", "Avinya.png"),
+];
+
+const AVINYA_EMAIL_LOGO_PATH =
+  AVINYA_EMAIL_LOGO_CANDIDATES.find((candidate) => fs.existsSync(candidate)) || null;
+
+const getAvinyaMailAttachments = () =>
+  AVINYA_EMAIL_LOGO_PATH
+    ? [
+        {
+          filename: "Avinya.png",
+          path: AVINYA_EMAIL_LOGO_PATH,
+          cid: "avinya-logo",
+        },
+      ]
+    : [];
+
+const handleEmailDeliveryFailure = ({ label, email, fallbackValue, error }) => {
+  console.error(`${label} EMAIL ERROR:`, error);
+
+  if (IS_DEVELOPMENT && !MAIL_REQUIRED) {
+    console.warn(`[DEV ONLY] ${label} email was not sent to ${email}.`);
+
+    if (fallbackValue) {
+      console.warn(`[DEV ONLY] ${label} fallback value: ${fallbackValue}`);
+    }
+
+    return;
+  }
+
+  throw error;
+};
 
 const getTbEntityId = (entity) => entity?.id?.id || entity?.id || null;
 
@@ -63,7 +127,10 @@ const assertRequiredConfig = () => {
     throw new Error("JWT_SECRET is required.");
   }
 
-  if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
+  if (
+    MAIL_REQUIRED &&
+    (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS)
+  ) {
     throw new Error("SMTP configuration is incomplete.");
   }
 
@@ -243,11 +310,6 @@ const hashPasswordResetToken = (token = "") =>
 const getPasswordResetExpiryDate = () =>
   new Date(Date.now() + PASSWORD_RESET_EXPIRY_MINUTES * 60 * 1000);
 
-const AVINYA_EMAIL_LOGO_PATH = path.join(
-  __dirname,
-  "../Front-End/src/Pictures/Avinya.png"
-);
-
 const encryptSecret = (plainText = "") => {
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv("aes-256-gcm", APP_ENCRYPTION_KEY, iv);
@@ -342,20 +404,17 @@ const ensureUsersTableSchema = async () => {
 };
 
 const sendOtpEmail = async ({ firstName, email, otpCode }) => {
+  if (!mailTransporter) {
+    throw new Error("SMTP transporter is not configured.");
+  }
   const displayName = firstName?.trim() || "User";
   const expiryText = `${OTP_EXPIRY_SECONDS} seconds`;
 
   await mailTransporter.sendMail({
-    from: `"${process.env.MAIL_FROM_NAME || "AVINYA"}" <${process.env.SMTP_USER}>`,
-    to: email,
-    subject: "AVINYA OTP Verification Code",
-    attachments: [
-      {
-        filename: "Avinya.png",
-        path: AVINYA_EMAIL_LOGO_PATH,
-        cid: "avinya-logo",
-      },
-    ],
+  from: `"${process.env.MAIL_FROM_NAME || "AVINYA"}" <${process.env.SMTP_USER}>`,
+  to: email,
+  subject: "AVINYA OTP Verification Code",
+  attachments: getAvinyaMailAttachments(),
     text: [
       "AVINYA OTP Verification",
       "",
@@ -591,6 +650,9 @@ const sendOtpEmail = async ({ firstName, email, otpCode }) => {
 };
 
 const sendPasswordResetEmail = async ({ firstName, email, resetLink }) => {
+  if (!mailTransporter) {
+    throw new Error("SMTP transporter is not configured.");
+  }
   const displayName = firstName?.trim() || "User";
   const expiryText = `${PASSWORD_RESET_EXPIRY_MINUTES} minutes`;
 
@@ -598,13 +660,7 @@ const sendPasswordResetEmail = async ({ firstName, email, resetLink }) => {
     from: `"${process.env.MAIL_FROM_NAME || "AVINYA"}" <${process.env.SMTP_USER}>`,
     to: email,
     subject: "AVINYA Password Reset",
-    attachments: [
-      {
-        filename: "Avinya.png",
-        path: AVINYA_EMAIL_LOGO_PATH,
-        cid: "avinya-logo",
-      },
-    ],
+    attachments: getAvinyaMailAttachments(),
     text: [
       "AVINYA Password Reset",
       "",
@@ -1186,11 +1242,20 @@ app.post("/register", registrationLimiter, async (req, res) => {
       ]
     );
 
-    await sendOtpEmail({
-      firstName: trimmedFirstName,
-      email: trimmedEmail,
-      otpCode,
-    });
+    try {
+      await sendOtpEmail({
+        firstName: trimmedFirstName,
+        email: trimmedEmail,
+        otpCode,
+      });
+    } catch (mailError) {
+      handleEmailDeliveryFailure({
+        label: "OTP",
+        email: trimmedEmail,
+        fallbackValue: otpCode,
+        error: mailError,
+      });
+    }
 
     await client.query("COMMIT");
 
@@ -1396,11 +1461,20 @@ app.post("/otp/resend", otpResendLimiter, async (req, res) => {
       [otpCode, otpExpiresAt, user.id]
     );
 
-    await sendOtpEmail({
-      firstName: user.first_name,
-      email: user.email,
-      otpCode,
-    });
+    try {
+      await sendOtpEmail({
+        firstName: user.first_name,
+        email: user.email,
+        otpCode,
+      });
+    } catch (mailError) {
+      handleEmailDeliveryFailure({
+        label: "OTP RESEND",
+        email: user.email,
+        fallbackValue: otpCode,
+        error: mailError,
+      });
+    }
 
     return res.status(200).json({
       message: "A new verification code has been sent.",
@@ -1488,11 +1562,20 @@ app.post("/password-reset/request", passwordResetRequestLimiter, async (req, res
       [hashedResetToken, resetExpiresAt, user.id]
     );
 
-    await sendPasswordResetEmail({
-      firstName: user.first_name,
-      email: user.email,
-      resetLink,
-    });
+    try {
+      await sendPasswordResetEmail({
+        firstName: user.first_name,
+        email: user.email,
+        resetLink,
+      });
+    } catch (mailError) {
+      handleEmailDeliveryFailure({
+        label: "PASSWORD RESET",
+        email: user.email,
+        fallbackValue: resetLink,
+        error: mailError,
+      });
+    }
 
     return res.status(200).json({
       message: "Password reset link sent successfully.",
