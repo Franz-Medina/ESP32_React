@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import "./CountWidgets.css";
+import "./Styles/CountWidgets.css";
 
 const TB_URL = import.meta.env.VITE_TB_URL;
 const TB_API_KEY = import.meta.env.VITE_TB_API_KEY;

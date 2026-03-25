@@ -1,0 +1,114 @@
+.progress-widget {
+  width: 100%;
+  background: #0f172a;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+  padding: 1.5rem 1.25rem;
+  font-family: system-ui, sans-serif;
+}
+
+.widget-header h3 {
+  margin: 0 0 1.25rem 0;
+  font-size: 1.35rem;
+  color: #60a5fa;
+  text-align: center;
+}
+
+.connect-screen,
+.progress-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.input-group {
+  display: flex;
+  gap: 0.5rem;
+}
+
+input[type="text"] {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  background: #1e293b;
+  color: white;
+}
+
+input[type="text"]:focus {
+  outline: none;
+  border-color: #60a5fa;
+}
+
+.btn {
+  padding: 0.75rem 1.25rem;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn.primary {
+  background: #3b82f6;
+  color: white;
+}
+
+.btn.primary:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.btn.secondary {
+  background: #475569;
+  color: #e2e8f0;
+}
+
+.status-bar {
+  text-align: center;
+  font-size: 0.95rem;
+  color: #94a3b8;
+}
+
+.progress-container {
+  margin: 1.5rem 0;
+}
+
+.progress-bar-bg {
+  height: 24px;
+  background: #1e293b;
+  border-radius: 9999px;
+  overflow: hidden;
+  border: 2px solid #334155;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  transition: width 0.8s ease;
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 700;
+  font-size: 0.95rem;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+}
+
+.progress-value {
+  text-align: center;
+  margin-top: 1rem;
+  font-size: 2rem;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.loading-text {
+  color: #94a3b8;
+  text-align: center;
+}
+
+.error-msg {
+  color: #f87171;
+  text-align: center;
+  font-size: 0.9rem;
+}   

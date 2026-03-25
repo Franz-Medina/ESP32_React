@@ -1,129 +1,174 @@
 import React, { useState, useEffect } from "react";
+import { Line } from "react-chartjs-2";
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler,
+} from "chart.js";
+
+import "./Styles/TimeSeriesChart.css";
+
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler);
 
 const TB_URL = import.meta.env.VITE_TB_URL;
 const TB_API_KEY = import.meta.env.VITE_TB_API_KEY;
 
-function TimeSeriesChart() {
+function TimeSeriesChart({ title = "Temperature History", dataKey = "temperature", unit = "°C" }) {
   const [deviceId, setDeviceId] = useState("");
-  const [connected, setConnected] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
+  const [chartData, setChartData] = useState({ labels: [], datasets: [] });
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
-  const [dataPoints, setDataPoints] = useState([]);
-  const [error, setError] = useState(null);
-
-  const MAX_POINTS = 20;
-
-  const fetchData = async () => {
+  const fetchTimeSeries = async () => {
     if (!deviceId) return;
 
     try {
-      const res = await fetch(
-        `${TB_URL}/api/plugins/telemetry/DEVICE/${deviceId}/values/timeseries?keys=temperature`,
+      setIsLoading(true);
+      setErrorMessage("");
+
+      const response = await fetch(
+        `${TB_URL}/api/plugins/telemetry/DEVICE/${deviceId}/values/timeseries?keys=${dataKey}&limit=50`,
         {
-          headers: {
-            "X-Authorization": `ApiKey ${TB_API_KEY}`
-          }
+          headers: { "X-Authorization": `ApiKey ${TB_API_KEY}` },
         }
       );
 
-      if (!res.ok) throw new Error();
+      if (!response.ok) throw new Error("Failed to fetch data");
 
-      const data = await res.json();
+      const data = await response.json();
+      const points = data[dataKey] || [];
 
-      if (data.temperature && data.temperature.length > 0) {
-        const latest = parseFloat(data.temperature[0].value);
-
-        setDataPoints((prev) => {
-          const updated = [...prev, latest];
-          if (updated.length > MAX_POINTS) updated.shift();
-          return updated;
-        });
+      if (points.length === 0) {
+        setChartData({ labels: [], datasets: [] });
+        return;
       }
 
+      const sortedPoints = [...points].reverse();
+
+      const labels = sortedPoints.map((p) =>
+        new Date(p.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      );
+
+      const values = sortedPoints.map((p) => parseFloat(p.value));
+
+      setChartData({
+        labels,
+        datasets: [
+          {
+            label: `${title} (${unit})`,
+            data: values,
+            borderColor: "#60a5fa",
+            backgroundColor: "rgba(96, 165, 250, 0.15)",
+            tension: 0.4,
+            fill: true,
+            pointRadius: 3,
+            pointHoverRadius: 6,
+          },
+        ],
+      });
     } catch (err) {
       console.error(err);
-      setError("Failed to fetch data");
+      setErrorMessage("Failed to load time series data");
+    } finally {
+      setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    if (!connected) return;
+    if (!isConnected || !deviceId) return;
 
-    fetchData();
-    const interval = setInterval(fetchData, 2000);
+    fetchTimeSeries();
+    const interval = setInterval(fetchTimeSeries, 5000);
     return () => clearInterval(interval);
+  }, [isConnected, deviceId]);
 
-  }, [connected, deviceId]);
-
-  const connectDevice = () => {
+  const handleConnect = () => {
     if (!deviceId.trim()) {
-      alert("Please enter a Device ID");
+      setErrorMessage("Please enter a Device ID");
       return;
     }
-    setConnected(true);
+    setIsConnected(true);
+    setErrorMessage("");
   };
 
-  const disconnectDevice = () => {
-    setConnected(false);
+  const handleDisconnect = () => {
+    setIsConnected(false);
     setDeviceId("");
-    setDataPoints([]);
+    setChartData({ labels: [], datasets: [] });
+    setErrorMessage("");
   };
 
-  const width = 250;
-  const height = 100;
-
-  const max = Math.max(...dataPoints, 100);
-  const min = Math.min(...dataPoints, 0);
-
-  const points = dataPoints.map((val, i) => {
-    const x = (i / (MAX_POINTS - 1)) * width;
-    const y = height - ((val - min) / (max - min || 1)) * height;
-    return `${x},${y}`;
-  }).join(" ");
+  const chartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: true, position: "top", labels: { color: "#e2e8f0" } },
+      tooltip: { mode: "index", intersect: false },
+    },
+    scales: {
+      x: { grid: { color: "#334155" }, ticks: { color: "#94a3b8" } },
+      y: {
+        grid: { color: "#334155" },
+        ticks: { color: "#94a3b8" },
+        title: { display: true, text: unit, color: "#94a3b8" },
+      },
+    },
+  };
 
   return (
-    <div className="text-center">
+    <div className="timeseries-widget">
+      <div className="widget-header">
+        <h3>{title}</h3>
+      </div>
 
-      {!connected ? (
-        <>
-          <h5>Time Series Chart</h5>
-
-          <input
-            type="text"
-            placeholder="Enter Device ID"
-            value={deviceId}
-            onChange={(e) => setDeviceId(e.target.value)}
-          />
-
-          <button onClick={connectDevice}>
-            Connect
-          </button>
-        </>
+      {!isConnected ? (
+        <div className="connect-screen">
+          <div className="input-group">
+            <input
+              type="text"
+              placeholder="Device ID"
+              value={deviceId}
+              onChange={(e) => {
+                setDeviceId(e.target.value);
+                setErrorMessage("");
+              }}
+              onKeyDown={(e) => e.key === "Enter" && handleConnect()}
+            />
+            <button className="btn primary" onClick={handleConnect}>
+              Connect
+            </button>
+          </div>
+          {errorMessage && <p className="error-msg">{errorMessage}</p>}
+        </div>
       ) : (
-        <>
-          <h5>Time Series Chart</h5>
-          <p>Device: {deviceId}</p>
+        <div className="chart-screen">
+          <div className="status-bar">
+            Device: <strong>{deviceId}</strong>
+          </div>
 
-          {error ? (
-            <p className="text-danger">{error}</p>
-          ) : dataPoints.length > 0 ? (
-            <svg width={width} height={height}>
-              <polyline
-                fill="none"
-                stroke="#3b82f6"
-                strokeWidth="2"
-                points={points}
-              />
-            </svg>
-          ) : (
-            <p>Loading data...</p>
-          )}
+          <div className="chart-container">
+            {isLoading && chartData.labels.length === 0 && <p className="loading-text">Loading chart...</p>}
+            {errorMessage && <p className="error-msg">{errorMessage}</p>}
 
-          <button onClick={disconnectDevice}>
+            {chartData.labels.length > 0 ? (
+              <Line data={chartData} options={chartOptions} />
+            ) : (
+              <p className="no-data">Waiting for data...</p>
+            )}
+          </div>
+
+          <button className="btn secondary" onClick={handleDisconnect}>
             Change Device
           </button>
-        </>
+        </div>
       )}
-
     </div>
   );
 }

@@ -1,0 +1,138 @@
+.battery-gauge-widget {
+  width: 100%;
+  background: #0f172a;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 1.5rem 1.25rem;
+  font-family: system-ui, sans-serif;
+}
+
+.widget-header h3 {
+  margin: 0 0 1rem 0;
+  font-size: 1.35rem;
+  color: #60a5fa;
+  text-align: center;
+}
+
+.connect-screen,
+.gauge-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  align-items: center;
+}
+
+.input-group {
+  display: flex;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+input[type="text"] {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  background: #1e293b;
+  color: white;
+  font-size: 1rem;
+}
+
+input[type="text"]:focus {
+  outline: none;
+  border-color: #60a5fa;
+}
+
+.btn {
+  padding: 0.75rem 1.25rem;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn.primary {
+  background: #3b82f6;
+  color: white;
+}
+
+.btn.primary:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.btn.secondary {
+  background: #475569;
+  color: #e2e8f0;
+}
+
+.btn.secondary:hover {
+  background: #64748b;
+}
+
+.status-bar {
+  font-size: 0.95rem;
+  color: #94a3b8;
+  text-align: center;
+}
+
+.battery-container {
+  position: relative;
+  width: 180px;
+  margin: 1.5rem 0;
+}
+
+.battery-outer {
+  width: 160px;
+  height: 80px;
+  border: 6px solid #475569;
+  border-radius: 12px;
+  position: relative;
+  overflow: hidden;
+  background: #1e293b;
+}
+
+.battery-level {
+  height: 100%;
+  transition: width 0.6s ease, background-color 0.4s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: white;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+}
+
+.battery-cap {
+  position: absolute;
+  top: 28px;
+  right: -12px;
+  width: 12px;
+  height: 28px;
+  background: #475569;
+  border-radius: 0 6px 6px 0;
+}
+
+.battery-status {
+  font-size: 1.1rem;
+  font-weight: 600;
+  text-align: center;
+  margin-top: 0.5rem;
+  color: #e2e8f0;
+}
+
+.loading-text {
+  color: #94a3b8;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.error-msg {
+  color: #f87171;
+  font-size: 0.9rem;
+  text-align: center;
+}

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import "./PumpControl.css";
+import "./Styles/PumpControl.css";
 
 const TB_URL = import.meta.env.VITE_TB_URL;
 const TB_API_KEY = import.meta.env.VITE_TB_API_KEY;

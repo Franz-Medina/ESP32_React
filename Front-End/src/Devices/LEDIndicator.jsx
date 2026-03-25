@@ -4,7 +4,7 @@ import "./LEDIndicator.css";
 const TB_URL = import.meta.env.VITE_TB_URL;
 const TB_API_KEY = import.meta.env.VITE_TB_API_KEY;
 
-function LEDIndicator({ instanceId = "default" }) {
+function LEDIndicator({ instanceId = "led-default" }) {
   const STORAGE_KEY = `ledDeviceId_${instanceId}`;
 
   const [deviceId, setDeviceId] = useState("");
@@ -23,27 +23,56 @@ function LEDIndicator({ instanceId = "default" }) {
       const response = await fetch(
         `${TB_URL}/api/plugins/telemetry/DEVICE/${deviceId}/values/timeseries?keys=ledState&limit=1`,
         {
-          headers: {
-            "X-Authorization": `ApiKey ${TB_API_KEY}`,
-          },
+          headers: { "X-Authorization": `ApiKey ${TB_API_KEY}` },
         }
       );
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
+      if (!response.ok) throw new Error("Failed to fetch LED state");
 
       const data = await response.json();
-
-      if (data.ledState && data.ledState.length > 0) {
-        const latest = data.ledState[0].value;
-        setLedState(latest === true || latest === "true" || latest === 1);
-      } else {
-        setLedState(false);
-      }
+      const latest = data.ledState?.[0]?.value;
+      setLedState(latest === true || latest === "true" || latest === 1);
     } catch (err) {
-      console.error("LED fetch failed:", err);
+      console.error(err);
       setErrorMessage("Failed to fetch LED status");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const toggleLED = async () => {
+    if (!deviceId || !isConnected) return;
+
+    const newState = !ledState;
+
+    try {
+      setIsLoading(true);
+      setErrorMessage("");
+
+      setLedState(newState);
+
+      const response = await fetch(
+        `${TB_URL}/api/plugins/rpc/oneway/${deviceId}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Authorization": `ApiKey ${TB_API_KEY}`,
+          },
+          body: JSON.stringify({
+            method: "setLed",        
+            params: newState,
+          }),
+        }
+      );
+
+      if (!response.ok) throw new Error("Failed to toggle LED");
+
+      setTimeout(fetchLEDStatus, 800);
+    } catch (err) {
+      console.error(err);
+      setErrorMessage("Failed to toggle LED. Reverted.");
+      setLedState(!newState); 
     } finally {
       setIsLoading(false);
     }
@@ -59,10 +88,8 @@ function LEDIndicator({ instanceId = "default" }) {
 
   useEffect(() => {
     if (!isConnected || !deviceId) return;
-
     fetchLEDStatus();
-
-    const interval = setInterval(fetchLEDStatus, 3000);
+    const interval = setInterval(fetchLEDStatus, 5000);
     return () => clearInterval(interval);
   }, [isConnected, deviceId]);
 
@@ -71,7 +98,6 @@ function LEDIndicator({ instanceId = "default" }) {
       setErrorMessage("Please enter a Device ID");
       return;
     }
-
     localStorage.setItem(STORAGE_KEY, deviceId);
     setIsConnected(true);
     setErrorMessage("");
@@ -85,15 +111,11 @@ function LEDIndicator({ instanceId = "default" }) {
     localStorage.removeItem(STORAGE_KEY);
   };
 
-  const handleRefresh = () => {
-    fetchLEDStatus();
-  };
-
   return (
     <div className="led-control-widget">
-      <header className="widget-header">
-        <h2>LED Indicator</h2>
-      </header>
+      <div className="widget-header">
+        <h3>LED Indicator</h3>
+      </div>
 
       {!isConnected ? (
         <div className="connect-screen">
@@ -107,34 +129,24 @@ function LEDIndicator({ instanceId = "default" }) {
                 setErrorMessage("");
               }}
               onKeyDown={(e) => e.key === "Enter" && handleConnect()}
-              disabled={isLoading}
-              autoFocus
             />
-            <button
-              className="btn primary"
-              onClick={handleConnect}
-              disabled={isLoading || !deviceId.trim()}
-            >
+            <button className="btn primary" onClick={handleConnect}>
               Connect
             </button>
           </div>
-
           {errorMessage && <p className="error-msg">{errorMessage}</p>}
         </div>
       ) : (
         <div className="control-screen">
           <div className="status-bar">
-            <div>
-              Device: <strong>{deviceId}</strong>
-            </div>
+            Device: <strong>{deviceId}</strong>
           </div>
 
           <div className="led-container">
             <div
-              className={`led-bulb ${ledState ? "on" : "off"} ${
-                isLoading ? "loading" : ""
-              }`}
-              aria-label={`LED is ${ledState ? "on" : "off"}`}
+              className={`led-bulb ${ledState ? "on" : "off"} ${isLoading ? "loading" : ""}`}
+              onClick={toggleLED}
+              style={{ cursor: isLoading ? "not-allowed" : "pointer" }}
             >
               <div className="led-glow" />
             </div>
@@ -146,22 +158,19 @@ function LEDIndicator({ instanceId = "default" }) {
             </strong>
           </p>
 
-          <div className="actions">
-            <button
-              className="btn refresh"
-              onClick={handleRefresh}
-              disabled={isLoading}
-            >
-              {isLoading ? "⋯" : "Refresh"}
-            </button>
+          <button
+            className={`btn toggle-btn ${ledState ? "off" : "on"}`}
+            onClick={toggleLED}
+            disabled={isLoading}
+          >
+            {isLoading ? "Updating..." : ledState ? "Turn OFF" : "Turn ON"}
+          </button>
 
-            <button className="btn secondary" onClick={handleDisconnect}>
-              Change Device
-            </button>
-          </div>
+          <button className="btn secondary" onClick={handleDisconnect}>
+            Change Device
+          </button>
 
           {errorMessage && <p className="error-msg">{errorMessage}</p>}
-          {isLoading && <p className="loading-text">Updating...</p>}
         </div>
       )}
     </div>
