@@ -66,6 +66,12 @@ const mailTransporter =
       })
     : null;
 
+if (!mailTransporter) {
+  console.warn(
+    "[MAIL] SMTP transporter is not configured. OTP and password reset emails will not be sent from this machine. Add SMTP_* values in Back-End/.env for real email testing."
+  );
+}
+
 const normalizeEmail = (email = "") => email.trim().toLowerCase();
 
 const NAME_REGEX = /^[A-Za-zÀ-ÖØ-öø-ÿ]+(?:[ '-][A-Za-zÀ-ÖØ-öø-ÿ]+)*$/;
@@ -1037,15 +1043,20 @@ const addTbUserToGroup = async (token, entityGroupId, userId) => {
   });
 };
 
-const createTbCustomerUser = async (
+const toTbUserIdPayload = (userId) => ({
+  entityType: "USER",
+  id: userId,
+});
+
+const saveTbCustomerUser = async (
   token,
-  customerId,
-  { email, firstName, lastName }
+  { userId = null, customerId, email, firstName, lastName }
 ) => {
   return tbRequest("/api/user?sendActivationMail=false", {
     method: "POST",
     token,
     body: {
+      ...(userId ? { id: toTbUserIdPayload(userId) } : {}),
       authority: "CUSTOMER_USER",
       email,
       firstName,
@@ -1056,6 +1067,68 @@ const createTbCustomerUser = async (
       },
     },
   });
+};
+
+const createOrReuseTbCustomerUser = async (
+  token,
+  customerId,
+  { email, firstName, lastName }
+) => {
+  const existingCustomerUser = await findTbCustomerUserByEmail(
+    token,
+    customerId,
+    email
+  );
+
+  if (existingCustomerUser) {
+    return {
+      user: await saveTbCustomerUser(token, {
+        userId: getTbEntityId(existingCustomerUser),
+        customerId,
+        email,
+        firstName,
+        lastName,
+      }),
+      isNew: false,
+    };
+  }
+
+  try {
+    return {
+      user: await saveTbCustomerUser(token, {
+        customerId,
+        email,
+        firstName,
+        lastName,
+      }),
+      isNew: true,
+    };
+  } catch (error) {
+    if (!/already present in database/i.test(String(error.message || ""))) {
+      throw error;
+    }
+
+    const duplicateCustomerUser = await findTbCustomerUserByEmail(
+      token,
+      customerId,
+      email
+    );
+
+    if (!duplicateCustomerUser) {
+      throw error;
+    }
+
+    return {
+      user: await saveTbCustomerUser(token, {
+        userId: getTbEntityId(duplicateCustomerUser),
+        customerId,
+        email,
+        firstName,
+        lastName,
+      }),
+      isNew: false,
+    };
+  }
 };
 
 const getTbUserActivationLink = async (token, userId) => {
@@ -1099,21 +1172,28 @@ const syncVerifiedUserToThingsBoard = async ({
 
   const tbCustomerId = getTbEntityId(customer);
 
-  let tbUser = existingTbUserId
-    ? { id: { id: existingTbUserId } }
-    : await findTbCustomerUserByEmail(adminToken, tbCustomerId, email);
+  const tbUserResult = existingTbUserId
+    ? {
+        user: await saveTbCustomerUser(adminToken, {
+          userId: existingTbUserId,
+          customerId: tbCustomerId,
+          email,
+          firstName,
+          lastName,
+        }),
+        isNew: false,
+      }
+    : await createOrReuseTbCustomerUser(adminToken, tbCustomerId, {
+        email,
+        firstName,
+        lastName,
+      });
 
-  if (!tbUser) {
-    tbUser = await createTbCustomerUser(adminToken, tbCustomerId, {
-      email,
-      firstName,
-      lastName,
-    });
+  const tbUser = tbUserResult.user;
+  const tbUserId = getTbEntityId(tbUser);
 
-    const activationLink = await getTbUserActivationLink(
-      adminToken,
-      getTbEntityId(tbUser)
-    );
+  if (tbUserResult.isNew) {
+    const activationLink = await getTbUserActivationLink(adminToken, tbUserId);
 
     const activationToken = new URL(activationLink).searchParams.get("activateToken");
 
@@ -1136,7 +1216,6 @@ const syncVerifiedUserToThingsBoard = async ({
   }
 
   const customerAdminGroupId = getTbEntityId(customerAdminGroup);
-  const tbUserId = getTbEntityId(tbUser);
 
   console.log("TB GROUP ASSIGNMENT:", {
     customerId: tbCustomerId,
@@ -1401,6 +1480,15 @@ app.post("/otp/verify", otpVerificationLimiter, async (req, res) => {
       message: error.message,
       stack: error.stack,
     });
+
+    const normalizedErrorMessage = String(error.message || "");
+
+    if (/permission/i.test(normalizedErrorMessage)) {
+      return res.status(500).json({
+        message:
+          "ThingsBoard denied one of the sync steps for this tenant administrator account. The tenant-wide user lookup has been removed, but please make sure this tenant admin can create customer users and assign them to the customer group.",
+      });
+    }
 
     return res.status(500).json({
       message:
