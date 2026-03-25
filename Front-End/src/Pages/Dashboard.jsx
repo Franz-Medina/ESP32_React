@@ -3,16 +3,14 @@ import Swal from 'sweetalert2'
 import 'sweetalert2/dist/sweetalert2.min.css'
 import logo from '../Pictures/Avinya.png'
 import '../Styles/Dashboard.css'
-
-const user = {
-  fullName: 'Franz Lester Medina',
-  email: 'franzmedina03@gmail.com'
-}
+import { getCurrentUserProfile } from '../Utils/getCurrentUserProfile'
 
 const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   const [isEntitiesOpen, setIsEntitiesOpen] = useState(false)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
+  
+  const user = getCurrentUserProfile()
 
   const closeDropdowns = () => {
     setIsEntitiesOpen(false)
@@ -285,7 +283,7 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
 
                 <div className="dashboard-sidebar-user-details">
                   <span className="dashboard-sidebar-user-name">{user.fullName}</span>
-                  <span className="dashboard-sidebar-user-email">{user.email}</span>
+                  <span className="dashboard-sidebar-user-email">{user.roleLabel}</span>
                 </div>
 
                 <button
