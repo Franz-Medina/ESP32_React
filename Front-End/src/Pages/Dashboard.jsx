@@ -357,9 +357,9 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
         <div className="dashboard-content-body">
           <h1 className="dashboard-content-title">Dashboard</h1>
 
-          <div className="widgets-grid">
+          {/* <div className="widgets-grid">
             <ControlSwitch/>
-          </div>
+          </div> */}
 
         </div>
       </section>
