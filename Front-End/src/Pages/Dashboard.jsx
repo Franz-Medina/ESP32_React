@@ -5,6 +5,20 @@ import logo from '../Pictures/Avinya.png'
 import '../Styles/Dashboard.css'
 import { getCurrentUserProfile } from '../Utils/getCurrentUserProfile'
 
+import {
+  PumpControl,
+  ServoMotor,
+  LEDIndicator,
+  CountWidgets,
+  EntitiesTable,
+  AlarmList,
+  BatteryGauge,
+  ProgressWidget,
+  TimeSeriesChart,
+  MarkdownCard,
+} from '../Devices';
+import ControlSwitch from '../Devices/ControlSwitch'
+
 const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   const [isEntitiesOpen, setIsEntitiesOpen] = useState(false)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
@@ -342,6 +356,11 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
       <section className="dashboard-content">
         <div className="dashboard-content-body">
           <h1 className="dashboard-content-title">Dashboard</h1>
+
+          <div className="widgets-grid">
+            <ControlSwitch/>
+          </div>
+
         </div>
       </section>
     </main>
