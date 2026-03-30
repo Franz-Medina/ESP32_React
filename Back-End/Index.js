@@ -372,6 +372,11 @@ const ensureUsersTableExists = async () => {
       tb_password_encrypted TEXT,
       tb_customer_id UUID,
       tb_user_id UUID,
+      role_label VARCHAR(30) NOT NULL DEFAULT 'Customer Administrator'
+        CHECK (role_label IN ('Tenant Administrator', 'Customer Administrator')),
+      phone_country_code VARCHAR(10),
+      phone_number VARCHAR(30),
+      profile_picture_url TEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
   `);
@@ -406,6 +411,53 @@ const ensureUsersTableSchema = async () => {
   await pool.query(`
     ALTER TABLE users
     ADD COLUMN IF NOT EXISTS tb_user_id UUID;
+  `);
+
+  await pool.query(`
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS role_label VARCHAR(30) NOT NULL DEFAULT 'Customer Administrator';
+  `);
+
+  await pool.query(`
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS phone_country_code VARCHAR(10);
+  `);
+
+  await pool.query(`
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS phone_number VARCHAR(30);
+  `);
+
+  await pool.query(`
+    ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS profile_picture_url TEXT;
+  `);
+
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'users_role_label_check'
+      ) THEN
+        ALTER TABLE users
+        ADD CONSTRAINT users_role_label_check
+        CHECK (role_label IN ('Tenant Administrator', 'Customer Administrator'));
+      END IF;
+    END
+    $$;
+  `);
+
+  await pool.query(`
+    UPDATE users
+    SET role_label = CASE
+      WHEN LOWER(email) = 'tbd.avinya@gmail.com' THEN 'Tenant Administrator'
+      ELSE 'Customer Administrator'
+    END
+    WHERE role_label IS NULL
+       OR role_label NOT IN ('Tenant Administrator', 'Customer Administrator')
+       OR LOWER(email) = 'tbd.avinya@gmail.com';
   `);
 };
 
@@ -1306,9 +1358,10 @@ app.post("/register", registrationLimiter, async (req, res) => {
           otp_code,
           otp_expires_at,
           is_verified,
-          pending_password_encrypted
+          pending_password_encrypted,
+          role_label
         )
-      VALUES ($1, $2, $3, $4, $5, $6, FALSE, $7)
+      VALUES ($1, $2, $3, $4, $5, $6, FALSE, $7, $8)
       RETURNING id, first_name, last_name, email, is_verified, created_at`,
       [
         trimmedFirstName,
@@ -1318,6 +1371,7 @@ app.post("/register", registrationLimiter, async (req, res) => {
         otpCode,
         otpExpiresAt,
         pendingPasswordEncrypted,
+        "Customer Administrator",
       ]
     );
 

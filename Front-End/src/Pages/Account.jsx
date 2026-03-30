@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import Swal from 'sweetalert2'
+import Cropper from 'react-easy-crop'
 import 'sweetalert2/dist/sweetalert2.min.css'
 import { countries } from 'country-list-json'
 import * as FlagIcons from 'country-flag-icons/react/3x2'
@@ -9,9 +11,11 @@ import {
   CameraIcon,
   GlobeIcon,
   PhoneIcon,
-  UserIcon
+  UserIcon,
+  ErrorIcon
 } from '../Components/LoginIcons.jsx'
 import { getCurrentUserProfile } from '../Utils/getCurrentUserProfile'
+import { getCroppedImageDataUrl } from '../Utils/cropImage'
 
 const getInitialAccountForm = (user = {}) => {
   const safeFullName = String(user.fullName || '').trim()
@@ -46,6 +50,80 @@ const renderCountryFlag = (isoCode, className) => {
   return <FlagIcon className={className} aria-hidden="true" />
 }
 
+const NAME_REGEX = /^[A-Za-zÀ-ÖØ-öø-ÿ]+(?:[ '-][A-Za-zÀ-ÖØ-ÿ]+)*$/
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const ALLOWED_PROFILE_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+
+const getNameValidationError = (value, label) => {
+  if (!value) {
+    return `Please enter your ${label.toLowerCase()}.`
+  }
+
+  if (value.length < 2) {
+    return `${label} must be at least 2 characters.`
+  }
+
+  if (value.length > 50) {
+    return `${label} must not exceed 50 characters.`
+  }
+
+  if (!NAME_REGEX.test(value)) {
+    return `${label} contains invalid characters.`
+  }
+
+  return ''
+}
+
+const getEmailValidationError = (value) => {
+  if (!value) {
+    return 'Please enter your email.'
+  }
+
+  if (/\s/.test(value)) {
+    return 'Email address must not contain spaces.'
+  }
+
+  if (value.length > 254) {
+    return 'Email address is too long.'
+  }
+
+  if (!EMAIL_REGEX.test(value)) {
+    return 'Please enter a valid email address.'
+  }
+
+  return ''
+}
+
+const getPhoneNumberValidationError = (value) => {
+  if (!value) {
+    return ''
+  }
+
+  if (value !== value.trim()) {
+    return 'Phone number must not start or end with spaces.'
+  }
+
+  if (value.includes('+')) {
+    return 'Enter your phone number without the country code.'
+  }
+
+  if (!/^[0-9\s()-]+$/.test(value)) {
+    return 'Phone number must contain numbers only.'
+  }
+
+  const digitsOnly = value.replace(/\D/g, '')
+
+  if (digitsOnly.length < 7) {
+    return 'Phone number must be at least 7 digits.'
+  }
+
+  if (digitsOnly.length > 15) {
+    return 'Phone number must not exceed 15 digits.'
+  }
+
+  return ''
+}
+
 const COUNTRY_CODE_OPTIONS = countries
   .filter((country) => country.code && country.name && country.dial_code)
   .map((country) => ({
@@ -70,6 +148,19 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   const [profileImageName, setProfileImageName] = useState('')
   const [profileImageError, setProfileImageError] = useState('')
 
+  const [firstNameError, setFirstNameError] = useState('')
+  const [lastNameError, setLastNameError] = useState('')
+  const [emailError, setEmailError] = useState('')
+  const [phoneNumberError, setPhoneNumberError] = useState('')
+  const [isSavingProfile, setIsSavingProfile] = useState(false)
+  const [photoProcessingMode, setPhotoProcessingMode] = useState('')
+  const [isPhotoCropModalOpen, setIsPhotoCropModalOpen] = useState(false)
+  const [photoCropSource, setPhotoCropSource] = useState('')
+  const [photoCropValue, setPhotoCropValue] = useState({ x: 0, y: 0 })
+  const [photoZoomValue, setPhotoZoomValue] = useState(0.75)
+  const [photoCroppedAreaPixels, setPhotoCroppedAreaPixels] = useState(null)
+  const [pendingProfileImageName, setPendingProfileImageName] = useState('')
+
   const profileImageInputRef = useRef(null)
   const countryCodeDropdownRef = useRef(null)
 
@@ -80,40 +171,172 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
       ...prev,
       [field]: nextValue
     }))
+
+    if (field === 'firstName' && firstNameError) {
+      setFirstNameError('')
+    }
+
+    if (field === 'lastName' && lastNameError) {
+      setLastNameError('')
+    }
+
+    if (field === 'email' && emailError) {
+      setEmailError('')
+    }
+
+    if (field === 'phoneNumber' && phoneNumberError) {
+      setPhoneNumberError('')
+    }
+  }
+
+  const resetPhotoCropState = () => {
+    setIsPhotoCropModalOpen(false)
+    setPhotoCropSource('')
+    setPhotoCropValue({ x: 0, y: 0 })
+    setPhotoZoomValue(0.75)
+    setPhotoCroppedAreaPixels(null)
+    setPendingProfileImageName('')
+
+    if (profileImageInputRef.current) {
+      profileImageInputRef.current.value = ''
+    }
+  }
+
+  const handleOpenPhotoPicker = () => {
+    if (!profileImageInputRef.current) {
+      return
+    }
+
+    setProfileImageError('')
+
+    flushSync(() => {
+      setPhotoProcessingMode('picker-opening')
+    })
+
+    window.addEventListener(
+      'focus',
+      () => {
+        window.setTimeout(() => {
+          setPhotoProcessingMode((prev) =>
+            prev === 'picker-opening' ? '' : prev
+          )
+        }, 180)
+      },
+      { once: true }
+    )
+
+    profileImageInputRef.current.click()
+  }
+
+  const handlePhotoCropComplete = (_, croppedAreaPixels) => {
+    setPhotoCroppedAreaPixels(croppedAreaPixels)
+  }
+
+  const handleClosePhotoCropModal = async () => {
+    setPhotoProcessingMode('picker-closing')
+
+    await new Promise((resolve) => setTimeout(resolve, 320))
+
+    resetPhotoCropState()
+    setPhotoProcessingMode('')
   }
 
   const handleProfileImageChange = (event) => {
     const file = event.target.files?.[0]
 
     if (!file) {
+      setPhotoProcessingMode('')
       return
     }
 
-    if (!file.type.startsWith('image/')) {
-      setProfileImageError('Please select a valid image file.')
+    if (!ALLOWED_PROFILE_IMAGE_TYPES.includes(file.type)) {
+      setPhotoProcessingMode('')
+      setProfileImageError('Please select a JPG, JPEG, PNG, or WEBP image.')
+
+      if (profileImageInputRef.current) {
+        profileImageInputRef.current.value = ''
+      }
+
       return
     }
 
     if (file.size > 5 * 1024 * 1024) {
+      setPhotoProcessingMode('')
       setProfileImageError('Profile image must be 5 MB or smaller.')
+
+      if (profileImageInputRef.current) {
+        profileImageInputRef.current.value = ''
+      }
+
       return
     }
 
     const reader = new FileReader()
 
-    reader.onload = () => {
-      setProfileImagePreview(String(reader.result || ''))
-      setProfileImageName(file.name)
-      setProfileImageError('')
+    reader.onload = async () => {
+      try {
+        setPhotoProcessingMode('photo-loading')
+        setPendingProfileImageName(file.name)
+        setProfileImageError('')
+
+        await new Promise((resolve) => setTimeout(resolve, 450))
+
+        setPhotoCropSource(String(reader.result || ''))
+        setPhotoCropValue({ x: 0, y: 0 })
+        setPhotoZoomValue(0.75)
+        setPhotoCroppedAreaPixels(null)
+        setIsPhotoCropModalOpen(true)
+      } catch {
+        setProfileImageError('Something went wrong while loading your profile image. Please try again.')
+      } finally {
+        setPhotoProcessingMode('')
+      }
+    }
+
+    reader.onerror = () => {
+      setPhotoProcessingMode('')
+      setProfileImageError('Something went wrong while loading your profile image. Please try again.')
     }
 
     reader.readAsDataURL(file)
   }
 
-  const handleRemoveProfileImage = () => {
+  const handleApplyPhotoCrop = async () => {
+    if (!photoCropSource || !photoCroppedAreaPixels) {
+      return
+    }
+
+    try {
+      setPhotoProcessingMode('photo-applying')
+
+      await new Promise((resolve) => setTimeout(resolve, 650))
+
+      const nextProfileImagePreview = await getCroppedImageDataUrl(
+        photoCropSource,
+        photoCroppedAreaPixels
+      )
+
+      setProfileImagePreview(nextProfileImagePreview)
+      setProfileImageName(pendingProfileImageName)
+      setProfileImageError('')
+      resetPhotoCropState()
+    } catch {
+      setProfileImageError('Something went wrong while updating your profile image. Please try again.')
+    } finally {
+      setPhotoProcessingMode('')
+    }
+  }
+
+  const handleRemoveProfileImage = async () => {
+    setPhotoProcessingMode('photo-removing')
+
+    await new Promise((resolve) => setTimeout(resolve, 420))
+
     setProfileImagePreview('')
     setProfileImageName('')
     setProfileImageError('')
+    resetPhotoCropState()
+    setPhotoProcessingMode('')
 
     if (profileImageInputRef.current) {
       profileImageInputRef.current.value = ''
@@ -124,6 +347,9 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     COUNTRY_CODE_OPTIONS.find((option) => option.id === profileForm.phoneCountryOptionId) ||
     COUNTRY_CODE_OPTIONS.find((option) => option.value === profileForm.phoneCountryCode) ||
     COUNTRY_CODE_OPTIONS[0]
+
+  const phoneNumberHelperText =
+    'Exclude the selected country code. Example: 912 345 6789.'
 
   const handleCountryCodeToggle = () => {
     setIsCountryCodeOpen((prev) => !prev)
@@ -229,11 +455,178 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     onLogout()
   }
 
+  const clearAccountFormErrors = () => {
+    setFirstNameError('')
+    setLastNameError('')
+    setEmailError('')
+    setPhoneNumberError('')
+  }
+
+  const validateAccountForm = () => {
+    const trimmedFirstName = profileForm.firstName.trim()
+    const trimmedLastName = profileForm.lastName.trim()
+    const trimmedEmail = profileForm.email.trim()
+    const trimmedPhoneNumber = profileForm.phoneNumber.trim()
+
+    const nextFirstNameError = getNameValidationError(trimmedFirstName, 'First name')
+    const nextLastNameError = getNameValidationError(trimmedLastName, 'Last name')
+    const nextEmailError = getEmailValidationError(trimmedEmail)
+    const nextPhoneNumberError = getPhoneNumberValidationError(trimmedPhoneNumber)
+
+    let hasError = false
+
+    if (nextFirstNameError) {
+      setFirstNameError(nextFirstNameError)
+      hasError = true
+    }
+
+    if (nextLastNameError) {
+      setLastNameError(nextLastNameError)
+      hasError = true
+    }
+
+    if (nextEmailError) {
+      setEmailError(nextEmailError)
+      hasError = true
+    }
+
+    if (nextPhoneNumberError) {
+      setPhoneNumberError(nextPhoneNumberError)
+      hasError = true
+    }
+
+    return !hasError
+  }
+
+  const showAccountSaveResultAlert = async ({ type, title, message }) => {
+    const isSuccess = type === 'success'
+
+    await Swal.fire({
+      html: `
+        <div class="auth-swal-card">
+          <div class="auth-swal-symbol ${isSuccess ? 'auth-swal-symbol-success' : 'auth-swal-symbol-error'}" aria-hidden="true">
+            ${
+              isSuccess
+                ? `
+                  <svg viewBox="0 0 24 24">
+                    <path d="M20 6L9 17l-5-5" />
+                  </svg>
+                `
+                : `
+                  <svg viewBox="0 0 24 24">
+                    <path d="M15 9l-6 6" />
+                    <path d="m9 9 6 6" />
+                  </svg>
+                `
+            }
+          </div>
+
+          <h2 class="auth-swal-heading">${title}</h2>
+
+          <p class="auth-swal-message">
+            ${message}
+          </p>
+        </div>
+      `,
+      timer: 3500,
+      showConfirmButton: false,
+      showCancelButton: false,
+      showCloseButton: false,
+      buttonsStyling: false,
+      allowOutsideClick: true,
+      allowEscapeKey: true,
+      customClass: {
+        popup: 'auth-swal-popup',
+        htmlContainer: 'auth-swal-html'
+      }
+    })
+  }
+
+  const handleSaveProfile = async () => {
+    clearAccountFormErrors()
+
+    if (!validateAccountForm()) {
+      return
+    }
+
+    const result = await Swal.fire({
+      title: 'Save Changes?',
+      text: 'Are you sure you want to save your account details?',
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: 'Yes',
+      cancelButtonText: 'No',
+      reverseButtons: true,
+      buttonsStyling: false,
+      allowOutsideClick: true,
+      allowEscapeKey: true,
+      customClass: {
+        popup: 'avinya-swal-popup',
+        icon: 'avinya-swal-icon',
+        title: 'avinya-swal-title',
+        htmlContainer: 'avinya-swal-text',
+        actions: 'avinya-swal-actions',
+        confirmButton: 'avinya-swal-confirm',
+        cancelButton: 'avinya-swal-cancel'
+      }
+    })
+
+    if (!result.isConfirmed) return
+
+    try {
+      setProfileForm((prev) => ({
+        ...prev,
+        firstName: prev.firstName.trim(),
+        lastName: prev.lastName.trim(),
+        email: prev.email.trim(),
+        phoneNumber: prev.phoneNumber.trim()
+      }))
+
+      setIsSavingProfile(true)
+
+      await new Promise((resolve) => setTimeout(resolve, 1400))
+
+      setIsSavingProfile(false)
+
+      await showAccountSaveResultAlert({
+        type: 'success',
+        title: 'Profile Saved',
+        message: 'Your account details have been saved successfully.'
+      })
+    } catch (error) {
+      setIsSavingProfile(false)
+
+      await showAccountSaveResultAlert({
+        type: 'error',
+        title: 'Save Failed',
+        message: 'Something went wrong while saving your account details. Please try again.'
+      })
+    }
+  }
+
   const accountInitials = [profileForm.firstName, profileForm.lastName]
     .filter(Boolean)
     .map((value) => String(value).trim().charAt(0).toUpperCase())
     .join('')
     .slice(0, 2) || 'A'
+
+  const hasFirstNameFieldError = Boolean(firstNameError)
+  const hasLastNameFieldError = Boolean(lastNameError)
+  const hasEmailFieldError = Boolean(emailError)
+  const hasPhoneNumberFieldError = Boolean(phoneNumberError)
+
+  const showPhotoProcessingOverlay = Boolean(photoProcessingMode)
+  const showPhotoProcessingTitle =
+    photoProcessingMode === 'photo-loading' ||
+    photoProcessingMode === 'photo-applying' ||
+    photoProcessingMode === 'photo-removing'
+
+  const photoProcessingLabel =
+    photoProcessingMode === 'photo-removing'
+      ? 'Removing Photo'
+      : photoProcessingMode === 'photo-applying'
+        ? 'Updating Photo'
+        : 'Loading Photo'
 
   return (
     <main className="dashboard-page">
@@ -520,7 +913,7 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                       ref={profileImageInputRef}
                       id="account-profile-image-input"
                       type="file"
-                      accept="image/png,image/jpeg,image/webp"
+                      accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
                       className="account-profile-file-input"
                       onChange={handleProfileImageChange}
                     />
@@ -529,19 +922,22 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                       type="button"
                       className="account-button account-button-secondary account-profile-remove"
                       onClick={handleRemoveProfileImage}
+                      disabled={!profileImagePreview || Boolean(photoProcessingMode)}
                     >
                       Remove
                     </button>
 
-                    <label
-                      htmlFor="account-profile-image-input"
+                    <button
+                      type="button"
                       className="account-button account-button-primary account-profile-upload"
+                      onClick={handleOpenPhotoPicker}
+                      disabled={Boolean(photoProcessingMode)}
                     >
                       <span className="account-button-icon" aria-hidden="true">
                         <CameraIcon />
                       </span>
                       <span>Change Photo</span>
-                    </label>
+                    </button>
                   </div>
 
                   <p className="account-avatar-helper">
@@ -575,7 +971,7 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
 
                 <div className="account-form-grid">
                   <div className="account-field-group">
-                    <div className="account-field account-floating-field">
+                    <div className={`account-field account-floating-field ${hasFirstNameFieldError ? 'account-field-error' : ''}`}>
                       <span className="account-field-icon" aria-hidden="true">
                         <UserIcon />
                       </span>
@@ -589,16 +985,26 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                           value={profileForm.firstName}
                           onChange={handleProfileInputChange('firstName')}
                           autoComplete="given-name"
+                          aria-invalid={hasFirstNameFieldError}
                         />
                         <label htmlFor="account-first-name" className="account-floating-label">
                           First Name
                         </label>
                       </div>
                     </div>
+
+                    {firstNameError && (
+                      <div className="account-error-row account-error-row-animated">
+                        <span className="account-error-icon" aria-hidden="true">
+                          <ErrorIcon />
+                        </span>
+                        <span>{firstNameError}</span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="account-field-group">
-                    <div className="account-field account-floating-field">
+                    <div className={`account-field account-floating-field ${hasLastNameFieldError ? 'account-field-error' : ''}`}>
                       <span className="account-field-icon" aria-hidden="true">
                         <UserIcon />
                       </span>
@@ -612,16 +1018,26 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                           value={profileForm.lastName}
                           onChange={handleProfileInputChange('lastName')}
                           autoComplete="family-name"
+                          aria-invalid={hasLastNameFieldError}
                         />
                         <label htmlFor="account-last-name" className="account-floating-label">
                           Last Name
                         </label>
                       </div>
                     </div>
+
+                    {lastNameError && (
+                      <div className="account-error-row account-error-row-animated">
+                        <span className="account-error-icon" aria-hidden="true">
+                          <ErrorIcon />
+                        </span>
+                        <span>{lastNameError}</span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="account-field-group account-field-group-full">
-                    <div className="account-field account-floating-field">
+                    <div className={`account-field account-floating-field ${hasEmailFieldError ? 'account-field-error' : ''}`}>
                       <span className="account-field-icon" aria-hidden="true">
                         <UserIcon />
                       </span>
@@ -635,12 +1051,22 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                           value={profileForm.email}
                           onChange={handleProfileInputChange('email')}
                           autoComplete="email"
+                          aria-invalid={hasEmailFieldError}
                         />
                         <label htmlFor="account-email" className="account-floating-label">
                           Email
                         </label>
                       </div>
                     </div>
+
+                    {emailError && (
+                      <div className="account-error-row account-error-row-animated">
+                        <span className="account-error-icon" aria-hidden="true">
+                          <ErrorIcon />
+                        </span>
+                        <span>{emailError}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -706,7 +1132,7 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                   </div>
 
                   <div className="account-phone-group">
-                    <div className="account-field account-floating-field">
+                    <div className={`account-field account-floating-field ${hasPhoneNumberFieldError ? 'account-field-error' : ''}`}>
                       <span className="account-field-icon" aria-hidden="true">
                         <PhoneIcon />
                       </span>
@@ -720,12 +1146,28 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                           value={profileForm.phoneNumber}
                           onChange={handleProfileInputChange('phoneNumber')}
                           autoComplete="tel-national"
+                          inputMode="numeric"
+                          aria-describedby="account-phone-helper"
+                          aria-invalid={hasPhoneNumberFieldError}
                         />
                         <label htmlFor="account-phone-number" className="account-floating-label">
                           Phone Number
                         </label>
                       </div>
                     </div>
+
+                    <p id="account-phone-helper" className="account-phone-helper">
+                      {phoneNumberHelperText}
+                    </p>
+
+                    {phoneNumberError && (
+                      <div className="account-error-row account-error-row-animated">
+                        <span className="account-error-icon" aria-hidden="true">
+                          <ErrorIcon />
+                        </span>
+                        <span>{phoneNumberError}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -740,6 +1182,8 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                   <button
                     type="button"
                     className="account-button account-button-primary"
+                    onClick={handleSaveProfile}
+                    disabled={isSavingProfile}
                   >
                     Save
                   </button>
@@ -749,7 +1193,126 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
           </section>
         </div>
       </section>
-    </main>
+      {isPhotoCropModalOpen && (
+        <div
+          className="account-photo-modal-overlay"
+          onClick={handleClosePhotoCropModal}
+        >
+          <div
+            className="account-photo-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="account-photo-modal-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="account-photo-modal-close"
+              onClick={handleClosePhotoCropModal}
+              aria-label="Close photo editor"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M18 6L6 18" />
+                <path d="M6 6l12 12" />
+              </svg>
+            </button>
+
+            <div className="account-photo-modal-header">
+              <h2 id="account-photo-modal-title" className="account-photo-modal-title">
+                Change Profile Picture
+              </h2>
+              <p className="account-photo-modal-text">
+                Drag and adjust your photo inside the circle, then confirm to apply it.
+              </p>
+            </div>
+
+            <div className="account-photo-cropper-shell">
+              <div className="account-photo-cropper-surface">
+                <Cropper
+                  image={photoCropSource}
+                  crop={photoCropValue}
+                  zoom={photoZoomValue}
+                  minZoom={0.75}
+                  maxZoom={3}
+                  aspect={1}
+                  cropShape="round"
+                  showGrid={false}
+                  objectFit="cover"
+                  onCropChange={setPhotoCropValue}
+                  onZoomChange={setPhotoZoomValue}
+                  onCropComplete={handlePhotoCropComplete}
+                />
+              </div>
+            </div>
+
+            <div className="account-photo-slider-group">
+              <div className="account-photo-slider-label-row">
+                <label htmlFor="account-photo-zoom" className="account-photo-slider-label">
+                  Zoom
+                </label>
+                <span className="account-photo-slider-value">
+                  {photoZoomValue.toFixed(2)}x
+                </span>
+              </div>
+
+              <input
+                id="account-photo-zoom"
+                type="range"
+                min="0.75"
+                max="3"
+                step="0.01"
+                value={photoZoomValue}
+                onChange={(event) => setPhotoZoomValue(Number(event.target.value))}
+                className="account-photo-slider"
+              />
+            </div>
+
+            <div className="account-photo-modal-actions">
+              <button
+                type="button"
+                className="account-button account-button-secondary"
+                onClick={handleClosePhotoCropModal}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                className="account-button account-button-primary"
+                onClick={handleApplyPhotoCrop}
+              >
+                Apply Photo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showPhotoProcessingOverlay && (
+        <div className="account-save-overlay" role="status" aria-live="polite" aria-busy="true">
+          <div className={`account-save-card ${showPhotoProcessingTitle ? '' : 'account-save-card-compact'}`}>
+            <img src={logo} alt="Avinya Logo" className="account-save-logo" />
+            {showPhotoProcessingTitle && (
+              <p className="account-save-title">{photoProcessingLabel}</p>
+            )}
+            <div className="account-save-loader" aria-hidden="true">
+              <span className="account-save-loader-bar"></span>
+            </div>
+          </div>
+        </div>
+      )}
+      {isSavingProfile && (
+    <div className="account-save-overlay" role="status" aria-live="polite" aria-busy="true">
+      <div className="account-save-card">
+        <img src={logo} alt="Avinya Logo" className="account-save-logo" />
+        <p className="account-save-title">Saving Changes</p>
+        <div className="account-save-loader" aria-hidden="true">
+          <span className="account-save-loader-bar"></span>
+        </div>
+      </div>
+    </div>
+  )}
+
+  </main>
   )
 }
 

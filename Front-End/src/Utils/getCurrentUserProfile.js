@@ -23,7 +23,37 @@ const getSafeFullName = (firstName, lastName, email) => {
   return fullName || email || 'User'
 }
 
+const normalizeRoleLabel = (value = '') => {
+  const normalizedValue = String(value).trim().toLowerCase()
+
+  if (
+    normalizedValue === 'tenant administrator' ||
+    normalizedValue === 'tenant_admin' ||
+    normalizedValue === 'tenant admin'
+  ) {
+    return 'Tenant Administrator'
+  }
+
+  if (
+    normalizedValue === 'customer administrator' ||
+    normalizedValue === 'customer_admin' ||
+    normalizedValue === 'customer admin' ||
+    normalizedValue === 'customer user' ||
+    normalizedValue === 'customer_user'
+  ) {
+    return 'Customer Administrator'
+  }
+
+  return ''
+}
+
 const getSafeRoleLabel = (user) => {
+  const explicitRoleLabel = normalizeRoleLabel(user?.roleLabel || user?.role)
+
+  if (explicitRoleLabel) {
+    return explicitRoleLabel
+  }
+
   const authority = String(user?.authority || '').trim().toUpperCase()
   const tenantAdminEmail = String(import.meta.env.VITE_TB_TENANT_USERNAME || '')
     .trim()
