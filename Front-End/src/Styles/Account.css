@@ -354,6 +354,17 @@
   font-size: 14px;
 }
 
+.account-input:-webkit-autofill,
+.account-input:-webkit-autofill:hover,
+.account-input:-webkit-autofill:focus,
+.account-input:-webkit-autofill:active {
+  -webkit-text-fill-color: #1f1f1f;
+  caret-color: #1f1f1f;
+  -webkit-box-shadow: 0 0 0 1000px #ffffff inset;
+  box-shadow: 0 0 0 1000px #ffffff inset;
+  transition: background-color 9999s ease-out 0s;
+}
+
 .account-floating-field {
   min-height: 48px;
   padding-top: 0;
@@ -446,19 +457,24 @@
   box-shadow: 0 0 0 3px rgba(152, 0, 0, 0.12);
 }
 
+.account-dropdown-trigger-open .account-field-icon {
+  color: #980000;
+}
+
 .account-dropdown-value {
   width: 100%;
   height: 100%;
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
   padding: 20px 0 5px;
   font-size: var(--account-text-size);
   font-weight: 400;
   line-height: 1.35;
   color: #1f1f1f;
   text-align: left;
-  white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .account-dropdown-value-mobile,
@@ -466,13 +482,42 @@
   display: none;
 }
 
-.account-dropdown-value-desktop,
+.account-dropdown-value-desktop {
+  display: flex;
+}
+
 .account-dropdown-option-label-desktop {
   display: block;
-  width: 100%;
+}
+
+.account-dropdown-value-text,
+.account-dropdown-option-label-desktop,
+.account-dropdown-option-label-mobile {
+  min-width: 0;
+  flex: 1 1 auto;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.account-dropdown-option-content {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.account-dropdown-flag,
+.account-dropdown-option-flag {
+  width: 20px;
+  min-width: 20px;
+  height: 14px;
+  display: block;
+  flex-shrink: 0;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(31, 31, 31, 0.08);
+  overflow: hidden;
 }
 
 .account-floating-label-static {
@@ -982,6 +1027,16 @@
   }
 }
 
+@media (min-width: 667px) and (max-width: 932px) and (orientation: landscape) and (max-height: 430px) {
+  .dashboard-sidebar:not(.collapsed) + .dashboard-content .dashboard-content-body {
+    --account-panel-top-expanded: 35px;
+  }
+
+  .dashboard-sidebar.collapsed + .dashboard-content .dashboard-content-body {
+    --account-panel-top-collapsed: 20px;
+  }
+}
+
 @media (min-width: 540px) and (max-width: 767px) and (orientation: landscape) {
   .account-layout {
     --account-landscape-button-gap: 10px;
@@ -1160,13 +1215,12 @@
     display: none;
   }
 
-  .account-dropdown-value-mobile,
+  .account-dropdown-value-mobile {
+    display: flex;
+  }
+
   .account-dropdown-option-label-mobile {
     display: block;
-    width: 100%;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
 
   .account-dropdown-menu {
@@ -1221,7 +1275,25 @@
   }
 }
 
+@media (min-width: 344px) and (max-width: 430px) and (orientation: portrait) {
+  .dashboard-sidebar:not(.collapsed) + .dashboard-content .dashboard-content-body {
+    --account-panel-top-expanded: 35px;
+  }
+
+  .dashboard-sidebar.collapsed + .dashboard-content .dashboard-content-body {
+    --account-panel-top-collapsed: 20px;
+  }
+}
+
 @media (min-width: 640px) and (max-width: 720px) and (orientation: portrait) {
+  .dashboard-sidebar:not(.collapsed) + .dashboard-content .dashboard-content-body {
+    --account-panel-top-expanded: 35px;
+  }
+
+  .dashboard-sidebar.collapsed + .dashboard-content .dashboard-content-body {
+    --account-panel-top-collapsed: 20px;
+  }
+
   .dashboard-sidebar.collapsed + .dashboard-content .account-avatar-actions,
   .dashboard-sidebar.collapsed + .dashboard-content .account-summary-card,
   .dashboard-sidebar.collapsed + .dashboard-content .account-actions,
@@ -1311,6 +1383,14 @@
 }
 
 @media (min-width: 540px) and (max-width: 639px) and (orientation: portrait) {
+  .dashboard-sidebar:not(.collapsed) + .dashboard-content .dashboard-content-body {
+    --account-panel-top-expanded: 35px;
+  }
+
+  .dashboard-sidebar.collapsed + .dashboard-content .dashboard-content-body {
+    --account-panel-top-collapsed: 20px;
+  }
+
   .dashboard-sidebar.collapsed + .dashboard-content .account-avatar-actions,
   .dashboard-sidebar.collapsed + .dashboard-content .account-summary-card,
   .dashboard-sidebar.collapsed + .dashboard-content .account-actions,
@@ -1402,8 +1482,8 @@
 @media (min-width: 721px) and (max-width: 1024px) and (orientation: portrait) {
   .dashboard-content-body {
     padding: 16px;
-    --account-panel-top-expanded: 16px;
-    --account-panel-top-collapsed: 16px;
+    --account-panel-top-expanded: 35px;
+    --account-panel-top-collapsed: 20px;
   }
 
   .account-panel {
@@ -1703,6 +1783,16 @@
   }
 }
 
+@media (min-width: 540px) and (max-width: 1024px) and (orientation: landscape) and (min-height: 540px) {
+  .dashboard-sidebar:not(.collapsed) + .dashboard-content .dashboard-content-body {
+    --account-panel-top-expanded: 35px;
+  }
+
+  .dashboard-sidebar.collapsed + .dashboard-content .dashboard-content-body {
+    --account-panel-top-collapsed: 20px;
+  }
+}
+
 @media (min-width: 768px) and (max-width: 900px) and (orientation: landscape) and (min-height: 600px) and (max-height: 700px) {
   .dashboard-sidebar:not(.collapsed) + .dashboard-content .account-panel-header {
     flex-direction: column;
@@ -1990,6 +2080,110 @@
   }
 }
 
+@media (orientation: landscape) and (min-width: 1114px) and (max-width: 1180px) and (min-height: 720px) and (max-height: 820px),
+       (orientation: landscape) and (min-width: 1280px) and (max-width: 1280px) and (min-height: 800px) and (max-height: 853px),
+       (orientation: landscape) and (min-width: 1366px) and (max-width: 1368px) and (min-height: 912px) and (max-height: 1024px),
+       (orientation: landscape) and (min-width: 1706px) and (max-width: 1706px) and (min-height: 1280px) and (max-height: 1280px) {
+  .dashboard-sidebar:not(.collapsed) + .dashboard-content .account-layout {
+    --account-tablet-landscape-row-gap: 12px;
+    --account-tablet-landscape-row-max-width: 560px;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    align-items: stretch;
+  }
+
+  .dashboard-sidebar:not(.collapsed) + .dashboard-content .account-profile-card,
+  .dashboard-sidebar:not(.collapsed) + .dashboard-content .account-main-card {
+    width: 100%;
+    min-width: 0;
+    padding: 24px;
+  }
+
+  .dashboard-sidebar:not(.collapsed) + .dashboard-content .account-card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 6px;
+  }
+
+  .dashboard-sidebar:not(.collapsed) + .dashboard-content .account-panel-header {
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .dashboard-sidebar:not(.collapsed) + .dashboard-content .account-panel-copy {
+    width: 100%;
+    min-width: 0;
+    align-items: stretch;
+    text-align: left;
+  }
+
+  .dashboard-sidebar:not(.collapsed) + .dashboard-content .account-card-heading,
+  .dashboard-sidebar:not(.collapsed) + .dashboard-content .account-panel-heading,
+  .dashboard-sidebar:not(.collapsed) + .dashboard-content .account-card-text,
+  .dashboard-sidebar:not(.collapsed) + .dashboard-content .account-panel-text {
+    text-align: left;
+  }
+
+  .dashboard-sidebar:not(.collapsed) + .dashboard-content .account-role-badge {
+    align-self: flex-start;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .dashboard-sidebar:not(.collapsed) + .dashboard-content .account-avatar-frame {
+    width: 128px;
+    height: 128px;
+  }
+
+  .dashboard-sidebar:not(.collapsed) + .dashboard-content .account-avatar-actions,
+  .dashboard-sidebar:not(.collapsed) + .dashboard-content .account-summary-card,
+  .dashboard-sidebar:not(.collapsed) + .dashboard-content .account-actions {
+    width: min(100%, var(--account-tablet-landscape-row-max-width));
+    max-width: min(100%, var(--account-tablet-landscape-row-max-width));
+    margin-left: auto;
+    margin-right: auto;
+    box-sizing: border-box;
+  }
+
+  .dashboard-sidebar:not(.collapsed) + .dashboard-content .account-avatar-actions,
+  .dashboard-sidebar:not(.collapsed) + .dashboard-content .account-actions {
+    justify-content: center;
+    align-items: stretch;
+    flex-wrap: nowrap;
+    gap: var(--account-tablet-landscape-row-gap);
+  }
+
+  .dashboard-sidebar:not(.collapsed) + .dashboard-content .account-avatar-actions .account-button,
+  .dashboard-sidebar:not(.collapsed) + .dashboard-content .account-avatar-actions .account-profile-upload,
+  .dashboard-sidebar:not(.collapsed) + .dashboard-content .account-actions .account-button {
+    flex: 1 1 calc((100% - var(--account-tablet-landscape-row-gap)) / 2);
+    width: calc((100% - var(--account-tablet-landscape-row-gap)) / 2);
+    min-width: 0;
+    max-width: calc((100% - var(--account-tablet-landscape-row-gap)) / 2);
+    box-sizing: border-box;
+    white-space: nowrap;
+  }
+
+  .dashboard-sidebar:not(.collapsed) + .dashboard-content .account-form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+
+  .dashboard-sidebar:not(.collapsed) + .dashboard-content .account-field-group-full {
+    grid-column: 1 / -1;
+  }
+
+  .dashboard-sidebar:not(.collapsed) + .dashboard-content .account-phone-row {
+    --account-phone-row-gap: 16px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    align-items: end;
+  }
+}
+
 [data-theme='dark'] .dashboard-sidebar-user-menu-item.active {
   background: rgba(197, 42, 42, 0.16);
   border-color: rgba(197, 42, 42, 0.28);
@@ -2085,6 +2279,17 @@
   color: #ffffff;
 }
 
+[data-theme='dark'] .account-input:-webkit-autofill,
+[data-theme='dark'] .account-input:-webkit-autofill:hover,
+[data-theme='dark'] .account-input:-webkit-autofill:focus,
+[data-theme='dark'] .account-input:-webkit-autofill:active {
+  -webkit-text-fill-color: #ffffff;
+  caret-color: #ffffff;
+  -webkit-box-shadow: 0 0 0 1000px rgba(21, 24, 31, 0.96) inset;
+  box-shadow: 0 0 0 1000px rgba(21, 24, 31, 0.96) inset;
+  transition: background-color 9999s ease-out 0s;
+}
+
 [data-theme='dark'] .account-floating-label {
   color: #717b8d;
 }
@@ -2101,6 +2306,10 @@
 [data-theme='dark'] .account-dropdown-trigger-open {
   border-color: #c52a2a;
   box-shadow: 0 0 0 3px rgba(197, 42, 42, 0.16);
+}
+
+[data-theme='dark'] .account-dropdown-trigger-open .account-field-icon {
+  color: #ffdddd;
 }
 
 [data-theme='dark'] .account-dropdown-value {
@@ -2138,6 +2347,11 @@
   background: rgba(197, 42, 42, 0.16);
   border-color: rgba(197, 42, 42, 0.28);
   color: #ffdddd;
+}
+
+[data-theme='dark'] .account-dropdown-flag,
+[data-theme='dark'] .account-dropdown-option-flag {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
 [data-theme='dark'] .account-button:focus-visible {

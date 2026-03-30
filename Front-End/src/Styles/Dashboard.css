@@ -17,6 +17,14 @@
   --avatar-size: 44px;
   --avatar-icon-size: 20px;
 
+  --dashboard-content-surface: #ffffff;
+  --dashboard-frame-thickness: 1.5px;
+  --dashboard-frame-dash-length: 7px;
+  --dashboard-frame-gap: 3px;
+  --dashboard-frame-inset: 10px;
+  --dashboard-frame-corner-size: var(--dashboard-frame-inset);
+  --dashboard-frame-color: rgba(152, 0, 0, 0.2);
+
   min-height: 100dvh;
   height: 100dvh;
   width: 100%;
@@ -1013,6 +1021,90 @@
   overscroll-behavior: contain;
 }
 
+.dashboard-content-body.dashboard-content-body-frame {
+  position: relative;
+  isolation: isolate;
+  border: 1px solid transparent;
+  background:
+
+    repeating-linear-gradient(
+      90deg,
+      var(--dashboard-frame-color) 0 var(--dashboard-frame-dash-length),
+      transparent var(--dashboard-frame-dash-length) calc(var(--dashboard-frame-dash-length) + var(--dashboard-frame-gap))
+    ) top center / calc(100% - (var(--dashboard-frame-inset) * 2)) var(--dashboard-frame-thickness) no-repeat border-box,
+
+    repeating-linear-gradient(
+      90deg,
+      var(--dashboard-frame-color) 0 var(--dashboard-frame-dash-length),
+      transparent var(--dashboard-frame-dash-length) calc(var(--dashboard-frame-dash-length) + var(--dashboard-frame-gap))
+    ) bottom center / calc(100% - (var(--dashboard-frame-inset) * 2)) var(--dashboard-frame-thickness) no-repeat border-box,
+
+    repeating-linear-gradient(
+      180deg,
+      var(--dashboard-frame-color) 0 var(--dashboard-frame-dash-length),
+      transparent var(--dashboard-frame-dash-length) calc(var(--dashboard-frame-dash-length) + var(--dashboard-frame-gap))
+    ) center left / var(--dashboard-frame-thickness) calc(100% - (var(--dashboard-frame-inset) * 2)) no-repeat border-box,
+
+    repeating-linear-gradient(
+      180deg,
+      var(--dashboard-frame-color) 0 var(--dashboard-frame-dash-length),
+      transparent var(--dashboard-frame-dash-length) calc(var(--dashboard-frame-dash-length) + var(--dashboard-frame-gap))
+    ) center right / var(--dashboard-frame-thickness) calc(100% - (var(--dashboard-frame-inset) * 2)) no-repeat border-box,
+
+    repeating-linear-gradient(
+      90deg,
+      var(--dashboard-frame-color) 0 var(--dashboard-frame-dash-length),
+      transparent var(--dashboard-frame-dash-length) calc(var(--dashboard-frame-dash-length) + var(--dashboard-frame-gap))
+    ) top left / var(--dashboard-frame-corner-size) var(--dashboard-frame-thickness) no-repeat border-box,
+
+    repeating-linear-gradient(
+      180deg,
+      var(--dashboard-frame-color) 0 var(--dashboard-frame-dash-length),
+      transparent var(--dashboard-frame-dash-length) calc(var(--dashboard-frame-dash-length) + var(--dashboard-frame-gap))
+    ) top left / var(--dashboard-frame-thickness) var(--dashboard-frame-corner-size) no-repeat border-box,
+
+    repeating-linear-gradient(
+      90deg,
+      var(--dashboard-frame-color) 0 var(--dashboard-frame-dash-length),
+      transparent var(--dashboard-frame-dash-length) calc(var(--dashboard-frame-dash-length) + var(--dashboard-frame-gap))
+    ) top right / var(--dashboard-frame-corner-size) var(--dashboard-frame-thickness) no-repeat border-box,
+
+    repeating-linear-gradient(
+      180deg,
+      var(--dashboard-frame-color) 0 var(--dashboard-frame-dash-length),
+      transparent var(--dashboard-frame-dash-length) calc(var(--dashboard-frame-dash-length) + var(--dashboard-frame-gap))
+    ) top right / var(--dashboard-frame-thickness) var(--dashboard-frame-corner-size) no-repeat border-box,
+
+    repeating-linear-gradient(
+      90deg,
+      var(--dashboard-frame-color) 0 var(--dashboard-frame-dash-length),
+      transparent var(--dashboard-frame-dash-length) calc(var(--dashboard-frame-dash-length) + var(--dashboard-frame-gap))
+    ) bottom left / var(--dashboard-frame-corner-size) var(--dashboard-frame-thickness) no-repeat border-box,
+
+    repeating-linear-gradient(
+      180deg,
+      var(--dashboard-frame-color) 0 var(--dashboard-frame-dash-length),
+      transparent var(--dashboard-frame-dash-length) calc(var(--dashboard-frame-dash-length) + var(--dashboard-frame-gap))
+    ) bottom left / var(--dashboard-frame-thickness) var(--dashboard-frame-corner-size) no-repeat border-box,
+
+    repeating-linear-gradient(
+      90deg,
+      var(--dashboard-frame-color) 0 var(--dashboard-frame-dash-length),
+      transparent var(--dashboard-frame-dash-length) calc(var(--dashboard-frame-dash-length) + var(--dashboard-frame-gap))
+    ) bottom right / var(--dashboard-frame-corner-size) var(--dashboard-frame-thickness) no-repeat border-box,
+
+    repeating-linear-gradient(
+      180deg,
+      var(--dashboard-frame-color) 0 var(--dashboard-frame-dash-length),
+      transparent var(--dashboard-frame-dash-length) calc(var(--dashboard-frame-dash-length) + var(--dashboard-frame-gap))
+    ) bottom right / var(--dashboard-frame-thickness) var(--dashboard-frame-corner-size) no-repeat border-box,
+    linear-gradient(var(--dashboard-content-surface), var(--dashboard-content-surface)) padding-box;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
 .dashboard-content-title {
   margin: 12px 0 8px 8px;
   font-size: var(--font-title);
@@ -1124,6 +1216,11 @@
     --sidebar-item-gap: 8px;
     --sidebar-popup-width: 180px;
     --sidebar-popup-offset: 10px;
+    --dashboard-frame-thickness: 1.5px;
+    --dashboard-frame-dash-length: 6px;
+    --dashboard-frame-gap: 3px;
+    --dashboard-frame-inset: 8px;
+    --dashboard-frame-corner-size: var(--dashboard-frame-inset);
     position: relative;
   }
 
@@ -1773,6 +1870,8 @@
 }
 
 [data-theme='dark'] .dashboard-page {
+  --dashboard-content-surface: rgba(21, 24, 31, 0.96);
+  --dashboard-frame-color: rgba(197, 42, 42, 0.44);
   background: #0f1115;
 }
 
@@ -1816,7 +1915,7 @@
   background: #111318;
 }
 
-[data-theme='dark'] .dashboard-content-body {
+[data-theme='dark'] .dashboard-content-body:not(.dashboard-content-body-frame) {
   background: rgba(21, 24, 31, 0.96);
   border-color: #262b35;
 }

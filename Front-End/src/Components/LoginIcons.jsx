@@ -45,6 +45,17 @@ export function PhoneIcon() {
   )
 }
 
+export function GlobeIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="9"></circle>
+      <path d="M3 12h18"></path>
+      <path d="M12 3a14.5 14.5 0 0 1 0 18"></path>
+      <path d="M12 3a14.5 14.5 0 0 0 0 18"></path>
+    </svg>
+  )
+}
+
 export function CameraIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

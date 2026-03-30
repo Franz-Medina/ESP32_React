@@ -340,7 +340,7 @@ const Users = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
       </aside>
 
       <section className="dashboard-content">
-        <div className="dashboard-content-body">
+        <div className="dashboard-content-body dashboard-content-body-frame">
           <h1 className="dashboard-content-title">Users</h1>
         </div>
       </section>

@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 import Swal from 'sweetalert2'
 import 'sweetalert2/dist/sweetalert2.min.css'
 import { countries } from 'country-list-json'
+import * as FlagIcons from 'country-flag-icons/react/3x2'
 import logo from '../Pictures/Avinya.png'
 import '../Styles/Account.css'
 import {
   CameraIcon,
+  GlobeIcon,
   PhoneIcon,
   UserIcon
 } from '../Components/LoginIcons.jsx'
@@ -31,6 +33,17 @@ const getInitialAccountForm = (user = {}) => {
     phoneCountryOptionId: String(user.phoneCountryOptionId || 'PH-+63').trim(),
     phoneNumber: String(user.phoneNumber || '').trim()
   }
+}
+
+const renderCountryFlag = (isoCode, className) => {
+  const normalizedIso = String(isoCode || '').trim().toUpperCase()
+  const FlagIcon = FlagIcons[normalizedIso]
+
+  if (!FlagIcon) {
+    return null
+  }
+
+  return <FlagIcon className={className} aria-hidden="true" />
 }
 
 const COUNTRY_CODE_OPTIONS = countries
@@ -474,7 +487,7 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
       </aside>
 
       <section className="dashboard-content">
-        <div className="dashboard-content-body">
+        <div className="dashboard-content-body dashboard-content-body-frame">
           <h1 className="dashboard-content-title">Account</h1>
 
           <section className="account-panel" aria-labelledby="account-profile-heading">
@@ -644,12 +657,22 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                         aria-haspopup="listbox"
                         aria-expanded={isCountryCodeOpen}
                       >
+                        <span className="account-field-icon" aria-hidden="true">
+                          <GlobeIcon />
+                        </span>
+
                         <div className="account-floating-control">
                           <span className="account-dropdown-value account-dropdown-value-desktop">
-                            {selectedCountryCodeOption.label}
+                            {renderCountryFlag(selectedCountryCodeOption.iso, 'account-dropdown-flag')}
+                            <span className="account-dropdown-value-text">
+                              {selectedCountryCodeOption.label}
+                            </span>
                           </span>
                           <span className="account-dropdown-value account-dropdown-value-mobile">
-                            {selectedCountryCodeOption.shortLabel}
+                            {renderCountryFlag(selectedCountryCodeOption.iso, 'account-dropdown-flag')}
+                            <span className="account-dropdown-value-text">
+                              {selectedCountryCodeOption.shortLabel}
+                            </span>
                           </span>
                           <span className="account-floating-label account-floating-label-static">
                             Country Code
@@ -671,8 +694,11 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                             className={`account-dropdown-option ${profileForm.phoneCountryOptionId === option.id ? 'active' : ''}`}
                             onClick={() => handleCountryCodeSelect(option)}
                           >
-                            <span className="account-dropdown-option-label-desktop">{option.label}</span>
-                            <span className="account-dropdown-option-label-mobile">{option.shortLabel}</span>
+                            <span className="account-dropdown-option-content">
+                              {renderCountryFlag(option.iso, 'account-dropdown-option-flag')}
+                              <span className="account-dropdown-option-label-desktop">{option.label}</span>
+                              <span className="account-dropdown-option-label-mobile">{option.shortLabel}</span>
+                            </span>
                           </button>
                         ))}
                       </div>
