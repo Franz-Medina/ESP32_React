@@ -358,7 +358,11 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
           <h1 className="dashboard-content-title">Dashboard</h1>
 
           <div className="widgets-grid">
-            <ServoMotor/>
+            <ControlSwitch/>
+          </div>
+
+          <div className="widgets-grid">
+            <LEDIndicator/>
           </div>
 
         </div>

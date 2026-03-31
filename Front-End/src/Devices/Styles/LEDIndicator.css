@@ -1,130 +1,138 @@
-.led-control-widget {
+.led-widget {
   width: 100%;
-  max-width: 380px;
-  margin: 1.5rem auto;
-  padding: 1.5rem 1.25rem;
-  background: #0f172a;
-  color: #e2e8f0;
-  border-radius: 12px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
-  font-family: system-ui, sans-serif;
-}
+  max-width: 420px;
+  min-height: 200px;
 
-.widget-header {
-  text-align: center;
-  margin-bottom: 1.25rem;
-}
+  margin: auto;
 
-h2 {
-  margin: 0;
-  font-size: 1.5rem;
-  color: #60a5fa;
-}
-
-.connect-screen,
-.control-screen {
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  justify-content: flex-start;
+
+  padding: 16px;
+  border-radius: 16px;
+
+  background: #ffffff;
+  border: 1px solid #e4e4e4;
 }
 
-.input-group {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.led-control-widget input[type="text"] {
-  flex: 1;
-  padding: 0.75rem 1rem;
-  border: 1px solid #334155;
-  border-radius: 8px;
-  background: #1e293b;
-  color: white;
-  font-size: 1rem;
-}
-
-.led-control-widget input[type="text"]:focus {
-  outline: none;
-  border-color: #60a5fa;
-  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.2);
-}
-
-.btn {
-  padding: 0.75rem 1.25rem;
-  border: none;
-  border-radius: 8px;
+.led-title {
+  font-size: 15px;
   font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s;
+  color: #980000;
 }
 
-.btn.primary {
-  background: #3b82f6;
-  color: white;
-}
-
-.btn.primary:hover:not(:disabled) {
-  background: #2563eb;
-}
-
-.btn.secondary {
-  background: #475569;
-  color: #e2e8f0;
-}
-
-.btn.secondary:hover {
-  background: #64748b;
-}
-
-.btn.refresh {
-  background: #0891b2;
-  color: white;
-}
-
-.btn.refresh:hover:not(:disabled) {
-  background: #0e7490;
-}
-
-.btn:disabled,
-.btn:disabled:hover {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.status-bar {
+.led-connect {
+  flex: 1;
   display: flex;
-  justify-content: space-between;
-  font-size: 0.95rem;
-  padding: 0.5rem 0;
+  flex-direction: column;
+  justify-content: center;
+  height: 100%;
+  gap: 10px;
+}
+
+.led-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.led-input {
+  width: 100%;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid #e4e4e4;
+  padding: 0 10px;
+  font-size: 13px;
+  box-sizing: border-box;
+}
+
+.led-input:focus {
+  border-color: #980000;
+}
+
+.led-btn {
+  width: 100%;
+  height: 34px;
+  border-radius: 8px;
+
+  border: 1px solid transparent;
+  background: transparent;
+  color: #6b6b6b;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  font-size: 12px;
+  font-weight: 500;
+
+  cursor: pointer;
+
+  transition: all 0.2s ease;
+}
+
+.led-btn:hover {
+  background: #ffffff;
+  border-color: #cfcfcf;
+  color: #980000;
+  transform: translateY(-1px);
+}
+
+.led-btn-primary {
+  background: rgba(152, 0, 0, 0.08);
+  border-color: rgba(152, 0, 0, 0.14);
+  color: #980000;
+}
+
+.led-control {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+}
+
+.led-status {
+  font-size: 12px;
+  color: #6b6b6b;
 }
 
 .led-container {
   display: flex;
   justify-content: center;
-  padding: 1.5rem 0;
+  align-items: center;
+  flex: 1;
+  padding: 12px 0;
+  cursor: pointer;
 }
 
 .led-bulb {
-  width: 100px;
-  height: 100px;
+  width: 92px;
+  height: 92px;
   border-radius: 50%;
   position: relative;
-  box-shadow: inset 0 0 15px rgba(0,0,0,0.6);
-  background: #1e293b;
+  background: #e4e4e4;
+  box-shadow: 
+    inset 0 0 12px rgba(0, 0, 0, 0.15),
+    0 4px 12px rgba(0, 0, 0, 0.08);
   overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .led-bulb.on {
   background: radial-gradient(circle at 30% 30%, #fef08a, #eab308 40%, #ca8a04 70%);
   box-shadow: 
-    0 0 40px #eab308,
-    0 0 80px #ca8a04,
-    inset 0 0 30px #fef08a;
+    0 0 35px #eab308,
+    0 0 70px #ca8a04,
+    inset 0 0 25px #fef08a;
 }
 
 .led-bulb.off {
-  background: radial-gradient(circle at 30% 30%, #4b5563, #1e293b 60%);
-  box-shadow: inset 0 0 20px #000;
+  background: #e4e4e4;
+  box-shadow: 
+    inset 0 0 12px rgba(0, 0, 0, 0.15),
+    0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
 .led-glow {
@@ -132,62 +140,76 @@ h2 {
   inset: 0;
   border-radius: 50%;
   background: inherit;
-  opacity: 0.6;
-  filter: blur(20px);
+  opacity: 0;
+  filter: blur(18px);
+  transition: opacity 0.3s;
 }
 
 .led-bulb.on .led-glow {
-  animation: pulse 2s infinite ease-in-out;
+  opacity: 0.75;
+  animation: led-pulse 2s infinite ease-in-out;
 }
 
-@keyframes pulse {
-  0%, 100% { opacity: 0.6; transform: scale(1); }
-  50%      { opacity: 0.9; transform: scale(1.12); }
+@keyframes led-pulse {
+  0%, 100% { opacity: 0.75; transform: scale(1); }
+  50%      { opacity: 1; transform: scale(1.08); }
 }
 
-.led-bulb.loading::after {
-  content: "⋯";
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 3rem;
-  color: #60a5fa;
-  animation: spin 2s linear infinite;
+[data-theme='dark'] .led-widget {
+  background: rgba(21, 24, 31, 0.96);
+  border-color: #262b35;
 }
 
-.led-status {
-  text-align: center;
-  font-size: 1.3rem;
-  margin: 0.5rem 0;
+[data-theme='dark'] .led-title {
+  color: #980000;
 }
 
-.status-on {
-  color: #fde047;
+[data-theme='dark'] .led-btn {
+  color: #98a2b3;
 }
 
-.status-off {
-  color: #9ca3af;
+[data-theme='dark'] .led-btn:hover {
+  background: #171b22;
+  border-color: #323947;
+  color: #ffdddd;
+  transform: translateY(-1px);
 }
 
-.actions {
-  display: flex;
-  gap: 1rem;
-  justify-content: center;
-  margin-top: 1rem;
+[data-theme='dark'] .led-btn-primary {
+  background: rgba(197, 42, 42, 0.16);
+  border-color: rgba(197, 42, 42, 0.28);
+  color: #ffdddd;
 }
 
-.error-msg {
-  color: #f87171;
-  font-size: 0.9rem;
-  text-align: center;
-  margin: 0.75rem 0;
+[data-theme='dark'] .led-input {
+  border-color: #323947;
+  background: #171b22;
+  color: #ffdddd;
 }
 
-.loading-text {
-  color: #94a3b8;
-  font-size: 0.9rem;
-  text-align: center;
-  margin: 0.5rem 0;
+[data-theme='dark'] .led-input:focus {
+  border-color: #ffdddd;
+}
+
+[data-theme='dark'] .led-status {
+  color: #98a2b3;
+}
+
+[data-theme='dark'] .led-bulb {
+  background: #323947;
+  box-shadow: 
+    inset 0 0 12px rgba(0, 0, 0, 0.3),
+    0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+[data-theme='dark'] .led-bulb.on {
+  background: radial-gradient(circle at 30% 30%, #fef08a, #eab308 40%, #ca8a04 70%);
+  box-shadow: 
+    0 0 35px #eab308,
+    0 0 70px #ca8a04,
+    inset 0 0 25px #fef08a;
+}
+
+[data-theme='dark'] .led-bulb.off {
+  background: #323947;
 }

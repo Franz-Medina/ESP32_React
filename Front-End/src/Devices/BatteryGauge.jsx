@@ -5,7 +5,7 @@ const TB_URL = import.meta.env.VITE_TB_URL;
 const TB_API_KEY = import.meta.env.VITE_TB_API_KEY;
 
 function BatteryGauge({ 
-  title = "Battery Level", 
+  title = "BATTERY GAUGE", 
   dataKey = "battery", 
   deviceId: propDeviceId = null 
 }) {
@@ -13,14 +13,12 @@ function BatteryGauge({
   const [isConnected, setIsConnected] = useState(!!propDeviceId);
   const [batteryLevel, setBatteryLevel] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState("");
 
   const fetchBattery = async () => {
     if (!deviceId) return;
 
     try {
       setIsLoading(true);
-      setErrorMessage("");
 
       const response = await fetch(
         `${TB_URL}/api/plugins/telemetry/DEVICE/${deviceId}/values/timeseries?keys=${dataKey}&limit=1`,
@@ -40,7 +38,6 @@ function BatteryGauge({
       setBatteryLevel(level);
     } catch (err) {
       console.error(err);
-      setErrorMessage("Failed to load battery level");
     } finally {
       setIsLoading(false);
     }
@@ -55,19 +52,14 @@ function BatteryGauge({
   }, [isConnected, deviceId]);
 
   const handleConnect = () => {
-    if (!deviceId.trim()) {
-      setErrorMessage("Please enter a Device ID");
-      return;
-    }
+    console.log("Pretend connecting to device:", deviceId || "test-device");
     setIsConnected(true);
-    setErrorMessage("");
   };
 
   const handleDisconnect = () => {
     setIsConnected(false);
     setDeviceId("");
     setBatteryLevel(0);
-    setErrorMessage("");
   };
 
   const getBatteryColor = (level) => {
@@ -80,59 +72,50 @@ function BatteryGauge({
 
   return (
     <div className="battery-gauge-widget">
-      <div className="widget-header">
-        <h3>{title}</h3>
-      </div>
+      <div className="battery-title">{title}</div>
 
       {!isConnected ? (
-        <div className="connect-screen">
-          <div className="input-group">
+        <div className="battery-connect">
+          <div className="battery-input-group">
             <input
               type="text"
               placeholder="Device ID"
               value={deviceId}
-              onChange={(e) => {
-                setDeviceId(e.target.value);
-                setErrorMessage("");
-              }}
-              onKeyDown={(e) => e.key === "Enter" && handleConnect()}
+              onChange={(e) => setDeviceId(e.target.value)}
+              className="battery-input"
             />
-            <button className="btn primary" onClick={handleConnect}>
-              Connect
+            <button
+              onClick={handleConnect}
+              className="battery-btn battery-btn-primary"
+            >
+              CONNECT
             </button>
           </div>
-          {errorMessage && <p className="error-msg">{errorMessage}</p>}
         </div>
       ) : (
-        <div className="gauge-screen">
-          <div className="status-bar">
-            Device: <strong>{deviceId}</strong>
+        <div className="battery-control">
+          <div className="battery-status">
+            Connected to <strong>{deviceId || "test-device"}</strong> (test mode)
           </div>
 
           <div className="battery-container">
-            <div className="battery-outer">
+            <div className="battery-body">
               <div 
                 className="battery-level"
                 style={{
                   width: `${batteryLevel}%`,
                   backgroundColor: batteryColor
                 }}
-              >
-                <span className="battery-text">{batteryLevel}%</span>
-              </div>
+              />
+              <div className="battery-percentage">{batteryLevel}%</div>
             </div>
-
             <div className="battery-cap" />
           </div>
 
-          <div className="battery-status">
-            {batteryLevel > 70 ? "Good" : batteryLevel > 30 ? "Fair" : "Low"}
-          </div>
-
-          {isLoading && <p className="loading-text">Updating...</p>}
-          {errorMessage && <p className="error-msg">{errorMessage}</p>}
-
-          <button className="btn secondary" onClick={handleDisconnect}>
+          <button 
+            className="battery-btn"
+            onClick={handleDisconnect}
+          >
             Change Device
           </button>
         </div>

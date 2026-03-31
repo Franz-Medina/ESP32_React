@@ -2,14 +2,19 @@ import { useState } from "react";
 import "./Styles/ServoMotor.css";
 
 export default function ServoMotor() {
-  const [ip, setIp] = useState("");
+  const [deviceId, setDeviceId] = useState("");
   const [connected, setConnected] = useState(false);
   const [angle, setAngle] = useState(90);
 
-  // remind me to fix this later, just a placeholder for now to test
   const connectToServo = () => {
-    console.log("Pretend connecting to:", ip);
+    console.log("Pretend connecting to device:", deviceId || "test-device");
     setConnected(true);
+  };
+
+  const handleDisconnect = () => {
+    setConnected(false);
+    setDeviceId("");
+    setAngle(90);
   };
 
   const sendAngle = (value) => {
@@ -28,9 +33,9 @@ export default function ServoMotor() {
           <div className="servo-input-group">
             <input
               type="text"
-              placeholder="192.168.0.10"
-              value={ip}
-              onChange={(e) => setIp(e.target.value)}
+              placeholder="Device ID"
+              value={deviceId}
+              onChange={(e) => setDeviceId(e.target.value)}
               className="servo-input"
             />
             <button
@@ -43,7 +48,9 @@ export default function ServoMotor() {
         </div>
       ) : (
         <div className="servo-control">
-          <div className="servo-status">Connected (test mode)</div>
+          <div className="servo-status">
+            Connected to <strong>{deviceId || "test-device"}</strong> (test mode)
+          </div>
 
           <div className="servo-angle">
             <div className="servo-angle-value">{angle}</div>
@@ -66,6 +73,13 @@ export default function ServoMotor() {
             <span>0°</span>
             <span>180°</span>
           </div>
+
+          <button 
+            className="servo-btn"
+            onClick={handleDisconnect}
+          >
+            Change Device
+          </button>
         </div>
       )}
     </div>

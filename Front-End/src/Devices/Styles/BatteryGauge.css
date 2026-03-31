@@ -1,138 +1,195 @@
 .battery-gauge-widget {
   width: 100%;
-  background: #0f172a;
-  border-radius: 12px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
-  overflow: hidden;
+  max-width: 420px;
+  min-height: 200px;
+
+  margin: auto;
+
   display: flex;
   flex-direction: column;
-  padding: 1.5rem 1.25rem;
-  font-family: system-ui, sans-serif;
+  justify-content: flex-start;
+
+  padding: 16px;
+  border-radius: 16px;
+
+  background: #ffffff;
+  border: 1px solid #e4e4e4;
 }
 
-.widget-header h3 {
-  margin: 0 0 1rem 0;
-  font-size: 1.35rem;
-  color: #60a5fa;
-  text-align: center;
+.battery-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #980000;
 }
 
-.connect-screen,
-.gauge-screen {
+.battery-connect {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
-  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 10px;
 }
 
-.input-group {
+.battery-input-group {
   display: flex;
-  gap: 0.5rem;
+  flex-direction: column;
+  gap: 8px;
   width: 100%;
 }
 
-.battery-gauge-widget input[type="text"] {
-  flex: 1;
-  padding: 0.75rem 1rem;
-  border: 1px solid #334155;
+.battery-input {
+  width: 100%;
+  height: 36px;
   border-radius: 8px;
-  background: #1e293b;
-  color: white;
-  font-size: 1rem;
+  border: 1px solid #e4e4e4;
+  padding: 0 10px;
+  font-size: 13px;
+  box-sizing: border-box;
 }
 
-.battery-gauge-widget input[type="text"]:focus {
-  outline: none;
-  border-color: #60a5fa;
+.battery-input:focus {
+  border-color: #980000;
 }
 
-.btn {
-  padding: 0.75rem 1.25rem;
-  border: none;
+.battery-btn {
+  width: 100%;
+  height: 34px;
   border-radius: 8px;
-  font-weight: 600;
+
+  border: 1px solid transparent;
+  background: transparent;
+  color: #6b6b6b;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  font-size: 12px;
+  font-weight: 500;
+
   cursor: pointer;
-  transition: all 0.15s;
+
+  transition: all 0.2s ease;
 }
 
-.btn.primary {
-  background: #3b82f6;
-  color: white;
+.battery-btn:hover {
+  background: #ffffff;
+  border-color: #cfcfcf;
+  color: #980000;
+  transform: translateY(-1px);
 }
 
-.btn.primary:hover:not(:disabled) {
-  background: #2563eb;
+.battery-btn-primary {
+  background: rgba(152, 0, 0, 0.08);
+  border-color: rgba(152, 0, 0, 0.14);
+  color: #980000;
 }
 
-.btn.secondary {
-  background: #475569;
-  color: #e2e8f0;
+.battery-control {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
 }
 
-.btn.secondary:hover {
-  background: #64748b;
-}
-
-.status-bar {
-  font-size: 0.95rem;
-  color: #94a3b8;
-  text-align: center;
+.battery-status {
+  font-size: 12px;
+  color: #6b6b6b;
 }
 
 .battery-container {
-  position: relative;
-  width: 180px;
-  margin: 1.5rem 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: fit-content;
+  margin: 14px auto 10px;
 }
 
-.battery-outer {
-  width: 160px;
-  height: 80px;
-  border: 6px solid #475569;
-  border-radius: 12px;
-  position: relative;
+.battery-body {
+  width: 192px;
+  height: 74px;
+  border: 5px solid #e4e4e4;
+  border-radius: 13px;
   overflow: hidden;
-  background: #1e293b;
+  position: relative;
+  flex-shrink: 0;
 }
 
 .battery-level {
   height: 100%;
-  transition: width 0.6s ease, background-color 0.4s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.6rem;
+  transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.battery-percentage {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 23px;
   font-weight: 700;
-  color: white;
-  text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+  color: #111827;
+  z-index: 2;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  pointer-events: none;
 }
 
 .battery-cap {
-  position: absolute;
-  top: 28px;
-  right: -12px;
   width: 12px;
-  height: 28px;
-  background: #475569;
-  border-radius: 0 6px 6px 0;
+  height: 36px;
+  background: #e4e4e4;
+  border-radius: 3px;
+  align-self: center;
 }
 
-.battery-status {
-  font-size: 1.1rem;
-  font-weight: 600;
-  text-align: center;
-  margin-top: 0.5rem;
-  color: #e2e8f0;
+[data-theme='dark'] .battery-gauge-widget {
+  background: rgba(21, 24, 31, 0.96);
+  border-color: #262b35;
 }
 
-.loading-text {
-  color: #94a3b8;
-  font-size: 0.9rem;
-  text-align: center;
+[data-theme='dark'] .battery-title {
+  color: #980000;
 }
 
-.error-msg {
-  color: #f87171;
-  font-size: 0.9rem;
-  text-align: center;
+[data-theme='dark'] .battery-btn {
+  color: #98a2b3;
+}
+
+[data-theme='dark'] .battery-btn:hover {
+  background: #171b22;
+  border-color: #323947;
+  color: #ffdddd;
+  transform: translateY(-1px);
+}
+
+[data-theme='dark'] .battery-btn-primary {
+  background: rgba(197, 42, 42, 0.16);
+  border-color: rgba(197, 42, 42, 0.28);
+  color: #ffdddd;
+}
+
+[data-theme='dark'] .battery-input {
+  border-color: #323947;
+  background: #171b22;
+  color: #ffdddd;
+}
+
+[data-theme='dark'] .battery-input:focus {
+  border-color: #ffdddd;
+}
+
+[data-theme='dark'] .battery-status {
+  color: #98a2b3;
+}
+
+[data-theme='dark'] .battery-body {
+  border-color: #323947;
+}
+
+[data-theme='dark'] .battery-cap {
+  background: #323947;
+}
+
+[data-theme='dark'] .battery-percentage {
+  color: #ffffff;
 }
