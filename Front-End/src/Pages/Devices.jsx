@@ -4,6 +4,7 @@ import 'sweetalert2/dist/sweetalert2.min.css'
 import logo from '../Pictures/Avinya.png'
 import '../Styles/Devices.css'
 import { getCurrentUserProfile } from '../Utils/getCurrentUserProfile'
+import { buildApiAssetUrl } from '../Config/API'
 
 const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   const [isEntitiesOpen, setIsEntitiesOpen] = useState(true)
@@ -11,6 +12,14 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
 
   const user = getCurrentUserProfile()
+
+  const sidebarProfileImagePreview = buildApiAssetUrl(user.profilePictureUrl)
+
+  const sidebarUserInitials = [user.firstName, user.lastName]
+    .filter(Boolean)
+    .map((value) => String(value).trim().charAt(0).toUpperCase())
+    .join('')
+    .slice(0, 2) || 'A'
 
   const closeDropdowns = () => {
     setIsEntitiesOpen(false)
@@ -275,10 +284,19 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                 }
               >
                 <div className="dashboard-sidebar-user-avatar" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M20 21a8 8 0 0 0-16 0" />
-                    <circle cx="12" cy="8" r="4" />
-                  </svg>
+                  {sidebarProfileImagePreview ? (
+                    <img
+                      src={sidebarProfileImagePreview}
+                      alt=""
+                      className="dashboard-sidebar-user-avatar-image"
+                    />
+                  ) : (
+                    <div className="dashboard-sidebar-user-avatar-fallback">
+                      <span className="dashboard-sidebar-user-avatar-fallback-text">
+                        {sidebarUserInitials}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="dashboard-sidebar-user-details">

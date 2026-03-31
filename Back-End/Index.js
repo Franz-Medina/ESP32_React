@@ -44,7 +44,7 @@ app.use(
   })
 );
 
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
 
 const OTP_EXPIRY_SECONDS = Number(process.env.OTP_EXPIRY_SECONDS || 60);
 const PASSWORD_RESET_EXPIRY_MINUTES = Number(
@@ -98,6 +98,12 @@ const AVINYA_EMAIL_LOGO_CANDIDATES = [
 
 const AVINYA_EMAIL_LOGO_PATH =
   AVINYA_EMAIL_LOGO_CANDIDATES.find((candidate) => fs.existsSync(candidate)) || null;
+
+const PROFILE_PICTURES_DIR = path.join(__dirname, "Profile Pictures");
+
+fs.mkdirSync(PROFILE_PICTURES_DIR, { recursive: true });
+
+app.use("/profile-pictures", express.static(PROFILE_PICTURES_DIR));
 
 const getAvinyaMailAttachments = () =>
   AVINYA_EMAIL_LOGO_PATH
@@ -240,6 +246,233 @@ const getLoginPasswordValidationError = (value) => {
 
   return "";
 };
+
+const getDeleteAccountPasswordValidationError = (value) => {
+  if (!value) {
+    return "Please enter your password.";
+  }
+
+  if (value !== value.trim()) {
+    return "Password must not start or end with spaces.";
+  }
+
+  return "";
+};
+
+const getDeleteAccountConfirmPasswordValidationError = (password, confirmPassword) => {
+  if (!confirmPassword) {
+    return "Please confirm your password.";
+  }
+
+  if (confirmPassword !== confirmPassword.trim()) {
+    return "Confirm password must not start or end with spaces.";
+  }
+
+  if (password !== confirmPassword) {
+    return "Passwords do not match.";
+  }
+
+  return "";
+};
+
+const PHONE_COUNTRY_CODE_REGEX = /^\+[1-9]\d{0,3}$/;
+const ALLOWED_PROFILE_IMAGE_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
+const MAX_PROFILE_IMAGE_BYTES = 5 * 1024 * 1024;
+
+const getPhoneCountryCodeValidationError = (value) => {
+  const normalizedValue = String(value || "").trim();
+
+  if (!normalizedValue) {
+    return "";
+  }
+
+  if (!PHONE_COUNTRY_CODE_REGEX.test(normalizedValue)) {
+    return "Please select a valid country code.";
+  }
+
+  return "";
+};
+
+const getPhoneNumberValidationError = (value) => {
+  const normalizedValue = String(value || "");
+
+  if (!normalizedValue) {
+    return "";
+  }
+
+  if (normalizedValue !== normalizedValue.trim()) {
+    return "Phone number must not start or end with spaces.";
+  }
+
+  if (/\s/.test(normalizedValue)) {
+    return "Phone number must not contain spaces.";
+  }
+
+  if (normalizedValue.includes("+")) {
+    return "Enter your phone number without the country code.";
+  }
+
+  if (!/^\d+$/.test(normalizedValue)) {
+    return "Phone number must contain numbers only.";
+  }
+
+  if (normalizedValue.startsWith("0")) {
+    return "Phone number must not start with 0.";
+  }
+
+  if (normalizedValue.length < 7) {
+    return "Phone number must be at least 7 digits.";
+  }
+
+  if (normalizedValue.length > 15) {
+    return "Phone number must not exceed 15 digits.";
+  }
+
+  return "";
+};
+
+const getSafeProfilePictureBaseName = ({ firstName, lastName, email }) => {
+  const composedName = [String(lastName || "").trim(), String(firstName || "").trim()]
+    .filter(Boolean)
+    .join(", ")
+    .trim();
+
+  const fallbackName = composedName || String(email || "").trim() || "User";
+
+  return (
+    fallbackName
+      .replace(/[<>:"/\\|?*\u0000-\u001F]/g, "")
+      .replace(/\s+/g, " ")
+      .trim() || "User"
+  );
+};
+
+const getProfilePicturePublicPath = (fileName = "") =>
+  fileName ? `/profile-pictures/${encodeURIComponent(fileName)}` : "";
+
+const getStoredProfilePictureAbsolutePath = (storedUrl = "") => {
+  const cleanStoredUrl = String(storedUrl || "").trim().split("?")[0];
+
+  if (!cleanStoredUrl) {
+    return "";
+  }
+
+  const rawFileName = cleanStoredUrl.split("/").pop() || "";
+  const decodedFileName = decodeURIComponent(rawFileName);
+
+  return path.join(PROFILE_PICTURES_DIR, decodedFileName);
+};
+
+const removeStoredProfilePicture = (storedUrl = "") => {
+  const absolutePath = getStoredProfilePictureAbsolutePath(storedUrl);
+
+  if (absolutePath && fs.existsSync(absolutePath)) {
+    fs.unlinkSync(absolutePath);
+  }
+};
+
+const saveProfilePictureFromDataUrl = ({
+  profileImageDataUrl,
+  firstName,
+  lastName,
+  email,
+  previousProfilePictureUrl = "",
+}) => {
+  const matches = String(profileImageDataUrl || "").match(
+    /^data:(image\/(?:jpeg|png|webp));base64,(.+)$/i
+  );
+
+  if (!matches) {
+    throw new Error("Please select a JPG, JPEG, PNG, or WEBP image.");
+  }
+
+  const mimeType = matches[1].toLowerCase();
+  const base64Payload = matches[2];
+
+  if (!ALLOWED_PROFILE_IMAGE_MIME_TYPES.has(mimeType)) {
+    throw new Error("Please select a JPG, JPEG, PNG, or WEBP image.");
+  }
+
+  const imageBuffer = Buffer.from(base64Payload, "base64");
+
+  if (imageBuffer.length > MAX_PROFILE_IMAGE_BYTES) {
+    throw new Error("Profile image must be 5 MB or smaller.");
+  }
+
+  const fileExtension = mimeType === "image/jpeg" ? "jpg" : mimeType.split("/")[1];
+  const nextFileName = `${getSafeProfilePictureBaseName({
+    firstName,
+    lastName,
+    email,
+  })}.${fileExtension}`;
+
+  const nextAbsolutePath = path.join(PROFILE_PICTURES_DIR, nextFileName);
+
+  removeStoredProfilePicture(previousProfilePictureUrl);
+  fs.writeFileSync(nextAbsolutePath, imageBuffer);
+
+  return getProfilePicturePublicPath(nextFileName);
+};
+
+const renameStoredProfilePictureIfNeeded = ({
+  previousProfilePictureUrl = "",
+  firstName,
+  lastName,
+  email,
+}) => {
+  const previousAbsolutePath = getStoredProfilePictureAbsolutePath(
+    previousProfilePictureUrl
+  );
+
+  if (!previousAbsolutePath || !fs.existsSync(previousAbsolutePath)) {
+    return "";
+  }
+
+  const existingExtension = path.extname(previousAbsolutePath) || ".jpg";
+  const nextFileName = `${getSafeProfilePictureBaseName({
+    firstName,
+    lastName,
+    email,
+  })}${existingExtension}`;
+  const nextAbsolutePath = path.join(PROFILE_PICTURES_DIR, nextFileName);
+
+  if (previousAbsolutePath !== nextAbsolutePath) {
+    if (fs.existsSync(nextAbsolutePath)) {
+      fs.unlinkSync(nextAbsolutePath);
+    }
+
+    fs.renameSync(previousAbsolutePath, nextAbsolutePath);
+  }
+
+  return getProfilePicturePublicPath(nextFileName);
+};
+
+const buildThingsBoardPhone = (phoneCountryCode = "", phoneNumber = "") => {
+  const normalizedCountryCode = String(phoneCountryCode || "").trim();
+  const normalizedPhoneDigits = String(phoneNumber || "").replace(/\D/g, "");
+
+  if (!normalizedPhoneDigits) {
+    return "";
+  }
+
+  return `${normalizedCountryCode}${normalizedPhoneDigits}`;
+};
+
+const mapUserRowToClientUser = (userRow) => ({
+  id: userRow.id,
+  firstName: userRow.first_name,
+  lastName: userRow.last_name,
+  email: userRow.email,
+  isVerified: userRow.is_verified,
+  phoneCountryCode: userRow.phone_country_code || "+63",
+  phoneNumber: userRow.phone_number || "",
+  roleLabel: userRow.role_label || "Customer Administrator",
+  profilePictureUrl: userRow.profile_picture_url || "",
+});
 
 const registrationLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -459,6 +692,36 @@ const ensureUsersTableSchema = async () => {
        OR role_label NOT IN ('Tenant Administrator', 'Customer Administrator')
        OR LOWER(email) = 'tbd.avinya@gmail.com';
   `);
+};
+
+const authenticateToken = (req, res, next) => {
+  const authorizationHeader =
+    req.headers.authorization || req.headers["x-authorization"] || "";
+
+  const token = String(authorizationHeader)
+    .replace(/^Bearer\s+/i, "")
+    .trim();
+
+  if (!token) {
+    return res.status(401).json({
+      message: "Authentication required.",
+    });
+  }
+
+  try {
+    const decodedToken = jwt.verify(token, process.env.JWT_SECRET);
+
+    req.user = {
+      id: decodedToken.id,
+      email: decodedToken.email,
+    };
+
+    return next();
+  } catch {
+    return res.status(401).json({
+      message: "Invalid or expired session. Please log in again.",
+    });
+  }
 };
 
 const sendOtpEmail = async ({ firstName, email, otpCode }) => {
@@ -1028,6 +1291,35 @@ const tbChangeCurrentUserPassword = async (
   });
 };
 
+const findTbUserByEmail = async (token, email) => {
+  const data = await tbRequest(
+    `/api/users?pageSize=100&page=0&textSearch=${encodeURIComponent(email)}`,
+    { token }
+  );
+
+  return (
+    data?.data?.find(
+      (item) => item.email?.toLowerCase() === email.toLowerCase()
+    ) || null
+  );
+};
+
+const tbDeleteUser = async (token, userId) => {
+  return tbRequest(`/api/user/${userId}`, {
+    method: "DELETE",
+    token,
+    isText: true,
+  });
+};
+
+const tbDeleteCustomer = async (token, customerId) => {
+  return tbRequest(`/api/customer/${customerId}`, {
+    method: "DELETE",
+    token,
+    isText: true,
+  });
+};
+
 const findTbCustomerByTitle = async (token, title) => {
   const data = await tbRequest(
     `/api/customers?pageSize=100&page=0&textSearch=${encodeURIComponent(title)}`,
@@ -1102,7 +1394,7 @@ const toTbUserIdPayload = (userId) => ({
 
 const saveTbCustomerUser = async (
   token,
-  { userId = null, customerId, email, firstName, lastName }
+  { userId = null, customerId, email, firstName, lastName, phone = "" }
 ) => {
   return tbRequest("/api/user?sendActivationMail=false", {
     method: "POST",
@@ -1113,6 +1405,7 @@ const saveTbCustomerUser = async (
       email,
       firstName,
       lastName,
+      phone,
       customerId: {
         entityType: "CUSTOMER",
         id: customerId,
@@ -1288,6 +1581,342 @@ const syncVerifiedUserToThingsBoard = async ({
     tbUserId: getTbEntityId(tbUser),
   };
 };
+
+app.get("/account/me", authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT
+         id,
+         first_name,
+         last_name,
+         email,
+         is_verified,
+         phone_country_code,
+         phone_number,
+         role_label,
+         profile_picture_url
+       FROM users
+       WHERE id = $1`,
+      [req.user.id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        message: "User account not found.",
+      });
+    }
+
+    return res.status(200).json({
+      user: mapUserRowToClientUser(result.rows[0]),
+    });
+  } catch (error) {
+    console.error("ACCOUNT ME ERROR:", error);
+    return res.status(500).json({
+      message: "Unable to load your account details right now.",
+    });
+  }
+});
+
+app.put("/account/profile", authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+
+  try {
+    const trimmedFirstName =
+      typeof req.body.firstName === "string" ? req.body.firstName.trim() : "";
+    const trimmedLastName =
+      typeof req.body.lastName === "string" ? req.body.lastName.trim() : "";
+    const trimmedEmail = normalizeEmail(
+      typeof req.body.email === "string" ? req.body.email : ""
+    );
+    const trimmedPhoneCountryCode =
+      typeof req.body.phoneCountryCode === "string"
+        ? req.body.phoneCountryCode.trim()
+        : "+63";
+    const trimmedPhoneNumber =
+      typeof req.body.phoneNumber === "string" ? req.body.phoneNumber.trim() : "";
+    const profileImageDataUrl =
+      typeof req.body.profileImageDataUrl === "string"
+        ? req.body.profileImageDataUrl.trim()
+        : "";
+    const removeProfileImage = req.body.removeProfileImage === true;
+
+    const firstNameValidationError = getNameValidationError(
+      trimmedFirstName,
+      "First name"
+    );
+    const lastNameValidationError = getNameValidationError(
+      trimmedLastName,
+      "Last name"
+    );
+    const emailValidationError = getEmailValidationError(trimmedEmail);
+    const phoneCountryCodeValidationError =
+      getPhoneCountryCodeValidationError(trimmedPhoneCountryCode);
+    const phoneNumberValidationError =
+      getPhoneNumberValidationError(trimmedPhoneNumber);
+
+    if (firstNameValidationError) {
+      return res.status(400).json({ message: firstNameValidationError });
+    }
+
+    if (lastNameValidationError) {
+      return res.status(400).json({ message: lastNameValidationError });
+    }
+
+    if (emailValidationError) {
+      return res.status(400).json({ message: emailValidationError });
+    }
+
+    if (phoneCountryCodeValidationError) {
+      return res.status(400).json({ message: phoneCountryCodeValidationError });
+    }
+
+    if (phoneNumberValidationError) {
+      return res.status(400).json({ message: phoneNumberValidationError });
+    }
+
+    await client.query("BEGIN");
+
+    const currentUserResult = await client.query(
+      `SELECT
+         id,
+         email,
+         tb_customer_id,
+         tb_user_id,
+         is_verified,
+         role_label,
+         phone_country_code,
+         phone_number,
+         profile_picture_url
+       FROM users
+       WHERE id = $1
+       FOR UPDATE`,
+      [req.user.id]
+    );
+
+    if (currentUserResult.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({
+        message: "User account not found.",
+      });
+    }
+
+    const currentUser = currentUserResult.rows[0];
+
+    const duplicateEmailResult = await client.query(
+      `SELECT id
+       FROM users
+       WHERE email = $1
+         AND id <> $2
+       LIMIT 1`,
+      [trimmedEmail, currentUser.id]
+    );
+
+    if (duplicateEmailResult.rows.length > 0) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({
+        message: "This email address is already registered.",
+      });
+    }
+
+    if (currentUser.tb_user_id && currentUser.tb_customer_id) {
+      const adminToken = await tbLogin();
+
+      await saveTbCustomerUser(adminToken, {
+        userId: currentUser.tb_user_id,
+        customerId: currentUser.tb_customer_id,
+        email: trimmedEmail,
+        firstName: trimmedFirstName,
+        lastName: trimmedLastName,
+        phone: buildThingsBoardPhone(
+          trimmedPhoneCountryCode,
+          trimmedPhoneNumber
+        ),
+      });
+    }
+
+    let nextProfilePictureUrl = currentUser.profile_picture_url || "";
+
+    if (removeProfileImage) {
+      removeStoredProfilePicture(currentUser.profile_picture_url);
+      nextProfilePictureUrl = "";
+    } else if (profileImageDataUrl) {
+      nextProfilePictureUrl = saveProfilePictureFromDataUrl({
+        profileImageDataUrl,
+        firstName: trimmedFirstName,
+        lastName: trimmedLastName,
+        email: trimmedEmail,
+        previousProfilePictureUrl: currentUser.profile_picture_url,
+      });
+    } else if (currentUser.profile_picture_url) {
+      nextProfilePictureUrl =
+        renameStoredProfilePictureIfNeeded({
+          previousProfilePictureUrl: currentUser.profile_picture_url,
+          firstName: trimmedFirstName,
+          lastName: trimmedLastName,
+          email: trimmedEmail,
+        }) || "";
+    }
+
+    const updatedUserResult = await client.query(
+      `UPDATE users
+       SET first_name = $1,
+           last_name = $2,
+           email = $3,
+           phone_country_code = $4,
+           phone_number = $5,
+           profile_picture_url = NULLIF($6, '')
+       WHERE id = $7
+       RETURNING
+         id,
+         first_name,
+         last_name,
+         email,
+         is_verified,
+         phone_country_code,
+         phone_number,
+         role_label,
+         profile_picture_url`,
+      [
+        trimmedFirstName,
+        trimmedLastName,
+        trimmedEmail,
+        trimmedPhoneCountryCode,
+        trimmedPhoneNumber,
+        nextProfilePictureUrl,
+        currentUser.id,
+      ]
+    );
+
+    await client.query("COMMIT");
+
+    return res.status(200).json({
+      message: "Your account details have been saved successfully.",
+      user: mapUserRowToClientUser(updatedUserResult.rows[0]),
+    });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("ACCOUNT PROFILE SAVE ERROR:", error);
+
+    return res.status(500).json({
+      message:
+        error.message ||
+        "Something went wrong while saving your account details. Please try again.",
+    });
+  } finally {
+    client.release();
+  }
+});
+
+app.delete("/account", authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+
+  try {
+    const rawPassword = typeof req.body.password === "string" ? req.body.password : "";
+    const rawConfirmPassword =
+      typeof req.body.confirmPassword === "string" ? req.body.confirmPassword : "";
+
+    const passwordValidationError =
+      getDeleteAccountPasswordValidationError(rawPassword);
+    const confirmPasswordValidationError =
+      getDeleteAccountConfirmPasswordValidationError(
+        rawPassword,
+        rawConfirmPassword
+      );
+
+    if (passwordValidationError) {
+      return res.status(400).json({
+        message: passwordValidationError,
+      });
+    }
+
+    if (confirmPasswordValidationError) {
+      return res.status(400).json({
+        message: confirmPasswordValidationError,
+      });
+    }
+
+    const currentUserResult = await client.query(
+      `SELECT
+         id,
+         email,
+         password,
+         tb_customer_id,
+         tb_user_id,
+         profile_picture_url,
+         role_label
+       FROM users
+       WHERE id = $1`,
+      [req.user.id]
+    );
+
+    if (currentUserResult.rows.length === 0) {
+      return res.status(404).json({
+        message: "User account not found.",
+      });
+    }
+
+    const currentUser = currentUserResult.rows[0];
+
+    const isPasswordMatch = await bcrypt.compare(
+      rawPassword,
+      currentUser.password
+    );
+
+    if (!isPasswordMatch) {
+      return res.status(400).json({
+        message: "Invalid email or password. Please try again.",
+      });
+    }
+
+    if (currentUser.tb_customer_id || currentUser.tb_user_id) {
+      const adminToken = await tbLogin();
+
+      if (currentUser.tb_customer_id) {
+        await tbDeleteCustomer(adminToken, currentUser.tb_customer_id);
+      } else {
+        const fallbackTbUser =
+          currentUser.tb_user_id
+            ? { id: { id: currentUser.tb_user_id } }
+            : await findTbUserByEmail(adminToken, currentUser.email);
+
+        const fallbackTbUserId = getTbEntityId(fallbackTbUser);
+
+        if (fallbackTbUserId) {
+          await tbDeleteUser(adminToken, fallbackTbUserId);
+        }
+      }
+    }
+
+    await client.query("BEGIN");
+
+    await client.query(`DELETE FROM users WHERE id = $1`, [currentUser.id]);
+
+    await client.query("COMMIT");
+
+    if (currentUser.profile_picture_url) {
+      try {
+        removeStoredProfilePicture(currentUser.profile_picture_url);
+      } catch (fileError) {
+        console.error("ACCOUNT PROFILE PICTURE DELETE ERROR:", fileError);
+      }
+    }
+
+    return res.status(200).json({
+      message: "User account deleted successfully.",
+    });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error("ACCOUNT DELETE ERROR:", error);
+
+    return res.status(500).json({
+      message:
+        error.message ||
+        "Something went wrong while deleting your account. Please try again.",
+    });
+  } finally {
+    client.release();
+  }
+});
 
 app.post("/register", registrationLimiter, async (req, res) => {
   const client = await pool.connect();
@@ -1898,7 +2527,17 @@ app.post("/login", loginLimiter, async (req, res) => {
     }
 
     const result = await pool.query(
-      `SELECT id, first_name, last_name, email, password, is_verified
+      `SELECT
+         id,
+         first_name,
+         last_name,
+         email,
+         password,
+         is_verified,
+         phone_country_code,
+         phone_number,
+         role_label,
+         profile_picture_url
        FROM users
        WHERE email = $1`,
       [trimmedEmail]
@@ -1940,13 +2579,7 @@ app.post("/login", loginLimiter, async (req, res) => {
     return res.status(200).json({
       message: "Login successful.",
       token,
-      user: {
-        id: user.id,
-        firstName: user.first_name,
-        lastName: user.last_name,
-        email: user.email,
-        isVerified: user.is_verified,
-      },
+      user: mapUserRowToClientUser(user),
     });
   } catch (error) {
     console.error("LOGIN ERROR:", error);
