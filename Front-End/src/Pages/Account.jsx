@@ -65,6 +65,17 @@ const normalizeAccountFormValues = (form = {}) => ({
   phoneNumber: String(form.phoneNumber || '').trim()
 })
 
+const appendImageCacheKey = (assetUrl = '', cacheKey = '') => {
+  const resolvedAssetUrl = String(assetUrl || '').trim()
+  const resolvedCacheKey = String(cacheKey || '').trim()
+
+  if (!resolvedAssetUrl || !resolvedCacheKey) {
+    return resolvedAssetUrl
+  }
+
+  return `${resolvedAssetUrl}${resolvedAssetUrl.includes('?') ? '&' : '?'}v=${encodeURIComponent(resolvedCacheKey)}`
+}
+
 const AccountLockIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
     <rect x="5" y="11" width="14" height="10" rx="2" />
@@ -807,8 +818,7 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
         }
 
         updateStoredUserProfile({
-          ...data.user,
-          profilePictureUrl: nextResolvedProfileImagePreview
+          ...data.user
         })
 
         setProfileForm(nextResolvedProfileForm)
@@ -1132,7 +1142,14 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
         throw new Error(errorMessage)
       }
 
-      const nextResolvedProfileImagePreview = buildApiAssetUrl(data.user?.profilePictureUrl)
+      const nextProfileImageCacheKey = String(Date.now())
+
+      const nextResolvedProfileImagePreview = data.user?.profilePictureUrl
+        ? appendImageCacheKey(
+            buildApiAssetUrl(data.user?.profilePictureUrl),
+            nextProfileImageCacheKey
+          )
+        : ''
 
       const nextResolvedProfileForm = {
         firstName: String(data.user?.firstName || '').trim(),
@@ -1151,8 +1168,7 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
       setSavedProfileImagePreview(nextResolvedProfileImagePreview)
 
       updateStoredUserProfile({
-        ...data.user,
-        profilePictureUrl: nextResolvedProfileImagePreview
+        ...data.user
       })
 
       setIsSavingProfile(false)
@@ -1181,7 +1197,8 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     .join('')
     .slice(0, 2) || 'A'
 
-  const sidebarProfileImagePreview = buildApiAssetUrl(user.profilePictureUrl)
+  const sidebarProfileImagePreview =
+    savedProfileImagePreview || buildApiAssetUrl(user.profilePictureUrl)
 
   const sidebarUserInitials = [user.firstName, user.lastName]
     .filter(Boolean)
