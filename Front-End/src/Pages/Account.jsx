@@ -561,6 +561,10 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   }
 
   const handleOpenDeleteAccountModal = async () => {
+    if (isTenantAdministrator) {
+      return
+    }
+
     const result = await Swal.fire({
       title: 'Delete User Account?',
       text: 'Are you sure you want to delete your user account?',
@@ -1789,14 +1793,16 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                 </div>
 
                 <div className="account-actions">
-                  <button
-                    type="button"
-                    className="account-button account-button-secondary"
-                    onClick={handleOpenDeleteAccountModal}
-                    disabled={isSavingProfile || Boolean(photoProcessingMode) || isDeletingAccount}
-                  >
-                    Delete User Account
-                  </button>
+                  {!isTenantAdministrator && (
+                    <button
+                      type="button"
+                      className="account-button account-button-secondary"
+                      onClick={handleOpenDeleteAccountModal}
+                      disabled={isSavingProfile || Boolean(photoProcessingMode) || isDeletingAccount}
+                    >
+                      Delete User Account
+                    </button>
+                  )}
 
                   <button
                     type="button"

@@ -1,15 +1,60 @@
 import { useEffect, useState } from 'react'
 import Swal from 'sweetalert2'
 import 'sweetalert2/dist/sweetalert2.min.css'
+import { countries } from 'country-list-json'
+import * as FlagIcons from 'country-flag-icons/react/3x2'
 import logo from '../Pictures/Avinya.png'
 import '../Styles/Users.css'
 import { getCurrentUserProfile, isTenantAdministratorRole } from '../Utils/getCurrentUserProfile'
-import { buildApiAssetUrl } from '../Config/API'
+import { API_URL, buildApiAssetUrl } from '../Config/API'
+
+const getStoredAuthToken = () =>
+  sessionStorage.getItem('tbToken') ||
+  localStorage.getItem('tbToken') ||
+  ''
+
+const COUNTRY_CODE_OPTIONS = countries
+  .filter((country) => country.code && country.name && country.dial_code)
+  .map((country) => ({
+    value: country.dial_code,
+    iso: country.code,
+    shortLabel: `${country.code} (${country.dial_code})`
+  }))
+
+const getCountryCodeOption = (dialCode = '') =>
+  COUNTRY_CODE_OPTIONS.find(
+    (option) => option.value === String(dialCode || '').trim()
+  ) || {
+    value: String(dialCode || '+63').trim() || '+63',
+    iso: 'PH',
+    shortLabel: `PH (${String(dialCode || '+63').trim() || '+63'})`
+  }
+
+const renderCountryFlag = (isoCode, className) => {
+  const normalizedIso = String(isoCode || '').trim().toUpperCase()
+  const FlagIcon = FlagIcons[normalizedIso]
+
+  if (!FlagIcon) {
+    return null
+  }
+
+  return <FlagIcon className={className} aria-hidden="true" />
+}
+
+const getUserInitials = (firstName = '', lastName = '', email = '') =>
+  [firstName, lastName]
+    .filter(Boolean)
+    .map((value) => String(value).trim().charAt(0).toUpperCase())
+    .join('')
+    .slice(0, 2) || String(email || 'U').trim().charAt(0).toUpperCase()
 
 const Users = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   const [isEntitiesOpen, setIsEntitiesOpen] = useState(false)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
+  const [users, setUsers] = useState([])
+  const [isUsersLoading, setIsUsersLoading] = useState(true)
+  const [usersLoadError, setUsersLoadError] = useState('')
 
   const user = getCurrentUserProfile()
   const isTenantAdministrator = isTenantAdministratorRole(user.roleLabel)
@@ -50,6 +95,69 @@ const Users = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
       onNavigate('dashboard')
     }
   }, [isTenantAdministrator, onNavigate])
+
+  useEffect(() => {
+    if (!isTenantAdministrator) {
+      return
+    }
+
+    let isMounted = true
+    const controller = new AbortController()
+
+    const loadCustomerAdministrators = async () => {
+      try {
+        setIsUsersLoading(true)
+        setUsersLoadError('')
+
+        const authToken = getStoredAuthToken()
+
+        if (!authToken) {
+          throw new Error('Your session has expired. Please log in again.')
+        }
+
+        const response = await fetch(`${API_URL}/users/customer-administrators`, {
+          method: 'GET',
+          headers: {
+            Accept: 'application/json',
+            Authorization: `Bearer ${authToken}`
+          },
+          signal: controller.signal
+        })
+
+        const data = await response.json().catch(() => ({}))
+
+        if (!response.ok) {
+          throw new Error(data.message || 'Unable to load customer administrators right now.')
+        }
+
+        if (!isMounted) return
+
+        setUsers(Array.isArray(data.users) ? data.users : [])
+      } catch (error) {
+        if (error.name === 'AbortError') {
+          return
+        }
+
+        if (!isMounted) return
+
+        setUsers([])
+        setUsersLoadError(
+          error.message || 'Unable to load customer administrators right now.'
+        )
+      } finally {
+        if (isMounted) {
+          setIsUsersLoading(false)
+        }
+      }
+    }
+
+    loadCustomerAdministrators()
+
+    return () => {
+      isMounted = false
+      controller.abort()
+    }
+  }, [isTenantAdministrator])
 
   const handleSidebarToggle = () => {
     if (!isSidebarCollapsed) {
@@ -107,7 +215,7 @@ const Users = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   }
 
   return (
-    <main className="dashboard-page">
+    <main className="dashboard-page users-page">
       <aside className={`dashboard-sidebar ${isSidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="dashboard-sidebar-panel">
           <div className="dashboard-sidebar-header">
@@ -371,6 +479,176 @@ const Users = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
       <section className="dashboard-content">
         <div className="dashboard-content-body dashboard-content-body-frame">
           <h1 className="dashboard-content-title">Users</h1>
+
+          <section className="users-panel" aria-labelledby="users-table-heading">
+            <div className="users-panel-header">
+              <div className="users-panel-copy">
+                <h2 id="users-table-heading" className="users-panel-heading">
+                  User Directory
+                </h2>
+              </div>
+            </div>
+
+            <div className="users-table-shell">
+              <div
+                className="users-table-scroll"
+                role="region"
+                aria-label="Users table"
+                tabIndex="0"
+              >
+                <table className="users-table">
+                  <thead>
+                    <tr className="users-table-head-row">
+                      <th scope="col">No.</th>
+                      <th scope="col">Profile Picture</th>
+                      <th scope="col">Last Name</th>
+                      <th scope="col">First Name</th>
+                      <th scope="col">Email</th>
+                      <th scope="col">Country Code</th>
+                      <th scope="col">Phone Number</th>
+                      <th scope="col">Verified?</th>
+                      <th scope="col">Actions</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {isUsersLoading ? (
+                      <tr className="users-table-state-row">
+                        <td colSpan="9" className="users-table-state-cell">
+                          Loading customer administrators...
+                        </td>
+                      </tr>
+                    ) : usersLoadError ? (
+                      <tr className="users-table-state-row">
+                        <td colSpan="9" className="users-table-state-cell users-table-state-cell-error">
+                          {usersLoadError}
+                        </td>
+                      </tr>
+                    ) : users.length === 0 ? (
+                      <tr className="users-table-state-row">
+                        <td colSpan="9" className="users-table-state-cell">
+                          No customer administrators found.
+                        </td>
+                      </tr>
+                    ) : (
+                      users.map((listedUser, index) => {
+                        const profileImagePreview = buildApiAssetUrl(listedUser.profilePictureUrl)
+                        const userInitials = getUserInitials(
+                          listedUser.firstName,
+                          listedUser.lastName,
+                          listedUser.email
+                        )
+                        const countryOption = getCountryCodeOption(listedUser.phoneCountryCode)
+
+                        return (
+                          <tr key={listedUser.id} className="users-table-body-row">
+                            <td>{index + 1}</td>
+
+                            <td className="users-picture-cell">
+                              <div className="users-profile-cell">
+                                <div className="users-profile-avatar" aria-hidden="true">
+                                  {profileImagePreview ? (
+                                    <img
+                                      src={profileImagePreview}
+                                      alt=""
+                                      className="users-profile-avatar-image"
+                                    />
+                                  ) : (
+                                    <div className="users-profile-avatar-fallback">
+                                      <span className="users-profile-avatar-fallback-text">
+                                        {userInitials}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+
+                            <td>
+                              <span className="users-cell-text" title={listedUser.lastName || ''}>
+                                {listedUser.lastName || '—'}
+                              </span>
+                            </td>
+
+                            <td>
+                              <span className="users-cell-text" title={listedUser.firstName || ''}>
+                                {listedUser.firstName || '—'}
+                              </span>
+                            </td>
+
+                            <td>
+                              <span className="users-cell-text" title={listedUser.email || ''}>
+                                {listedUser.email || '—'}
+                              </span>
+                            </td>
+
+                            <td>
+                              <div className="users-country-value">
+                                {renderCountryFlag(countryOption.iso, 'users-country-flag')}
+                                <span>{countryOption.shortLabel}</span>
+                              </div>
+                            </td>
+
+                            <td>
+                              <span className="users-cell-text" title={listedUser.phoneNumber || ''}>
+                                {listedUser.phoneNumber || '—'}
+                              </span>
+                            </td>
+
+                            <td>
+                              <span
+                                className={`users-status-badge ${
+                                  listedUser.isVerified ? 'verified' : 'unverified'
+                                }`}
+                              >
+                                <span className="users-status-badge-icon" aria-hidden="true">
+                                  {listedUser.isVerified ? '✓' : '✕'}
+                                </span>
+                                <span>{listedUser.isVerified ? 'Verified' : 'Not Verified'}</span>
+                              </span>
+                            </td>
+
+                            <td>
+                              <div className="users-actions">
+                                <button
+                                  type="button"
+                                  className="users-action-button users-action-button-edit"
+                                >
+                                  <span className="users-action-button-icon" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                      <path d="M12 20h9" />
+                                      <path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5Z" />
+                                    </svg>
+                                  </span>
+                                  <span>Edit</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  className="users-action-button users-action-button-delete"
+                                >
+                                  <span className="users-action-button-icon" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                      <path d="M3 6h18" />
+                                      <path d="M8 6V4h8v2" />
+                                      <path d="M19 6l-1 14H6L5 6" />
+                                      <path d="M10 11v6" />
+                                      <path d="M14 11v6" />
+                                    </svg>
+                                  </span>
+                                  <span>Delete</span>
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
         </div>
       </section>
     </main>

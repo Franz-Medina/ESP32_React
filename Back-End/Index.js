@@ -1291,6 +1291,29 @@ const tbChangeCurrentUserPassword = async (
   });
 };
 
+const tbSaveCurrentTenantAdminProfile = async (
+  token,
+  { email, firstName, lastName, phone = "" }
+) => {
+  const currentTbUser = await tbRequest("/api/auth/user", { token });
+
+  return tbRequest("/api/user?sendActivationMail=false", {
+    method: "POST",
+    token,
+    body: {
+      id: currentTbUser.id,
+      ...(currentTbUser.tenantId ? { tenantId: currentTbUser.tenantId } : {}),
+      ...(currentTbUser.customerId ? { customerId: currentTbUser.customerId } : {}),
+      authority: currentTbUser.authority || "TENANT_ADMIN",
+      email,
+      firstName,
+      lastName,
+      phone,
+      additionalInfo: currentTbUser.additionalInfo || {},
+    },
+  });
+};
+
 const findTbUserByEmail = async (token, email) => {
   const data = await tbRequest(
     `/api/users?pageSize=100&page=0&textSearch=${encodeURIComponent(email)}`,
@@ -1718,7 +1741,21 @@ app.put("/account/profile", authenticateToken, async (req, res) => {
       });
     }
 
-    if (currentUser.tb_user_id && currentUser.tb_customer_id) {
+    const nextThingsBoardPhone = buildThingsBoardPhone(
+      trimmedPhoneCountryCode,
+      trimmedPhoneNumber
+    );
+
+    if (currentUser.role_label === "Tenant Administrator") {
+      const adminToken = await tbLogin();
+
+      await tbSaveCurrentTenantAdminProfile(adminToken, {
+        email: trimmedEmail,
+        firstName: trimmedFirstName,
+        lastName: trimmedLastName,
+        phone: nextThingsBoardPhone,
+      });
+    } else if (currentUser.tb_user_id && currentUser.tb_customer_id) {
       const adminToken = await tbLogin();
 
       await saveTbCustomerUser(adminToken, {
@@ -1727,10 +1764,7 @@ app.put("/account/profile", authenticateToken, async (req, res) => {
         email: trimmedEmail,
         firstName: trimmedFirstName,
         lastName: trimmedLastName,
-        phone: buildThingsBoardPhone(
-          trimmedPhoneCountryCode,
-          trimmedPhoneNumber
-        ),
+        phone: nextThingsBoardPhone,
       });
     }
 
@@ -1857,6 +1891,12 @@ app.delete("/account", authenticateToken, async (req, res) => {
 
     const currentUser = currentUserResult.rows[0];
 
+    if (currentUser.role_label === "Tenant Administrator") {
+      return res.status(403).json({
+        message: "Tenant Administrator account cannot be deleted.",
+      });
+    }
+
     const isPasswordMatch = await bcrypt.compare(
       rawPassword,
       currentUser.password
@@ -1915,6 +1955,56 @@ app.delete("/account", authenticateToken, async (req, res) => {
     });
   } finally {
     client.release();
+  }
+});
+
+app.get("/users/customer-administrators", authenticateToken, async (req, res) => {
+  try {
+    const requestingUserResult = await pool.query(
+      `SELECT role_label
+       FROM users
+       WHERE id = $1
+       LIMIT 1`,
+      [req.user.id]
+    );
+
+    if (requestingUserResult.rows.length === 0) {
+      return res.status(404).json({
+        message: "User account not found.",
+      });
+    }
+
+    if (requestingUserResult.rows[0].role_label !== "Tenant Administrator") {
+      return res.status(403).json({
+        message: "You are not authorized to view this page.",
+      });
+    }
+
+    const result = await pool.query(
+      `SELECT
+         id,
+         first_name,
+         last_name,
+         email,
+         is_verified,
+         phone_country_code,
+         phone_number,
+         role_label,
+         profile_picture_url
+       FROM users
+       WHERE role_label = 'Customer Administrator'
+       ORDER BY id ASC`
+    );
+
+    return res.status(200).json({
+      users: result.rows.map(mapUserRowToClientUser),
+    });
+  } catch (error) {
+    console.error("CUSTOMER ADMIN USERS LIST ERROR:", error);
+
+    return res.status(500).json({
+      message: "Unable to load customer administrators right now.",
+    });
   }
 });
 
