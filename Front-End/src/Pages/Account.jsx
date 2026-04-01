@@ -14,8 +14,9 @@ import {
   UserIcon,
   ErrorIcon
 } from '../Components/LoginIcons.jsx'
-import { getCurrentUserProfile } from '../Utils/getCurrentUserProfile'
+import { getCurrentUserProfile, isTenantAdministratorRole } from '../Utils/getCurrentUserProfile'
 import { getCroppedImageDataUrl } from '../Utils/cropImage'
+import { API_URL, buildApiAssetUrl } from '../Config/API'
 
 const getInitialAccountForm = (user = {}) => {
   const safeFullName = String(user.fullName || '').trim()
@@ -53,6 +54,52 @@ const renderCountryFlag = (isoCode, className) => {
 const NAME_REGEX = /^[A-Za-zÀ-ÖØ-öø-ÿ]+(?:[ '-][A-Za-zÀ-ÖØ-ÿ]+)*$/
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const ALLOWED_PROFILE_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+const ACCOUNT_MODAL_TRANSITION_MS = 280
+
+const normalizeAccountFormValues = (form = {}) => ({
+  firstName: String(form.firstName || '').trim(),
+  lastName: String(form.lastName || '').trim(),
+  email: String(form.email || '').trim(),
+  phoneCountryCode: String(form.phoneCountryCode || '+63').trim(),
+  phoneCountryOptionId: String(form.phoneCountryOptionId || 'PH-+63').trim(),
+  phoneNumber: String(form.phoneNumber || '').trim()
+})
+
+const appendImageCacheKey = (assetUrl = '', cacheKey = '') => {
+  const resolvedAssetUrl = String(assetUrl || '').trim()
+  const resolvedCacheKey = String(cacheKey || '').trim()
+
+  if (!resolvedAssetUrl || !resolvedCacheKey) {
+    return resolvedAssetUrl
+  }
+
+  return `${resolvedAssetUrl}${resolvedAssetUrl.includes('?') ? '&' : '?'}v=${encodeURIComponent(resolvedCacheKey)}`
+}
+
+const AccountLockIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <rect x="5" y="11" width="14" height="10" rx="2" />
+    <path d="M8 11V8a4 4 0 1 1 8 0v3" />
+  </svg>
+)
+
+const AccountPasswordToggleIcon = ({ isVisible }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    {isVisible ? (
+      <>
+        <path d="M3 3l18 18" />
+        <path d="M10.58 10.58a2 2 0 0 0 2.83 2.83" />
+        <path d="M9.88 5.09A9.77 9.77 0 0 1 12 4.8c5.05 0 9.27 3.11 10.5 7.2a11.8 11.8 0 0 1-3.04 4.61" />
+        <path d="M6.61 6.61A11.84 11.84 0 0 0 1.5 12c1.23 4.09 5.45 7.2 10.5 7.2a10.8 10.8 0 0 0 4.27-.86" />
+      </>
+    ) : (
+      <>
+        <path d="M1.5 12C2.73 7.91 6.95 4.8 12 4.8s9.27 3.11 10.5 7.2c-1.23 4.09-5.45 7.2-10.5 7.2S2.73 16.09 1.5 12Z" />
+        <circle cx="12" cy="12" r="3" />
+      </>
+    )}
+  </svg>
+)
 
 const getNameValidationError = (value, label) => {
   if (!value) {
@@ -95,30 +142,66 @@ const getEmailValidationError = (value) => {
 }
 
 const getPhoneNumberValidationError = (value) => {
-  if (!value) {
+  const normalizedValue = String(value || '')
+
+  if (!normalizedValue) {
     return ''
   }
 
-  if (value !== value.trim()) {
+  if (normalizedValue !== normalizedValue.trim()) {
     return 'Phone number must not start or end with spaces.'
   }
 
-  if (value.includes('+')) {
+  if (/\s/.test(normalizedValue)) {
+    return 'Phone number must not contain spaces.'
+  }
+
+  if (normalizedValue.includes('+')) {
     return 'Enter your phone number without the country code.'
   }
 
-  if (!/^[0-9\s()-]+$/.test(value)) {
+  if (!/^\d+$/.test(normalizedValue)) {
     return 'Phone number must contain numbers only.'
   }
 
-  const digitsOnly = value.replace(/\D/g, '')
+  if (normalizedValue.startsWith('0')) {
+    return 'Phone number must not start with 0.'
+  }
 
-  if (digitsOnly.length < 7) {
+  if (normalizedValue.length < 7) {
     return 'Phone number must be at least 7 digits.'
   }
 
-  if (digitsOnly.length > 15) {
+  if (normalizedValue.length > 15) {
     return 'Phone number must not exceed 15 digits.'
+  }
+
+  return ''
+}
+
+const getDeletePasswordValidationError = (value) => {
+  if (!value) {
+    return 'Please enter your password.'
+  }
+
+  if (value !== value.trim()) {
+    return 'Password must not start or end with spaces.'
+  }
+
+  return ''
+}
+
+const getDeleteConfirmPasswordValidationError = (password, confirmPassword) => {
+  if (!confirmPassword) {
+    return 'Please confirm your password.'
+  }
+
+  if (confirmPassword !== confirmPassword.trim()) {
+    return 'Confirm password must not start or end with spaces.'
+  }
+
+  if (password !== confirmPassword) {
+    return 'Passwords do not match.'
   }
 
   return ''
@@ -135,6 +218,50 @@ const COUNTRY_CODE_OPTIONS = countries
   }))
   .sort((a, b) => a.label.localeCompare(b.label))
 
+const getStoredAuthToken = () =>
+  sessionStorage.getItem('tbToken') ||
+  localStorage.getItem('tbToken') ||
+  ''
+
+const getCountryOptionIdFromDialCode = (dialCode = '') =>
+  COUNTRY_CODE_OPTIONS.find(
+    (option) => option.value === String(dialCode || '').trim()
+  )?.id || 'PH-+63'
+
+const updateStoredUserProfile = (nextProfile = {}) => {
+  const storages = [sessionStorage, localStorage]
+
+  storages.forEach((storage) => {
+    const rawUser = storage.getItem('tbUser')
+
+    if (!rawUser) {
+      return
+    }
+
+    try {
+      const parsedUser = JSON.parse(rawUser)
+
+      storage.setItem(
+        'tbUser',
+        JSON.stringify({
+          ...parsedUser,
+          firstName: String(nextProfile.firstName || parsedUser.firstName || '').trim(),
+          lastName: String(nextProfile.lastName || parsedUser.lastName || '').trim(),
+          email: String(nextProfile.email || parsedUser.email || '').trim(),
+          phoneCountryCode: String(
+            nextProfile.phoneCountryCode || parsedUser.phoneCountryCode || '+63'
+          ).trim(),
+          phoneNumber: String(nextProfile.phoneNumber || parsedUser.phoneNumber || '').trim(),
+          roleLabel: String(nextProfile.roleLabel || parsedUser.roleLabel || '').trim(),
+          profilePictureUrl: String(nextProfile.profilePictureUrl || '').trim()
+        })
+      )
+    } catch {
+      storage.removeItem('tbUser')
+    }
+  })
+}
+
 const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   const [isEntitiesOpen, setIsEntitiesOpen] = useState(false)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
@@ -142,10 +269,18 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   const [isCountryCodeOpen, setIsCountryCodeOpen] = useState(false)
 
   const user = getCurrentUserProfile()
+  const isTenantAdministrator = isTenantAdministratorRole(user.roleLabel)
 
   const [profileForm, setProfileForm] = useState(() => getInitialAccountForm(user))
-  const [profileImagePreview, setProfileImagePreview] = useState('')
-  const [profileImageName, setProfileImageName] = useState('')
+  const [savedProfileFormSnapshot, setSavedProfileFormSnapshot] = useState(() =>
+    normalizeAccountFormValues(getInitialAccountForm(user))
+  )
+  const [savedProfileImagePreview, setSavedProfileImagePreview] = useState(
+    () => buildApiAssetUrl(user.profilePictureUrl)
+  )
+  const [profileImagePreview, setProfileImagePreview] = useState(
+    () => buildApiAssetUrl(user.profilePictureUrl)
+  )
   const [profileImageError, setProfileImageError] = useState('')
 
   const [firstNameError, setFirstNameError] = useState('')
@@ -155,11 +290,26 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   const [isSavingProfile, setIsSavingProfile] = useState(false)
   const [photoProcessingMode, setPhotoProcessingMode] = useState('')
   const [isPhotoCropModalOpen, setIsPhotoCropModalOpen] = useState(false)
+  const [isPhotoCropModalClosing, setIsPhotoCropModalClosing] = useState(false)
   const [photoCropSource, setPhotoCropSource] = useState('')
   const [photoCropValue, setPhotoCropValue] = useState({ x: 0, y: 0 })
   const [photoZoomValue, setPhotoZoomValue] = useState(0.75)
   const [photoCroppedAreaPixels, setPhotoCroppedAreaPixels] = useState(null)
-  const [pendingProfileImageName, setPendingProfileImageName] = useState('')
+
+  const [isDeleteAccountModalOpen, setIsDeleteAccountModalOpen] = useState(false)
+  const [isDeleteAccountModalClosing, setIsDeleteAccountModalClosing] = useState(false)
+  const [isPreparingDeleteAccountModal, setIsPreparingDeleteAccountModal] = useState(false)
+  const [deleteAccountForm, setDeleteAccountForm] = useState({
+    password: '',
+    confirmPassword: ''
+  })
+  const [deletePasswordError, setDeletePasswordError] = useState('')
+  const [deleteConfirmPasswordError, setDeleteConfirmPasswordError] = useState('')
+  const [deleteAuthError, setDeleteAuthError] = useState('')
+  const [isDeletePasswordVisible, setIsDeletePasswordVisible] = useState(false)
+  const [isDeleteConfirmPasswordVisible, setIsDeleteConfirmPasswordVisible] = useState(false)
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false)
+  const [isDeleteAccountRedirecting, setIsDeleteAccountRedirecting] = useState(false)
 
   const profileImageInputRef = useRef(null)
   const countryCodeDropdownRef = useRef(null)
@@ -189,43 +339,79 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     }
   }
 
+  const handleDeleteAccountInputChange = (field) => (event) => {
+    const nextValue = event.target.value
+
+    setDeleteAccountForm((prev) => ({
+      ...prev,
+      [field]: nextValue
+    }))
+
+    if (field === 'password' && deletePasswordError) {
+      setDeletePasswordError('')
+    }
+
+    if (field === 'confirmPassword' && deleteConfirmPasswordError) {
+      setDeleteConfirmPasswordError('')
+    }
+
+    if (deleteAuthError) {
+      setDeleteAuthError('')
+    }
+  }
+
   const resetPhotoCropState = () => {
     setIsPhotoCropModalOpen(false)
+    setIsPhotoCropModalClosing(false)
     setPhotoCropSource('')
     setPhotoCropValue({ x: 0, y: 0 })
     setPhotoZoomValue(0.75)
     setPhotoCroppedAreaPixels(null)
-    setPendingProfileImageName('')
 
     if (profileImageInputRef.current) {
       profileImageInputRef.current.value = ''
     }
   }
 
+  const resetDeleteAccountState = () => {
+    setIsDeleteAccountModalOpen(false)
+    setIsDeleteAccountModalClosing(false)
+    setIsPreparingDeleteAccountModal(false)
+    setDeleteAccountForm({
+      password: '',
+      confirmPassword: ''
+    })
+    setDeletePasswordError('')
+    setDeleteConfirmPasswordError('')
+    setDeleteAuthError('')
+    setIsDeletePasswordVisible(false)
+    setIsDeleteConfirmPasswordVisible(false)
+    setIsDeletingAccount(false)
+    setIsDeleteAccountRedirecting(false)
+  }
+
   const handleOpenPhotoPicker = () => {
-    if (!profileImageInputRef.current) {
+    if (!profileImageInputRef.current || Boolean(photoProcessingMode)) {
       return
     }
 
     setProfileImageError('')
 
     flushSync(() => {
-      setPhotoProcessingMode('picker-opening')
+      setPhotoProcessingMode('photo-picker-opening')
     })
 
-    window.addEventListener(
-      'focus',
-      () => {
-        window.setTimeout(() => {
-          setPhotoProcessingMode((prev) =>
-            prev === 'picker-opening' ? '' : prev
-          )
-        }, 180)
-      },
-      { once: true }
-    )
+    if (typeof profileImageInputRef.current.showPicker === 'function') {
+      profileImageInputRef.current.showPicker()
+    } else {
+      profileImageInputRef.current.click()
+    }
 
-    profileImageInputRef.current.click()
+    window.setTimeout(() => {
+      setPhotoProcessingMode((currentMode) =>
+        currentMode === 'photo-picker-opening' ? '' : currentMode
+      )
+    }, 180)
   }
 
   const handlePhotoCropComplete = (_, croppedAreaPixels) => {
@@ -233,12 +419,16 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   }
 
   const handleClosePhotoCropModal = async () => {
-    setPhotoProcessingMode('picker-closing')
+    if (isPhotoCropModalClosing) {
+      return
+    }
 
-    await new Promise((resolve) => setTimeout(resolve, 320))
+    setPhotoProcessingMode('')
+    setIsPhotoCropModalClosing(true)
+
+    await new Promise((resolve) => setTimeout(resolve, ACCOUNT_MODAL_TRANSITION_MS))
 
     resetPhotoCropState()
-    setPhotoProcessingMode('')
   }
 
   const handleProfileImageChange = (event) => {
@@ -276,7 +466,6 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     reader.onload = async () => {
       try {
         setPhotoProcessingMode('photo-loading')
-        setPendingProfileImageName(file.name)
         setProfileImageError('')
 
         await new Promise((resolve) => setTimeout(resolve, 450))
@@ -285,6 +474,7 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
         setPhotoCropValue({ x: 0, y: 0 })
         setPhotoZoomValue(0.75)
         setPhotoCroppedAreaPixels(null)
+        setIsPhotoCropModalClosing(false)
         setIsPhotoCropModalOpen(true)
       } catch {
         setProfileImageError('Something went wrong while loading your profile image. Please try again.')
@@ -302,24 +492,30 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   }
 
   const handleApplyPhotoCrop = async () => {
-    if (!photoCropSource || !photoCroppedAreaPixels) {
+    if (!photoCropSource || !photoCroppedAreaPixels || isPhotoCropModalClosing) {
       return
     }
 
+    const nextPhotoCropSource = photoCropSource
+    const nextPhotoCroppedAreaPixels = photoCroppedAreaPixels
+
     try {
+      setIsPhotoCropModalClosing(true)
+
+      await new Promise((resolve) => setTimeout(resolve, ACCOUNT_MODAL_TRANSITION_MS))
+
+      resetPhotoCropState()
       setPhotoProcessingMode('photo-applying')
 
       await new Promise((resolve) => setTimeout(resolve, 650))
 
       const nextProfileImagePreview = await getCroppedImageDataUrl(
-        photoCropSource,
-        photoCroppedAreaPixels
+        nextPhotoCropSource,
+        nextPhotoCroppedAreaPixels
       )
 
       setProfileImagePreview(nextProfileImagePreview)
-      setProfileImageName(pendingProfileImageName)
       setProfileImageError('')
-      resetPhotoCropState()
     } catch {
       setProfileImageError('Something went wrong while updating your profile image. Please try again.')
     } finally {
@@ -333,7 +529,6 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     await new Promise((resolve) => setTimeout(resolve, 420))
 
     setProfileImagePreview('')
-    setProfileImageName('')
     setProfileImageError('')
     resetPhotoCropState()
     setPhotoProcessingMode('')
@@ -343,13 +538,175 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     }
   }
 
+  const validateDeleteAccountForm = () => {
+    const nextDeletePasswordError = getDeletePasswordValidationError(deleteAccountForm.password)
+    const nextDeleteConfirmPasswordError = getDeleteConfirmPasswordValidationError(
+      deleteAccountForm.password,
+      deleteAccountForm.confirmPassword
+    )
+
+    let hasError = false
+
+    if (nextDeletePasswordError) {
+      setDeletePasswordError(nextDeletePasswordError)
+      hasError = true
+    }
+
+    if (nextDeleteConfirmPasswordError) {
+      setDeleteConfirmPasswordError(nextDeleteConfirmPasswordError)
+      hasError = true
+    }
+
+    return !hasError
+  }
+
+  const handleOpenDeleteAccountModal = async () => {
+    const result = await Swal.fire({
+      title: 'Delete User Account?',
+      text: 'Are you sure you want to delete your user account?',
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: 'Yes',
+      cancelButtonText: 'No',
+      reverseButtons: true,
+      buttonsStyling: false,
+      allowOutsideClick: true,
+      allowEscapeKey: true,
+      customClass: {
+        popup: 'avinya-swal-popup',
+        icon: 'avinya-swal-icon',
+        title: 'avinya-swal-title',
+        htmlContainer: 'avinya-swal-text',
+        actions: 'avinya-swal-actions',
+        confirmButton: 'avinya-swal-confirm',
+        cancelButton: 'avinya-swal-cancel'
+      }
+    })
+
+    if (!result.isConfirmed) return
+
+    resetDeleteAccountState()
+    setIsPreparingDeleteAccountModal(true)
+
+    await new Promise((resolve) => setTimeout(resolve, 780))
+
+    setIsPreparingDeleteAccountModal(false)
+    setIsDeleteAccountModalClosing(false)
+    setIsDeleteAccountModalOpen(true)
+  }
+
+  const handleCloseDeleteAccountModal = async () => {
+    if (isDeletingAccount || isDeleteAccountModalClosing) {
+      return
+    }
+
+    setIsDeleteAccountModalClosing(true)
+
+    await new Promise((resolve) => setTimeout(resolve, ACCOUNT_MODAL_TRANSITION_MS))
+
+    resetDeleteAccountState()
+  }
+
+  const handleConfirmDeleteAccount = async (event) => {
+    event.preventDefault()
+
+    setDeletePasswordError('')
+    setDeleteConfirmPasswordError('')
+    setDeleteAuthError('')
+
+    if (!validateDeleteAccountForm()) {
+      return
+    }
+
+    const authToken = getStoredAuthToken()
+
+    if (!authToken) {
+      resetDeleteAccountState()
+      closeDropdowns()
+      onLogout()
+      return
+    }
+
+    try {
+      setIsDeletingAccount(true)
+
+      const response = await fetch(`${API_URL}/account`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          Authorization: `Bearer ${authToken}`
+        },
+        body: JSON.stringify({
+          password: deleteAccountForm.password,
+          confirmPassword: deleteAccountForm.confirmPassword
+        })
+      })
+
+      const data = await response.json().catch(() => ({}))
+
+      if (!response.ok) {
+        const errorMessage =
+          data.message || 'Something went wrong while deleting your account. Please try again.'
+
+        if (applyDeleteAccountFieldError(errorMessage)) {
+          setIsDeletingAccount(false)
+          return
+        }
+
+        throw new Error(errorMessage)
+      }
+
+      setIsDeleteAccountModalClosing(true)
+
+      await new Promise((resolve) => setTimeout(resolve, ACCOUNT_MODAL_TRANSITION_MS))
+
+      resetDeleteAccountState()
+      setIsDeleteAccountRedirecting(true)
+
+      await new Promise((resolve) => setTimeout(resolve, 620))
+
+      closeDropdowns()
+      onLogout()
+    } catch (error) {
+      setIsDeletingAccount(false)
+
+      await showAccountSaveResultAlert({
+        type: 'error',
+        title: 'Delete Failed',
+        message:
+          error.message ||
+          'Something went wrong while deleting your account. Please try again.'
+      })
+    }
+  }
+
   const selectedCountryCodeOption =
     COUNTRY_CODE_OPTIONS.find((option) => option.id === profileForm.phoneCountryOptionId) ||
     COUNTRY_CODE_OPTIONS.find((option) => option.value === profileForm.phoneCountryCode) ||
     COUNTRY_CODE_OPTIONS[0]
 
   const phoneNumberHelperText =
-    'Exclude the selected country code. Example: 912 345 6789.'
+    'Exclude the selected country code. Example: 9123456789. Do not start with 0 and do not add spaces.'
+
+  const currentProfileFormValues = normalizeAccountFormValues(profileForm)
+
+  const hasProfileFormChanges =
+    currentProfileFormValues.firstName !== savedProfileFormSnapshot.firstName ||
+    currentProfileFormValues.lastName !== savedProfileFormSnapshot.lastName ||
+    currentProfileFormValues.email !== savedProfileFormSnapshot.email ||
+    currentProfileFormValues.phoneCountryCode !== savedProfileFormSnapshot.phoneCountryCode ||
+    currentProfileFormValues.phoneCountryOptionId !== savedProfileFormSnapshot.phoneCountryOptionId ||
+    currentProfileFormValues.phoneNumber !== savedProfileFormSnapshot.phoneNumber
+
+  const hasProfileImageChanges = profileImagePreview !== savedProfileImagePreview
+
+  const isSaveDisabled =
+    (!hasProfileFormChanges && !hasProfileImageChanges) ||
+    isSavingProfile ||
+    Boolean(photoProcessingMode) ||
+    isDeletingAccount ||
+    isPreparingDeleteAccountModal
 
   const handleCountryCodeToggle = () => {
     setIsCountryCodeOpen((prev) => !prev)
@@ -370,19 +727,35 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     setIsCountryCodeOpen(false)
   }
 
-  useEffect(() => {
-    setProfileForm(getInitialAccountForm(user))
+    useEffect(() => {
+    const nextInitialProfileForm = getInitialAccountForm(user)
+    const normalizedPhoneCountryCode = String(
+      nextInitialProfileForm.phoneCountryCode || '+63'
+    ).trim()
+    const nextProfileImagePreview = buildApiAssetUrl(user.profilePictureUrl)
+
+    const nextResolvedProfileForm = {
+      ...nextInitialProfileForm,
+      phoneCountryCode: normalizedPhoneCountryCode,
+      phoneCountryOptionId: getCountryOptionIdFromDialCode(normalizedPhoneCountryCode)
+    }
+
+    setProfileForm(nextResolvedProfileForm)
+    setSavedProfileFormSnapshot(normalizeAccountFormValues(nextResolvedProfileForm))
+    setProfileImagePreview(nextProfileImagePreview)
+    setSavedProfileImagePreview(nextProfileImagePreview)
   }, [
     user.firstName,
     user.lastName,
     user.fullName,
     user.email,
     user.phoneCountryCode,
-    user.phoneCountryOptionId,
-    user.phoneNumber
+    user.phoneNumber,
+    user.roleLabel,
+    user.profilePictureUrl
   ])
 
-  useEffect(() => {
+    useEffect(() => {
     document.title = 'Avinya | Account'
 
     const handleOutsideClick = (event) => {
@@ -401,6 +774,67 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
 
     return () => {
       document.removeEventListener('mousedown', handleOutsideClick)
+    }
+  }, [])
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadAccountProfile = async () => {
+      const authToken = getStoredAuthToken()
+
+      if (!authToken) {
+        return
+      }
+
+      try {
+        const response = await fetch(`${API_URL}/account/me`, {
+          method: 'GET',
+          headers: {
+            Accept: 'application/json',
+            Authorization: `Bearer ${authToken}`
+          }
+        })
+
+        const data = await response.json().catch(() => ({}))
+
+        if (!response.ok) {
+          throw new Error(data.message || 'Unable to load your account details.')
+        }
+
+        if (!isMounted || !data.user) {
+          return
+        }
+
+        const nextResolvedProfileImagePreview = buildApiAssetUrl(data.user.profilePictureUrl)
+        const nextResolvedPhoneCountryCode = String(data.user.phoneCountryCode || '+63').trim()
+
+        const nextResolvedProfileForm = {
+          firstName: String(data.user.firstName || '').trim(),
+          lastName: String(data.user.lastName || '').trim(),
+          email: String(data.user.email || '').trim(),
+          phoneCountryCode: nextResolvedPhoneCountryCode,
+          phoneCountryOptionId: getCountryOptionIdFromDialCode(nextResolvedPhoneCountryCode),
+          phoneNumber: String(data.user.phoneNumber || '').trim()
+        }
+
+        updateStoredUserProfile({
+          ...data.user
+        })
+
+        setProfileForm(nextResolvedProfileForm)
+        setSavedProfileFormSnapshot(normalizeAccountFormValues(nextResolvedProfileForm))
+        setProfileImagePreview(nextResolvedProfileImagePreview)
+        setSavedProfileImagePreview(nextResolvedProfileImagePreview)
+      } catch (error) {
+        console.error('ACCOUNT PROFILE LOAD ERROR:', error)
+      }
+    }
+
+    loadAccountProfile()
+
+    return () => {
+      isMounted = false
     }
   }, [])
 
@@ -455,11 +889,75 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     onLogout()
   }
 
-  const clearAccountFormErrors = () => {
+    const clearAccountFormErrors = () => {
     setFirstNameError('')
     setLastNameError('')
     setEmailError('')
     setPhoneNumberError('')
+    setProfileImageError('')
+  }
+
+  const applyAccountSaveFieldError = (message = '') => {
+    const normalizedMessage = String(message || '').trim().toLowerCase()
+
+    if (!normalizedMessage) {
+      return false
+    }
+
+    if (normalizedMessage.includes('first name')) {
+      setFirstNameError(message)
+      return true
+    }
+
+    if (normalizedMessage.includes('last name')) {
+      setLastNameError(message)
+      return true
+    }
+
+    if (normalizedMessage.includes('email')) {
+      setEmailError(message)
+      return true
+    }
+
+    if (normalizedMessage.includes('phone') || normalizedMessage.includes('country code')) {
+      setPhoneNumberError(message)
+      return true
+    }
+
+    if (
+      normalizedMessage.includes('profile image') ||
+      normalizedMessage.includes('profile picture')
+    ) {
+      setProfileImageError(message)
+      return true
+    }
+
+    return false
+  }
+
+  const applyDeleteAccountFieldError = (message = '') => {
+    const normalizedMessage = String(message || '').trim().toLowerCase()
+
+    if (!normalizedMessage) {
+      return false
+    }
+
+    if (normalizedMessage.includes('invalid email or password')) {
+      setDeleteAuthError('Invalid email or password. Please try again.')
+      return true
+    }
+
+    if (normalizedMessage.includes('confirm password')) {
+      setDeleteConfirmPasswordError(message)
+      return true
+    }
+
+    if (normalizedMessage.includes('password')) {
+      setDeletePasswordError(message)
+      return true
+    }
+
+    return false
   }
 
   const validateAccountForm = () => {
@@ -573,18 +1071,106 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
 
     if (!result.isConfirmed) return
 
+        const authToken = getStoredAuthToken()
+
+    if (!authToken) {
+      await showAccountSaveResultAlert({
+        type: 'error',
+        title: 'Save Failed',
+        message: 'Your session has expired. Please log in again.'
+      })
+      return
+    }
+
+    const nextSavedProfileFormSnapshot = normalizeAccountFormValues({
+      ...profileForm,
+      firstName: profileForm.firstName.trim(),
+      lastName: profileForm.lastName.trim(),
+      email: profileForm.email.trim(),
+      phoneCountryOptionId: getCountryOptionIdFromDialCode(profileForm.phoneCountryCode),
+      phoneNumber: profileForm.phoneNumber.trim()
+    })
+
     try {
       setProfileForm((prev) => ({
         ...prev,
-        firstName: prev.firstName.trim(),
-        lastName: prev.lastName.trim(),
-        email: prev.email.trim(),
-        phoneNumber: prev.phoneNumber.trim()
+        firstName: nextSavedProfileFormSnapshot.firstName,
+        lastName: nextSavedProfileFormSnapshot.lastName,
+        email: nextSavedProfileFormSnapshot.email,
+        phoneCountryCode: nextSavedProfileFormSnapshot.phoneCountryCode,
+        phoneCountryOptionId: nextSavedProfileFormSnapshot.phoneCountryOptionId,
+        phoneNumber: nextSavedProfileFormSnapshot.phoneNumber
       }))
 
       setIsSavingProfile(true)
 
-      await new Promise((resolve) => setTimeout(resolve, 1400))
+      const shouldRemoveProfileImage =
+        !profileImagePreview && Boolean(savedProfileImagePreview)
+
+      const nextProfileImageDataUrl = profileImagePreview.startsWith('data:image/')
+        ? profileImagePreview
+        : ''
+
+      const response = await fetch(`${API_URL}/account/profile`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          Authorization: `Bearer ${authToken}`
+        },
+        body: JSON.stringify({
+          firstName: nextSavedProfileFormSnapshot.firstName,
+          lastName: nextSavedProfileFormSnapshot.lastName,
+          email: nextSavedProfileFormSnapshot.email,
+          phoneCountryCode: nextSavedProfileFormSnapshot.phoneCountryCode,
+          phoneNumber: nextSavedProfileFormSnapshot.phoneNumber,
+          profileImageDataUrl: nextProfileImageDataUrl,
+          removeProfileImage: shouldRemoveProfileImage
+        })
+      })
+
+      const data = await response.json().catch(() => ({}))
+
+      if (!response.ok) {
+        const errorMessage =
+          data.message || 'Something went wrong while saving your account details. Please try again.'
+
+        if (applyAccountSaveFieldError(errorMessage)) {
+          setIsSavingProfile(false)
+          return
+        }
+
+        throw new Error(errorMessage)
+      }
+
+      const nextProfileImageCacheKey = String(Date.now())
+
+      const nextResolvedProfileImagePreview = data.user?.profilePictureUrl
+        ? appendImageCacheKey(
+            buildApiAssetUrl(data.user?.profilePictureUrl),
+            nextProfileImageCacheKey
+          )
+        : ''
+
+      const nextResolvedProfileForm = {
+        firstName: String(data.user?.firstName || '').trim(),
+        lastName: String(data.user?.lastName || '').trim(),
+        email: String(data.user?.email || '').trim(),
+        phoneCountryCode: String(data.user?.phoneCountryCode || '+63').trim(),
+        phoneCountryOptionId: getCountryOptionIdFromDialCode(
+          String(data.user?.phoneCountryCode || '+63').trim()
+        ),
+        phoneNumber: String(data.user?.phoneNumber || '').trim()
+      }
+
+      setProfileForm(nextResolvedProfileForm)
+      setSavedProfileFormSnapshot(normalizeAccountFormValues(nextResolvedProfileForm))
+      setProfileImagePreview(nextResolvedProfileImagePreview)
+      setSavedProfileImagePreview(nextResolvedProfileImagePreview)
+
+      updateStoredUserProfile({
+        ...data.user
+      })
 
       setIsSavingProfile(false)
 
@@ -599,7 +1185,9 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
       await showAccountSaveResultAlert({
         type: 'error',
         title: 'Save Failed',
-        message: 'Something went wrong while saving your account details. Please try again.'
+        message:
+          error.message ||
+          'Something went wrong while saving your account details. Please try again.'
       })
     }
   }
@@ -610,22 +1198,42 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     .join('')
     .slice(0, 2) || 'A'
 
+  const sidebarProfileImagePreview =
+    savedProfileImagePreview || buildApiAssetUrl(user.profilePictureUrl)
+
+  const sidebarUserInitials = [user.firstName, user.lastName]
+    .filter(Boolean)
+    .map((value) => String(value).trim().charAt(0).toUpperCase())
+    .join('')
+    .slice(0, 2) || 'A'
+
   const hasFirstNameFieldError = Boolean(firstNameError)
   const hasLastNameFieldError = Boolean(lastNameError)
   const hasEmailFieldError = Boolean(emailError)
   const hasPhoneNumberFieldError = Boolean(phoneNumberError)
+  const deletePasswordFieldMessage = deletePasswordError || deleteAuthError
 
-  const showPhotoProcessingOverlay = Boolean(photoProcessingMode)
-  const showPhotoProcessingTitle =
-    photoProcessingMode === 'photo-loading' ||
-    photoProcessingMode === 'photo-applying' ||
-    photoProcessingMode === 'photo-removing'
+  const hasDeletePasswordFieldError = Boolean(deletePasswordFieldMessage)
+  const hasDeleteConfirmPasswordFieldError = Boolean(deleteConfirmPasswordError || deleteAuthError)
+
+  const showPhotoProcessingOverlay = [
+    'photo-picker-opening',
+    'photo-loading',
+    'photo-applying',
+    'photo-removing'
+  ].includes(photoProcessingMode)
+
+  const showPhotoProcessingTitle = [
+    'photo-loading',
+    'photo-applying',
+    'photo-removing'
+  ].includes(photoProcessingMode)
 
   const photoProcessingLabel =
     photoProcessingMode === 'photo-removing'
       ? 'Removing Photo'
       : photoProcessingMode === 'photo-applying'
-        ? 'Updating Photo'
+        ? 'Uploading Photo'
         : 'Loading Photo'
 
   return (
@@ -727,37 +1335,41 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
               </div>
             </div>
 
-            <button
-                type="button"
-                className="dashboard-sidebar-link"
-                data-tooltip="Users"
-                onClick={() => onNavigate('users')}
-            >
-              <span className="dashboard-sidebar-link-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-                  <circle cx="9" cy="7" r="4" />
-                  <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-                  <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                </svg>
-              </span>
-              <span className="dashboard-sidebar-link-label">Users</span>
-            </button>
+            {isTenantAdministrator && (
+              <button
+                  type="button"
+                  className="dashboard-sidebar-link"
+                  data-tooltip="Users"
+                  onClick={() => onNavigate('users')}
+              >
+                <span className="dashboard-sidebar-link-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                  </svg>
+                </span>
+                <span className="dashboard-sidebar-link-label">Users</span>
+              </button>
+            )}
 
-            <button
-                type="button"
-                className="dashboard-sidebar-link"
-                data-tooltip="Logs"
-                onClick={() => onNavigate('logs')}
-            >
-              <span className="dashboard-sidebar-link-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M9 11l3 3L22 4" />
-                  <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-                </svg>
-              </span>
-              <span className="dashboard-sidebar-link-label">Logs</span>
-            </button>
+            {isTenantAdministrator && (
+              <button
+                  type="button"
+                  className="dashboard-sidebar-link"
+                  data-tooltip="Logs"
+                  onClick={() => onNavigate('logs')}
+              >
+                <span className="dashboard-sidebar-link-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M9 11l3 3L22 4" />
+                    <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+                  </svg>
+                </span>
+                <span className="dashboard-sidebar-link-label">Logs</span>
+              </button>
+            )}
           </nav>
 
           <div className="dashboard-sidebar-footer">
@@ -817,10 +1429,19 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                 }
               >
                 <div className="dashboard-sidebar-user-avatar" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M20 21a8 8 0 0 0-16 0" />
-                    <circle cx="12" cy="8" r="4" />
-                  </svg>
+                  {sidebarProfileImagePreview ? (
+                    <img
+                      src={sidebarProfileImagePreview}
+                      alt=""
+                      className="dashboard-sidebar-user-avatar-image"
+                    />
+                  ) : (
+                    <div className="dashboard-sidebar-user-avatar-fallback">
+                      <span className="dashboard-sidebar-user-avatar-fallback-text">
+                        {sidebarUserInitials}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="dashboard-sidebar-user-details">
@@ -939,10 +1560,6 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                       <span>Change Photo</span>
                     </button>
                   </div>
-
-                  <p className="account-avatar-helper">
-                    {profileImageName || 'PNG, JPG, or WEBP up to 5 MB.'}
-                  </p>
 
                   {profileImageError && (
                     <p className="account-inline-error">{profileImageError}</p>
@@ -1175,6 +1792,8 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                   <button
                     type="button"
                     className="account-button account-button-secondary"
+                    onClick={handleOpenDeleteAccountModal}
+                    disabled={isSavingProfile || Boolean(photoProcessingMode) || isDeletingAccount}
                   >
                     Delete User Account
                   </button>
@@ -1183,7 +1802,7 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                     type="button"
                     className="account-button account-button-primary"
                     onClick={handleSaveProfile}
-                    disabled={isSavingProfile}
+                    disabled={isSaveDisabled}
                   >
                     Save
                   </button>
@@ -1195,11 +1814,11 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
       </section>
       {isPhotoCropModalOpen && (
         <div
-          className="account-photo-modal-overlay"
+          className={`account-photo-modal-overlay ${isPhotoCropModalClosing ? 'account-modal-closing' : ''}`}
           onClick={handleClosePhotoCropModal}
         >
           <div
-            className="account-photo-modal"
+            className={`account-photo-modal ${isPhotoCropModalClosing ? 'account-modal-closing' : ''}`}
             role="dialog"
             aria-modal="true"
             aria-labelledby="account-photo-modal-title"
@@ -1287,6 +1906,163 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
           </div>
         </div>
       )}
+      {isDeleteAccountModalOpen && (
+        <div
+          className={`account-photo-modal-overlay ${isDeleteAccountModalClosing ? 'account-modal-closing' : ''}`}
+          onClick={handleCloseDeleteAccountModal}
+        >
+          <div
+            className={`account-photo-modal account-delete-modal ${isDeleteAccountModalClosing ? 'account-modal-closing' : ''}`}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="account-delete-modal-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="account-photo-modal-close"
+              onClick={handleCloseDeleteAccountModal}
+              aria-label="Close delete account dialog"
+              disabled={isDeletingAccount}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M18 6L6 18" />
+                <path d="M6 6l12 12" />
+              </svg>
+            </button>
+
+            <div className="account-photo-modal-header account-delete-modal-header">
+              <h2 id="account-delete-modal-title" className="account-photo-modal-title">
+                Delete User Account
+              </h2>
+              <p className="account-photo-modal-text">
+                Enter your password and confirm it to continue deleting your account.
+              </p>
+            </div>
+
+            <form
+              className="account-delete-modal-form"
+              onSubmit={handleConfirmDeleteAccount}
+            >
+              <div className="account-field-group">
+                <div className={`account-field account-floating-field ${hasDeletePasswordFieldError ? 'account-field-error' : ''}`}>
+                  <span className="account-field-icon" aria-hidden="true">
+                    <AccountLockIcon />
+                  </span>
+
+                  <div className="account-floating-control">
+                    <input
+                      id="account-delete-password"
+                      type={isDeletePasswordVisible ? 'text' : 'password'}
+                      className="account-input account-floating-input"
+                      placeholder=" "
+                      value={deleteAccountForm.password}
+                      onChange={handleDeleteAccountInputChange('password')}
+                      autoComplete="new-password"
+                      aria-invalid={hasDeletePasswordFieldError}
+                      disabled={isDeletingAccount}
+                    />
+                    <label htmlFor="account-delete-password" className="account-floating-label">
+                      Password
+                    </label>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="account-password-toggle"
+                    onClick={() => setIsDeletePasswordVisible((prev) => !prev)}
+                    aria-label={isDeletePasswordVisible ? 'Hide password' : 'Show password'}
+                    disabled={isDeletingAccount}
+                  >
+                    <AccountPasswordToggleIcon isVisible={isDeletePasswordVisible} />
+                  </button>
+                </div>
+
+                {deletePasswordFieldMessage && (
+                  <div className="account-error-row account-error-row-animated">
+                    <span className="account-error-icon" aria-hidden="true">
+                      <ErrorIcon />
+                    </span>
+                    <span>{deletePasswordFieldMessage}</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="account-field-group">
+                <div className={`account-field account-floating-field ${hasDeleteConfirmPasswordFieldError ? 'account-field-error' : ''}`}>
+                  <span className="account-field-icon" aria-hidden="true">
+                    <AccountLockIcon />
+                  </span>
+
+                  <div className="account-floating-control">
+                    <input
+                      id="account-delete-confirm-password"
+                      type={isDeleteConfirmPasswordVisible ? 'text' : 'password'}
+                      className="account-input account-floating-input"
+                      placeholder=" "
+                      value={deleteAccountForm.confirmPassword}
+                      onChange={handleDeleteAccountInputChange('confirmPassword')}
+                      autoComplete="new-password"
+                      aria-invalid={hasDeleteConfirmPasswordFieldError}
+                      disabled={isDeletingAccount}
+                    />
+                    <label htmlFor="account-delete-confirm-password" className="account-floating-label">
+                      Confirm Password
+                    </label>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="account-password-toggle"
+                    onClick={() => setIsDeleteConfirmPasswordVisible((prev) => !prev)}
+                    aria-label={isDeleteConfirmPasswordVisible ? 'Hide confirm password' : 'Show confirm password'}
+                    disabled={isDeletingAccount}
+                  >
+                    <AccountPasswordToggleIcon isVisible={isDeleteConfirmPasswordVisible} />
+                  </button>
+                </div>
+
+                {deleteConfirmPasswordError && (
+                  <div className="account-error-row account-error-row-animated">
+                    <span className="account-error-icon" aria-hidden="true">
+                      <ErrorIcon />
+                    </span>
+                    <span>{deleteConfirmPasswordError}</span>
+                  </div>
+                )}
+              </div>
+            <div className="account-delete-modal-actions">
+                <button
+                  type="button"
+                  className="account-button account-button-secondary"
+                  onClick={handleCloseDeleteAccountModal}
+                  disabled={isDeletingAccount}
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  className="account-button account-button-primary"
+                  disabled={isDeletingAccount}
+                >
+                  {isDeletingAccount ? 'Deleting Account' : 'Delete Account'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {isPreparingDeleteAccountModal && (
+        <div className="account-save-overlay" role="status" aria-live="polite" aria-busy="true">
+          <div className="account-save-card account-save-card-compact">
+            <img src={logo} alt="Avinya Logo" className="account-save-logo" />
+            <div className="account-save-loader" aria-hidden="true">
+              <span className="account-save-loader-bar"></span>
+            </div>
+          </div>
+        </div>
+      )}
       {showPhotoProcessingOverlay && (
         <div className="account-save-overlay" role="status" aria-live="polite" aria-busy="true">
           <div className={`account-save-card ${showPhotoProcessingTitle ? '' : 'account-save-card-compact'}`}>
@@ -1300,6 +2076,19 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
           </div>
         </div>
       )}
+
+      {isDeleteAccountRedirecting && (
+        <div className="account-save-overlay" role="status" aria-live="polite" aria-busy="true">
+          <div className="account-save-card">
+            <img src={logo} alt="Avinya Logo" className="account-save-logo" />
+            <p className="account-save-title">Deleting Account</p>
+            <div className="account-save-loader" aria-hidden="true">
+              <span className="account-save-loader-bar"></span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {isSavingProfile && (
     <div className="account-save-overlay" role="status" aria-live="polite" aria-busy="true">
       <div className="account-save-card">

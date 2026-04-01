@@ -64,7 +64,6 @@
 .account-panel-heading,
 .account-card-text,
 .account-panel-text,
-.account-avatar-helper,
 .account-inline-error,
 .account-summary-name,
 .account-summary-role,
@@ -208,16 +207,6 @@
 
 .account-profile-file-input {
   display: none;
-}
-
-.account-avatar-helper {
-  margin: 10px 0 0;
-  font-size: 14px;
-  font-weight: 400;
-  line-height: 1.5;
-  color: #6b6b6b;
-  text-align: center;
-  word-break: break-word;
 }
 
 .account-inline-error {
@@ -821,6 +810,21 @@
   box-shadow: none !important;
 }
 
+.account-profile-remove:disabled,
+.account-profile-remove:disabled:hover {
+  background: rgba(255, 255, 255, 0.78);
+  border-color: #e4e4e4;
+  color: #c1c1c1;
+}
+
+.account-button-primary:disabled,
+.account-button-primary:disabled:hover {
+  background: #980000;
+  color: #ffffff;
+  box-shadow: none;
+  transform: none;
+}
+
 .account-save-overlay {
   position: fixed;
   inset: 0;
@@ -982,6 +986,12 @@
   justify-content: center;
   padding: 24px;
   background: rgba(15, 17, 21, 0.42);
+  opacity: 0;
+  animation: accountModalOverlayEnter 0.28s ease forwards;
+}
+
+.account-photo-modal-overlay.account-modal-closing {
+  animation: accountModalOverlayExit 0.24s ease forwards;
 }
 
 .account-photo-modal {
@@ -995,6 +1005,14 @@
   display: flex;
   flex-direction: column;
   gap: 18px;
+  opacity: 0;
+  transform: translateY(14px) scale(0.985);
+  animation: accountModalCardEnter 0.28s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  will-change: opacity, transform;
+}
+
+.account-photo-modal.account-modal-closing {
+  animation: accountModalCardExit 0.24s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 
 .account-photo-modal-header {
@@ -1018,6 +1036,53 @@
   font-weight: 400;
   line-height: 1.6;
   color: #6b6b6b;
+  text-align: justify;
+  text-justify: inter-word;
+  text-align-last: left;
+}
+
+@keyframes accountModalOverlayEnter {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes accountModalOverlayExit {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes accountModalCardEnter {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes accountModalCardExit {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
 }
 
 .account-photo-modal-close {
@@ -1098,7 +1163,7 @@
 }
 
 .account-photo-slider-value {
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   line-height: 1;
   color: #980000;
@@ -1123,6 +1188,54 @@
   max-width: 190px;
 }
 
+.account-delete-modal {
+  width: min(100%, 540px);
+}
+
+.account-delete-modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.account-password-toggle {
+  width: 18px;
+  height: 18px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: #b4b4b4;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: color 0.25s ease;
+}
+
+.account-password-toggle:hover {
+  color: #980000;
+}
+
+.account-password-toggle svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.account-delete-modal-actions {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+}
+
+.account-delete-modal-actions .account-button {
+  width: 190px;
+  min-width: 190px;
+  max-width: 190px;
+}
+
 @media (max-width: 767px) {
   .account-photo-modal {
     width: min(100%, 100%);
@@ -1138,12 +1251,14 @@
     height: 280px;
   }
 
-  .account-photo-modal-actions {
+  .account-photo-modal-actions,
+  .account-delete-modal-actions {
     flex-direction: column-reverse;
     align-items: stretch;
   }
 
-  .account-photo-modal-actions .account-button {
+  .account-photo-modal-actions .account-button,
+  .account-delete-modal-actions .account-button {
     width: 100%;
     min-width: 0;
     max-width: 100%;
@@ -2675,7 +2790,6 @@
 
 [data-theme='dark'] .account-card-text,
 [data-theme='dark'] .account-panel-text,
-[data-theme='dark'] .account-avatar-helper,
 [data-theme='dark'] .account-summary-role {
   color: #98a2b3;
 }
@@ -2906,6 +3020,29 @@
   color: #ffdddd;
   transform: translateY(-1px);
   box-shadow: 0 6px 14px rgba(0, 0, 0, 0.18);
+}
+
+[data-theme='dark'] .account-profile-remove:disabled,
+[data-theme='dark'] .account-profile-remove:disabled:hover {
+  background: rgba(21, 24, 31, 0.96);
+  border-color: #262b35;
+  color: #6f7888;
+}
+
+[data-theme='dark'] .account-button-primary:disabled,
+[data-theme='dark'] .account-button-primary:disabled:hover {
+  background: #b61f1f;
+  color: #ffffff;
+  box-shadow: none;
+  transform: none;
+}
+
+[data-theme='dark'] .account-password-toggle {
+  color: #98a2b3;
+}
+
+[data-theme='dark'] .account-password-toggle:hover {
+  color: #ffdddd;
 }
 
 [data-theme='dark'] .account-field-error {

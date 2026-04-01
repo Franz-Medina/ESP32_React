@@ -3,7 +3,8 @@ import Swal from 'sweetalert2'
 import 'sweetalert2/dist/sweetalert2.min.css'
 import logo from '../Pictures/Avinya.png'
 import '../Styles/Devices.css'
-import { getCurrentUserProfile } from '../Utils/getCurrentUserProfile'
+import { getCurrentUserProfile, isTenantAdministratorRole } from '../Utils/getCurrentUserProfile'
+import { buildApiAssetUrl } from '../Config/API'
 
 const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   const [isEntitiesOpen, setIsEntitiesOpen] = useState(true)
@@ -11,6 +12,15 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
 
   const user = getCurrentUserProfile()
+  const isTenantAdministrator = isTenantAdministratorRole(user.roleLabel)
+
+  const sidebarProfileImagePreview = buildApiAssetUrl(user.profilePictureUrl)
+
+  const sidebarUserInitials = [user.firstName, user.lastName]
+    .filter(Boolean)
+    .map((value) => String(value).trim().charAt(0).toUpperCase())
+    .join('')
+    .slice(0, 2) || 'A'
 
   const closeDropdowns = () => {
     setIsEntitiesOpen(false)
@@ -185,37 +195,41 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
               </div>
             </div>
 
-            <button
-                type="button"
-                className="dashboard-sidebar-link"
-                data-tooltip="Users"
-                onClick={() => onNavigate('users')}
-            >
-              <span className="dashboard-sidebar-link-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-                  <circle cx="9" cy="7" r="4" />
-                  <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-                  <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                </svg>
-              </span>
-              <span className="dashboard-sidebar-link-label">Users</span>
-            </button>
+            {isTenantAdministrator && (
+              <button
+                  type="button"
+                  className="dashboard-sidebar-link"
+                  data-tooltip="Users"
+                  onClick={() => onNavigate('users')}
+              >
+                <span className="dashboard-sidebar-link-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                  </svg>
+                </span>
+                <span className="dashboard-sidebar-link-label">Users</span>
+              </button>
+            )}
 
-            <button
-                type="button"
-                className="dashboard-sidebar-link"
-                data-tooltip="Logs"
-                onClick={() => onNavigate('logs')}
-            >
-              <span className="dashboard-sidebar-link-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M9 11l3 3L22 4" />
-                  <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-                </svg>
-              </span>
-              <span className="dashboard-sidebar-link-label">Logs</span>
-            </button>
+            {isTenantAdministrator && (
+              <button
+                  type="button"
+                  className="dashboard-sidebar-link"
+                  data-tooltip="Logs"
+                  onClick={() => onNavigate('logs')}
+              >
+                <span className="dashboard-sidebar-link-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M9 11l3 3L22 4" />
+                    <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+                  </svg>
+                </span>
+                <span className="dashboard-sidebar-link-label">Logs</span>
+              </button>
+            )}
           </nav>
 
           <div className="dashboard-sidebar-footer">
@@ -275,10 +289,19 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                 }
               >
                 <div className="dashboard-sidebar-user-avatar" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M20 21a8 8 0 0 0-16 0" />
-                    <circle cx="12" cy="8" r="4" />
-                  </svg>
+                  {sidebarProfileImagePreview ? (
+                    <img
+                      src={sidebarProfileImagePreview}
+                      alt=""
+                      className="dashboard-sidebar-user-avatar-image"
+                    />
+                  ) : (
+                    <div className="dashboard-sidebar-user-avatar-fallback">
+                      <span className="dashboard-sidebar-user-avatar-fallback-text">
+                        {sidebarUserInitials}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="dashboard-sidebar-user-details">
