@@ -3,7 +3,7 @@ import Swal from 'sweetalert2'
 import 'sweetalert2/dist/sweetalert2.min.css'
 import logo from '../Pictures/Avinya.png'
 import '../Styles/Users.css'
-import { getCurrentUserProfile } from '../Utils/getCurrentUserProfile'
+import { getCurrentUserProfile, isTenantAdministratorRole } from '../Utils/getCurrentUserProfile'
 import { buildApiAssetUrl } from '../Config/API'
 
 const Users = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
@@ -12,6 +12,7 @@ const Users = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
 
   const user = getCurrentUserProfile()
+  const isTenantAdministrator = isTenantAdministratorRole(user.roleLabel)
 
   const sidebarProfileImagePreview = buildApiAssetUrl(user.profilePictureUrl)
 
@@ -43,6 +44,12 @@ const Users = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
       document.removeEventListener('mousedown', handleOutsideClick)
     }
   }, [])
+
+  useEffect(() => {
+    if (!isTenantAdministrator) {
+      onNavigate('dashboard')
+    }
+  }, [isTenantAdministrator, onNavigate])
 
   const handleSidebarToggle = () => {
     if (!isSidebarCollapsed) {
@@ -93,6 +100,10 @@ const Users = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
 
     closeDropdowns()
     onLogout()
+  }
+
+  if (!isTenantAdministrator) {
+    return null
   }
 
   return (

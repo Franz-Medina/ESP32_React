@@ -14,7 +14,7 @@ import {
   UserIcon,
   ErrorIcon
 } from '../Components/LoginIcons.jsx'
-import { getCurrentUserProfile } from '../Utils/getCurrentUserProfile'
+import { getCurrentUserProfile, isTenantAdministratorRole } from '../Utils/getCurrentUserProfile'
 import { getCroppedImageDataUrl } from '../Utils/cropImage'
 import { API_URL, buildApiAssetUrl } from '../Config/API'
 
@@ -269,6 +269,7 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   const [isCountryCodeOpen, setIsCountryCodeOpen] = useState(false)
 
   const user = getCurrentUserProfile()
+  const isTenantAdministrator = isTenantAdministratorRole(user.roleLabel)
 
   const [profileForm, setProfileForm] = useState(() => getInitialAccountForm(user))
   const [savedProfileFormSnapshot, setSavedProfileFormSnapshot] = useState(() =>
@@ -1334,37 +1335,41 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
               </div>
             </div>
 
-            <button
-                type="button"
-                className="dashboard-sidebar-link"
-                data-tooltip="Users"
-                onClick={() => onNavigate('users')}
-            >
-              <span className="dashboard-sidebar-link-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-                  <circle cx="9" cy="7" r="4" />
-                  <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-                  <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                </svg>
-              </span>
-              <span className="dashboard-sidebar-link-label">Users</span>
-            </button>
+            {isTenantAdministrator && (
+              <button
+                  type="button"
+                  className="dashboard-sidebar-link"
+                  data-tooltip="Users"
+                  onClick={() => onNavigate('users')}
+              >
+                <span className="dashboard-sidebar-link-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                  </svg>
+                </span>
+                <span className="dashboard-sidebar-link-label">Users</span>
+              </button>
+            )}
 
-            <button
-                type="button"
-                className="dashboard-sidebar-link"
-                data-tooltip="Logs"
-                onClick={() => onNavigate('logs')}
-            >
-              <span className="dashboard-sidebar-link-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M9 11l3 3L22 4" />
-                  <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-                </svg>
-              </span>
-              <span className="dashboard-sidebar-link-label">Logs</span>
-            </button>
+            {isTenantAdministrator && (
+              <button
+                  type="button"
+                  className="dashboard-sidebar-link"
+                  data-tooltip="Logs"
+                  onClick={() => onNavigate('logs')}
+              >
+                <span className="dashboard-sidebar-link-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M9 11l3 3L22 4" />
+                    <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+                  </svg>
+                </span>
+                <span className="dashboard-sidebar-link-label">Logs</span>
+              </button>
+            )}
           </nav>
 
           <div className="dashboard-sidebar-footer">

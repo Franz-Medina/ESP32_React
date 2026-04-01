@@ -75,6 +75,9 @@ const getSafeRoleLabel = (user) => {
   return 'Customer Administrator'
 }
 
+export const isTenantAdministratorRole = (roleLabel = '') =>
+  normalizeRoleLabel(roleLabel) === 'Tenant Administrator'
+
 export const getCurrentUserProfile = () => {
   const user = getStoredUser()
 
