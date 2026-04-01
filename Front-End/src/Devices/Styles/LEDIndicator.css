@@ -171,24 +171,24 @@
 [data-theme='dark'] .led-btn:hover {
   background: #171b22;
   border-color: #323947;
-  color: #ffdddd;
+  color: #980000;
   transform: translateY(-1px);
 }
 
 [data-theme='dark'] .led-btn-primary {
   background: rgba(197, 42, 42, 0.16);
   border-color: rgba(197, 42, 42, 0.28);
-  color: #ffdddd;
+  color: #980000;
 }
 
 [data-theme='dark'] .led-input {
   border-color: #323947;
   background: #171b22;
-  color: #ffdddd;
+  color: #980000;
 }
 
 [data-theme='dark'] .led-input:focus {
-  border-color: #ffdddd;
+  border-color: #980000;
 }
 
 [data-theme='dark'] .led-status {

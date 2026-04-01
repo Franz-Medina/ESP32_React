@@ -33,7 +33,6 @@ function CountWidgets() {
       setEntityCount(entityData.totalElements || 0);
     } catch (err) {
       console.error(err);
-      // Silent fail — keeps widget clean like other test-mode widgets
     }
   };
 
@@ -48,7 +47,6 @@ function CountWidgets() {
       <div className="count-title">COUNT WIDGETS</div>
 
       <div className="counts-grid">
-        {/* Alarm Count Panel */}
         <div className="count-panel alarm-panel">
           <div className="panel-header">
             <span className="panel-title">Alarm count</span>

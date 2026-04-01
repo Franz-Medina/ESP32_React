@@ -160,14 +160,14 @@
 [data-theme='dark'] .servo-btn:hover {
   background: #171b22;
   border-color: #323947;
-  color: #ffdddd;
+  color: #980000;
   transform: translateY(-1px);
 }
 
 [data-theme='dark'] .servo-btn-primary {
   background: rgba(197, 42, 42, 0.16);
   border-color: rgba(197, 42, 42, 0.28);
-  color: #ffdddd;
+  color: #980000;
 }
 
 [data-theme='dark'] .servo-slider {

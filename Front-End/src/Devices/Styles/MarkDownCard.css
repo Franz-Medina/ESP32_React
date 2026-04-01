@@ -145,15 +145,15 @@
 }
 
 [data-theme='dark'] .markdown-title {
-  color: #ffdddd;
+  color: #980000;
 }
 
 [data-theme='dark'] .markdown-content {
-  color: #ffdddd;
+  color: #980000;
 }
 
 [data-theme='dark'] .markdown-body strong {
-  color: #ffdddd;
+  color: #980000;
 }
 
 [data-theme='dark'] .markdown-body em {
@@ -161,17 +161,17 @@
 }
 
 [data-theme='dark'] .markdown-body a {
-  color: #ffdddd;
+  color: #980000;
 }
 
 [data-theme='dark'] .markdown-textarea {
   background: #171b22;
-  color: #ffdddd;
+  color: #980000;
   border-color: #323947;
 }
 
 [data-theme='dark'] .markdown-textarea:focus {
-  border-color: #ffdddd;
+  border-color: #980000;
 }
 
 [data-theme='dark'] .markdown-btn {
@@ -181,18 +181,18 @@
 [data-theme='dark'] .markdown-btn:hover {
   background: #171b22;
   border-color: #323947;
-  color: #ffdddd;
+  color: #980000;
   transform: translateY(-1px);
 }
 
 [data-theme='dark'] .markdown-btn-primary {
   background: rgba(197, 42, 42, 0.16);
   border-color: rgba(197, 42, 42, 0.28);
-  color: #ffdddd;
+  color: #980000;
 }
 
 [data-theme='dark'] .markdown-btn-edit {
   background: rgba(197, 42, 42, 0.12);
   border-color: rgba(197, 42, 42, 0.24);
-  color: #ffdddd;
+  color: #980000;
 }

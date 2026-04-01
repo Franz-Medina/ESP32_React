@@ -152,7 +152,7 @@
 }
 
 [data-theme='dark'] .entities-title {
-  color: #ffdddd;
+  color: #980000;
 }
 
 [data-theme='dark'] .entities-header {
@@ -164,7 +164,7 @@
 }
 
 [data-theme='dark'] .entities-refresh-btn {
-  color: #ffdddd;
+  color: #980000;
 }
 
 [data-theme='dark'] .entities-refresh-btn:hover:not(:disabled) {
@@ -183,7 +183,7 @@
 }
 
 [data-theme='dark'] .entities-table td {
-  color: #ffdddd;
+  color: #980000;
   border-bottom-color: #323947;
 }
 
@@ -198,7 +198,7 @@
 }
 
 [data-theme='dark'] .random-value {
-  color: #ffdddd;
+  color: #980000;
 }
 
 [data-theme='dark'] .empty-row,

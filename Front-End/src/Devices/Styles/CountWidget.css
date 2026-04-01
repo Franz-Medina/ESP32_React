@@ -123,7 +123,7 @@
 }
 
 [data-theme='dark'] .count-title {
-  color: #ffdddd;
+  color: #980000;
 }
 
 [data-theme='dark'] .count-panel {
@@ -137,12 +137,12 @@
 
 [data-theme='dark'] .latest-badge {
   background: rgba(197, 42, 42, 0.18);
-  color: #ffdddd;
+  color: #980000;
 }
 
 [data-theme='dark'] .alarm-icon {
   background: rgba(197, 42, 42, 0.18);
-  color: #ffdddd;
+  color: #980000;
 }
 
 [data-theme='dark'] .entity-icon {
@@ -151,11 +151,11 @@
 }
 
 [data-theme='dark'] .count-value {
-  color: #ffdddd;
+  color: #980000;
 }
 
 [data-theme='dark'] .alarm-panel .count-value {
-  color: #ffdddd;
+  color: #980000;
 }
 
 [data-theme='dark'] .entity-panel .count-value {
