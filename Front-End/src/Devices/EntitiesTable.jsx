@@ -37,7 +37,6 @@ function EntitiesTable() {
     }
   };
 
-  // Initial fetch + auto-refresh every 30 seconds
   useEffect(() => {
     fetchEntities();
     const interval = setInterval(fetchEntities, 30000);
@@ -50,28 +49,29 @@ function EntitiesTable() {
   };
 
   return (
-    <div className="entities-table-widget">
-      <div className="widget-header">
-        <h3>Entities Table</h3>
-        <div className="header-actions">
-          <button
-            className="btn-refresh"
-            onClick={fetchEntities}
-            disabled={loading}
-            title="Refresh"
-          >
-            ↻
-          </button>
-          <span className="last-updated">
-            {lastUpdated ? `Last updated: ${formatTime(lastUpdated)}` : ""}
-          </span>
+    <div className="entities-widget">
+      <div className="entities-title">ENTITIES TABLE</div>
+
+      <div className="entities-header">
+        <div className="last-updated">
+          {lastUpdated ? `Last updated: ${formatTime(lastUpdated)}` : "Loading..."}
         </div>
+        <button
+          className="entities-refresh-btn"
+          onClick={fetchEntities}
+          disabled={loading}
+          title="Refresh"
+        >
+          ↻
+        </button>
       </div>
 
       <div className="table-container">
-        {loading && <div className="loading-overlay">Loading entities...</div>}
+        {loading && entities.length === 0 && (
+          <div className="loading-state">Loading entities...</div>
+        )}
 
-        {error && <div className="error-message">{error}</div>}
+        {error && <div className="error-state">{error}</div>}
 
         <table className="entities-table">
           <thead>
@@ -93,7 +93,7 @@ function EntitiesTable() {
                 <tr key={entity.id?.id || index}>
                   <td className="entity-name">{entity.name}</td>
                   <td>
-                    <span className={`entity-type ${entity.type?.toLowerCase()}`}>
+                    <span className={`entity-type ${entity.type?.toLowerCase() || ""}`}>
                       {entity.type || "Unknown"}
                     </span>
                   </td>

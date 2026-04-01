@@ -1,66 +1,53 @@
-.markdown-card-widget {
+.markdown-widget {
   width: 100%;
-  background: #0f172a;
-  border-radius: 12px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
-  overflow: hidden;
+  max-width: 420px;
+  /*aspect-ratio: 12 / 1;*/
+  min-height: 200px;
+
+  margin: auto;
+
   display: flex;
   flex-direction: column;
-  min-height: 320px;
+  justify-content: flex-start;
+
+  padding: 16px;
+  border-radius: 16px;
+
+  background: #ffffff;
+  border: 1px solid #e4e4e4;
 }
 
-.widget-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1.25rem 1.5rem;
-  border-bottom: 1px solid #334155;
-  background: #1e293b;
+.markdown-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #980000;
+  margin-bottom: 12px;
 }
 
-.widget-header h3 {
-  margin: 0;
-  font-size: 1.35rem;
-  color: #60a5fa;
-}
-
-.edit-btn {
-  background: none;
-  border: none;
-  color: #60a5fa;
-  font-size: 1.1rem;
-  cursor: pointer;
-  padding: 4px 10px;
-  border-radius: 6px;
-}
-
-.edit-btn:hover {
-  background: #334155;
-}
-
-.card-content {
+.markdown-content {
   flex: 1;
-  padding: 1.5rem;
   overflow-y: auto;
-  color: #e2e8f0;
+  padding: 8px 4px;
+  color: #111827;
   line-height: 1.6;
+  font-size: 15px;
 }
 
 .markdown-body {
-  font-size: 1.02rem;
+  font-size: 15px;
 }
 
 .markdown-body strong {
-  color: #93c5fd;
+  color: #980000;
 }
 
 .markdown-body em {
-  color: #cbd5e1;
+  color: #6b6b6b;
 }
 
 .markdown-body ul {
-  padding-left: 1.5rem;
-  margin: 0.75rem 0;
+  padding-left: 1.4rem;
+  margin: 0.8rem 0;
 }
 
 .markdown-body li {
@@ -68,55 +55,144 @@
 }
 
 .markdown-body a {
-  color: #60a5fa;
+  color: #980000;
   text-decoration: underline;
 }
 
 .markdown-body a:hover {
-  color: #93c5fd;
+  color: #c52a2a;
 }
 
-textarea {
+.markdown-textarea {
   width: 100%;
   height: 100%;
-  background: #1e293b;
-  color: #e2e8f0;
-  border: 1px solid #475569;
+  min-height: 140px;
+  background: #ffffff;
+  color: #111827;
+  border: 1px solid #e4e4e4;
   border-radius: 8px;
-  padding: 1rem;
-  font-family: monospace;
-  font-size: 0.95rem;
+  padding: 12px;
+  font-family: system-ui, sans-serif;
+  font-size: 14px;
   resize: none;
+  line-height: 1.5;
 }
 
-textarea:focus {
+.markdown-textarea:focus {
+  border-color: #980000;
   outline: none;
-  border-color: #60a5fa;
 }
 
-.edit-actions {
-  padding: 1rem 1.5rem;
-  border-top: 1px solid #334155;
-  display: flex;
-  gap: 1rem;
-  justify-content: flex-end;
-  background: #1e293b;
+.markdown-edit-area {
+  margin-top: auto;
+  padding-top: 12px;
 }
 
-.btn {
-  padding: 0.75rem 1.25rem;
-  border: none;
+.markdown-btn {
+  width: 100%;
+  height: 34px;
   border-radius: 8px;
-  font-weight: 600;
+
+  border: 1px solid transparent;
+  background: transparent;
+  color: #6b6b6b;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  font-size: 12px;
+  font-weight: 500;
+
   cursor: pointer;
+
+  transition: all 0.2s ease;
 }
 
-.btn.primary {
-  background: #3b82f6;
-  color: white;
+.markdown-btn:hover {
+  background: #ffffff;
+  border-color: #cfcfcf;
+  color: #980000;
+  transform: translateY(-1px);
 }
 
-.btn.secondary {
-  background: #475569;
-  color: #e2e8f0;
+.markdown-btn-primary {
+  background: rgba(152, 0, 0, 0.08);
+  border-color: rgba(152, 0, 0, 0.14);
+  color: #980000;
+}
+
+.markdown-btn-edit {
+  background: rgba(152, 0, 0, 0.06);
+  border-color: rgba(152, 0, 0, 0.12);
+  color: #980000;
+  font-size: 13px;
+  height: 32px;
+}
+
+.markdown-edit-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.markdown-edit-actions .markdown-btn {
+  flex: 1;
+}
+
+[data-theme='dark'] .markdown-widget {
+  background: rgba(21, 24, 31, 0.96);
+  border-color: #262b35;
+}
+
+[data-theme='dark'] .markdown-title {
+  color: #ffdddd;
+}
+
+[data-theme='dark'] .markdown-content {
+  color: #ffdddd;
+}
+
+[data-theme='dark'] .markdown-body strong {
+  color: #ffdddd;
+}
+
+[data-theme='dark'] .markdown-body em {
+  color: #98a2b3;
+}
+
+[data-theme='dark'] .markdown-body a {
+  color: #ffdddd;
+}
+
+[data-theme='dark'] .markdown-textarea {
+  background: #171b22;
+  color: #ffdddd;
+  border-color: #323947;
+}
+
+[data-theme='dark'] .markdown-textarea:focus {
+  border-color: #ffdddd;
+}
+
+[data-theme='dark'] .markdown-btn {
+  color: #98a2b3;
+}
+
+[data-theme='dark'] .markdown-btn:hover {
+  background: #171b22;
+  border-color: #323947;
+  color: #ffdddd;
+  transform: translateY(-1px);
+}
+
+[data-theme='dark'] .markdown-btn-primary {
+  background: rgba(197, 42, 42, 0.16);
+  border-color: rgba(197, 42, 42, 0.28);
+  color: #ffdddd;
+}
+
+[data-theme='dark'] .markdown-btn-edit {
+  background: rgba(197, 42, 42, 0.12);
+  border-color: rgba(197, 42, 42, 0.24);
+  color: #ffdddd;
 }

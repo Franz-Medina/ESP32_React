@@ -7,14 +7,9 @@ const TB_API_KEY = import.meta.env.VITE_TB_API_KEY;
 function CountWidgets() {
   const [alarmCount, setAlarmCount] = useState(0);
   const [entityCount, setEntityCount] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
 
   const fetchCounts = async () => {
     try {
-      setLoading(true);
-      setError("");
-
       const alarmRes = await fetch(
         `${TB_URL}/api/alarm/count?status=ACTIVE`,
         {
@@ -29,9 +24,7 @@ function CountWidgets() {
         }
       );
 
-      if (!alarmRes.ok || !entityRes.ok) {
-        throw new Error("Failed to fetch counts");
-      }
+      if (!alarmRes.ok || !entityRes.ok) throw new Error("Failed to fetch counts");
 
       const alarmData = await alarmRes.json();
       const entityData = await entityRes.json();
@@ -40,9 +33,7 @@ function CountWidgets() {
       setEntityCount(entityData.totalElements || 0);
     } catch (err) {
       console.error(err);
-      setError("Failed to load counts");
-    } finally {
-      setLoading(false);
+      // Silent fail — keeps widget clean like other test-mode widgets
     }
   };
 
@@ -53,42 +44,40 @@ function CountWidgets() {
   }, []);
 
   return (
-    <div className="count-widgets-container">
-      <div className="count-card alarm-card">
-        <div className="card-header">
-          <span className="card-title">Alarm count</span>
-          <div className="card-meta">
-            <span className="latest-badge">latest</span>
-            <button className="info-btn" title="Information">ℹ</button>
-          </div>
-        </div>
+    <div className="count-widget">
+      <div className="count-title">COUNT WIDGETS</div>
 
-        <div className="count-content">
-          <div className="icon-wrapper alarm-icon">
-            <span>⚠️</span>
+      <div className="counts-grid">
+        {/* Alarm Count Panel */}
+        <div className="count-panel alarm-panel">
+          <div className="panel-header">
+            <span className="panel-title">Alarm count</span>
+            <div className="panel-meta">
+              <span className="latest-badge">LIVE</span>
+            </div>
           </div>
-          <div className="count-info">
-            <div className="count-label">Total</div>
+
+          <div className="panel-content">
+            <div className="icon-wrapper alarm-icon">
+              <span>⚠️</span>
+            </div>
             <div className="count-value">{alarmCount}</div>
           </div>
         </div>
-      </div>
 
-      <div className="count-card entity-card">
-        <div className="card-header">
-          <span className="card-title">Entity count</span>
-          <div className="card-meta">
-            <span className="latest-badge">latest</span>
-            <button className="info-btn" title="Information">ℹ</button>
+        {/* Entity Count Panel */}
+        <div className="count-panel entity-panel">
+          <div className="panel-header">
+            <span className="panel-title">Entity count</span>
+            <div className="panel-meta">
+              <span className="latest-badge">LIVE</span>
+            </div>
           </div>
-        </div>
 
-        <div className="count-content">
-          <div className="icon-wrapper entity-icon">
-            <span>📦</span>
-          </div>
-          <div className="count-info">
-            <div className="count-label">Device</div>
+          <div className="panel-content">
+            <div className="icon-wrapper entity-icon">
+              <span>📦</span>
+            </div>
             <div className="count-value">{entityCount}</div>
           </div>
         </div>

@@ -31,29 +31,16 @@ function MarkdownCard({
   };
 
   return (
-    <div className="markdown-card-widget">
-      <div className="widget-header">
-        <h3>{title}</h3>
-        {allowEditing && (
-          <button 
-            className="edit-btn"
-            onClick={() => {
-              if (isEditing) handleCancel();
-              else setIsEditing(true);
-            }}
-          >
-            {isEditing ? "Cancel" : "✏️ Edit"}
-          </button>
-        )}
-      </div>
+    <div className="markdown-widget">
+      <div className="markdown-title">{title}</div>
 
-      <div className="card-content">
+      <div className="markdown-content">
         {isEditing ? (
           <textarea
             value={tempContent}
             onChange={(e) => setTempContent(e.target.value)}
-            rows={12}
             placeholder="Write markdown here..."
+            className="markdown-textarea"
           />
         ) : (
           <div 
@@ -63,14 +50,31 @@ function MarkdownCard({
         )}
       </div>
 
-      {isEditing && (
-        <div className="edit-actions">
-          <button className="btn secondary" onClick={handleCancel}>
-            Cancel
-          </button>
-          <button className="btn primary" onClick={handleSave}>
-            Save Changes
-          </button>
+      {allowEditing && (
+        <div className="markdown-edit-area">
+          {!isEditing ? (
+            <button //Need to find an favicon to replace the pencil emoji
+              className="markdown-btn markdown-btn-edit"
+              onClick={() => setIsEditing(true)}
+            >
+              ✏️ Edit
+            </button>
+          ) : (
+            <div className="markdown-edit-actions">
+              <button 
+                className="markdown-btn"
+                onClick={handleCancel}
+              >
+                Cancel
+              </button>
+              <button 
+                className="markdown-btn markdown-btn-primary"
+                onClick={handleSave}
+              >
+                Save Changes
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
