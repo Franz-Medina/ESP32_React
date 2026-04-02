@@ -5,7 +5,9 @@ import { countries } from 'country-list-json'
 import * as FlagIcons from 'country-flag-icons/react/3x2'
 import logo from '../Pictures/Avinya.png'
 import '../Styles/Users.css'
+import { EditIcon, TrashIcon } from '../Components/Icons.jsx'
 import { getCurrentUserProfile, isTenantAdministratorRole } from '../Utils/getCurrentUserProfile'
+import { performReliableLogout } from '../Utils/performReliableLogout'
 import { API_URL, buildApiAssetUrl } from '../Config/API'
 
 const getStoredAuthToken = () =>
@@ -207,7 +209,7 @@ const Users = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     if (!result.isConfirmed) return
 
     closeDropdowns()
-    onLogout()
+    performReliableLogout(onLogout)
   }
 
   if (!isTenantAdministrator) {
@@ -478,20 +480,17 @@ const Users = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
 
       <section className="dashboard-content">
         <div className="dashboard-content-body dashboard-content-body-frame">
-          <h1 className="dashboard-content-title">Users</h1>
+          <h1 id="users-page-title" className="dashboard-content-title">Users</h1>
 
-          <section className="users-panel" aria-labelledby="users-table-heading">
-            <div className="users-panel-header">
-              <div className="users-panel-copy">
-                <h2 id="users-table-heading" className="users-panel-heading">
-                  User Directory
-                </h2>
-              </div>
-            </div>
+          <section className="users-panel" aria-labelledby="users-page-title">
 
             <div className="users-table-shell">
               <div
-                className="users-table-scroll"
+                className={`users-table-scroll ${
+                  !isUsersLoading && !usersLoadError && users.length === 0
+                    ? 'users-table-scroll-empty'
+                    : ''
+                }`}
                 role="region"
                 aria-label="Users table"
                 tabIndex="0"
@@ -506,7 +505,7 @@ const Users = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                       <th scope="col">Email</th>
                       <th scope="col">Country Code</th>
                       <th scope="col">Phone Number</th>
-                      <th scope="col">Verified?</th>
+                      <th scope="col">Status</th>
                       <th scope="col">Actions</th>
                     </tr>
                   </thead>
@@ -525,9 +524,9 @@ const Users = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                         </td>
                       </tr>
                     ) : users.length === 0 ? (
-                      <tr className="users-table-state-row">
+                      <tr className="users-table-state-row users-table-state-row-empty" aria-hidden="true">
                         <td colSpan="9" className="users-table-state-cell">
-                          No customer administrators found.
+                          &nbsp;
                         </td>
                       </tr>
                     ) : (
@@ -590,8 +589,11 @@ const Users = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                             </td>
 
                             <td>
-                              <span className="users-cell-text" title={listedUser.phoneNumber || ''}>
-                                {listedUser.phoneNumber || '—'}
+                              <span
+                                className="users-cell-text"
+                                title={String(listedUser.phoneNumber || '').trim() || 'N/A'}
+                              >
+                                {String(listedUser.phoneNumber || '').trim() || 'N/A'}
                               </span>
                             </td>
 
@@ -615,10 +617,7 @@ const Users = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                                   className="users-action-button users-action-button-edit"
                                 >
                                   <span className="users-action-button-icon" aria-hidden="true">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                      <path d="M12 20h9" />
-                                      <path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5Z" />
-                                    </svg>
+                                    <EditIcon />
                                   </span>
                                   <span>Edit</span>
                                 </button>
@@ -628,13 +627,7 @@ const Users = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                                   className="users-action-button users-action-button-delete"
                                 >
                                   <span className="users-action-button-icon" aria-hidden="true">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                      <path d="M3 6h18" />
-                                      <path d="M8 6V4h8v2" />
-                                      <path d="M19 6l-1 14H6L5 6" />
-                                      <path d="M10 11v6" />
-                                      <path d="M14 11v6" />
-                                    </svg>
+                                    <TrashIcon />
                                   </span>
                                   <span>Delete</span>
                                 </button>
@@ -646,6 +639,12 @@ const Users = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                     )}
                   </tbody>
                 </table>
+
+                {!isUsersLoading && !usersLoadError && users.length === 0 && (
+                  <div className="users-table-empty-state" aria-live="polite">
+                    No customer administrators found.
+                  </div>
+                )}
               </div>
             </div>
           </section>

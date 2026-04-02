@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import logo from '../Pictures/Avinya.png'
 import '../Styles/OTPVerification.css'
-import { ErrorIcon } from '../Components/LoginIcons.jsx'
+import { ErrorIcon } from '../Components/Icons.jsx'
 
 import { API_URL } from '../Config/API'
 

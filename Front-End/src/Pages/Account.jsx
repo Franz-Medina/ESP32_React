@@ -12,9 +12,16 @@ import {
   GlobeIcon,
   PhoneIcon,
   UserIcon,
-  ErrorIcon
-} from '../Components/LoginIcons.jsx'
+  ErrorIcon,
+  LockIcon,
+  EyeOpenIcon,
+  EyeClosedIcon,
+  PhotoRemoveIcon,
+  TrashIcon,
+  SaveIcon
+} from '../Components/Icons.jsx'
 import { getCurrentUserProfile, isTenantAdministratorRole } from '../Utils/getCurrentUserProfile'
+import { performReliableLogout } from '../Utils/performReliableLogout'
 import { getCroppedImageDataUrl } from '../Utils/cropImage'
 import { API_URL, buildApiAssetUrl } from '../Config/API'
 
@@ -75,31 +82,6 @@ const appendImageCacheKey = (assetUrl = '', cacheKey = '') => {
 
   return `${resolvedAssetUrl}${resolvedAssetUrl.includes('?') ? '&' : '?'}v=${encodeURIComponent(resolvedCacheKey)}`
 }
-
-const AccountLockIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <rect x="5" y="11" width="14" height="10" rx="2" />
-    <path d="M8 11V8a4 4 0 1 1 8 0v3" />
-  </svg>
-)
-
-const AccountPasswordToggleIcon = ({ isVisible }) => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    {isVisible ? (
-      <>
-        <path d="M3 3l18 18" />
-        <path d="M10.58 10.58a2 2 0 0 0 2.83 2.83" />
-        <path d="M9.88 5.09A9.77 9.77 0 0 1 12 4.8c5.05 0 9.27 3.11 10.5 7.2a11.8 11.8 0 0 1-3.04 4.61" />
-        <path d="M6.61 6.61A11.84 11.84 0 0 0 1.5 12c1.23 4.09 5.45 7.2 10.5 7.2a10.8 10.8 0 0 0 4.27-.86" />
-      </>
-    ) : (
-      <>
-        <path d="M1.5 12C2.73 7.91 6.95 4.8 12 4.8s9.27 3.11 10.5 7.2c-1.23 4.09-5.45 7.2-10.5 7.2S2.73 16.09 1.5 12Z" />
-        <circle cx="12" cy="12" r="3" />
-      </>
-    )}
-  </svg>
-)
 
 const getNameValidationError = (value, label) => {
   if (!value) {
@@ -890,7 +872,7 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     if (!result.isConfirmed) return
 
     closeDropdowns()
-    onLogout()
+    performReliableLogout(onLogout)
   }
 
     const clearAccountFormErrors = () => {
@@ -1549,7 +1531,10 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                       onClick={handleRemoveProfileImage}
                       disabled={!profileImagePreview || Boolean(photoProcessingMode)}
                     >
-                      Remove
+                      <span className="account-button-icon" aria-hidden="true">
+                        <PhotoRemoveIcon />
+                      </span>
+                      <span>Remove</span>
                     </button>
 
                     <button
@@ -1800,7 +1785,10 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                       onClick={handleOpenDeleteAccountModal}
                       disabled={isSavingProfile || Boolean(photoProcessingMode) || isDeletingAccount}
                     >
-                      Delete User Account
+                      <span className="account-button-icon" aria-hidden="true">
+                        <TrashIcon />
+                      </span>
+                      <span>Delete User Account</span>
                     </button>
                   )}
 
@@ -1810,7 +1798,10 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                     onClick={handleSaveProfile}
                     disabled={isSaveDisabled}
                   >
-                    Save
+                    <span className="account-button-icon" aria-hidden="true">
+                      <SaveIcon />
+                    </span>
+                    <span>Save</span>
                   </button>
                 </div>
               </div>
@@ -1953,7 +1944,7 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
               <div className="account-field-group">
                 <div className={`account-field account-floating-field ${hasDeletePasswordFieldError ? 'account-field-error' : ''}`}>
                   <span className="account-field-icon" aria-hidden="true">
-                    <AccountLockIcon />
+                    <LockIcon />
                   </span>
 
                   <div className="account-floating-control">
@@ -1980,7 +1971,7 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                     aria-label={isDeletePasswordVisible ? 'Hide password' : 'Show password'}
                     disabled={isDeletingAccount}
                   >
-                    <AccountPasswordToggleIcon isVisible={isDeletePasswordVisible} />
+                    {isDeletePasswordVisible ? <EyeClosedIcon /> : <EyeOpenIcon />}
                   </button>
                 </div>
 
@@ -1997,7 +1988,7 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
               <div className="account-field-group">
                 <div className={`account-field account-floating-field ${hasDeleteConfirmPasswordFieldError ? 'account-field-error' : ''}`}>
                   <span className="account-field-icon" aria-hidden="true">
-                    <AccountLockIcon />
+                    <LockIcon />
                   </span>
 
                   <div className="account-floating-control">
@@ -2024,7 +2015,7 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                     aria-label={isDeleteConfirmPasswordVisible ? 'Hide confirm password' : 'Show confirm password'}
                     disabled={isDeletingAccount}
                   >
-                    <AccountPasswordToggleIcon isVisible={isDeleteConfirmPasswordVisible} />
+                    {isDeleteConfirmPasswordVisible ? <EyeClosedIcon /> : <EyeOpenIcon />}
                   </button>
                 </div>
 

@@ -3,7 +3,7 @@ import Swal from 'sweetalert2'
 import 'sweetalert2/dist/sweetalert2.min.css'
 import logo from '../Pictures/Avinya.png'
 import '../Styles/ForgotPassword.css'
-import { UserIcon, ErrorIcon } from '../Components/LoginIcons.jsx'
+import { UserIcon, ErrorIcon } from '../Components/Icons.jsx'
 
 import { API_URL } from '../Config/API'
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/

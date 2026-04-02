@@ -732,6 +732,7 @@
   min-width: 190px;
   max-width: 190px;
   box-sizing: border-box;
+  white-space: nowrap;
 }
 
 .account-button {
@@ -776,6 +777,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
+  line-height: 0;
 }
 
 .account-button-primary {
@@ -2417,6 +2420,26 @@
     min-width: 0;
     max-width: calc((100% - 10px) / 2);
     box-sizing: border-box;
+  }
+
+  .dashboard-sidebar:not(.collapsed) + .dashboard-content .account-actions {
+    width: min(100%, 450px);
+    max-width: min(100%, 450px);
+    margin-left: auto;
+    margin-right: auto;
+    justify-content: center;
+    align-items: stretch;
+    flex-wrap: nowrap;
+    gap: 10px;
+  }
+
+  .dashboard-sidebar:not(.collapsed) + .dashboard-content .account-actions .account-button {
+    flex: 1 1 0;
+    width: calc((100% - 10px) / 2);
+    min-width: 0;
+    max-width: calc((100% - 10px) / 2);
+    box-sizing: border-box;
+    white-space: nowrap;
   }
 }
 

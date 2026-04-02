@@ -7,7 +7,7 @@ import {
   EyeOpenIcon,
   EyeClosedIcon,
   ErrorIcon
-} from '../Components/LoginIcons.jsx'
+} from '../Components/Icons.jsx'
 
 import { API_URL } from '../Config/API'
 

@@ -4,6 +4,7 @@ import 'sweetalert2/dist/sweetalert2.min.css'
 import logo from '../Pictures/Avinya.png'
 import '../Styles/Dashboard.css'
 import { getCurrentUserProfile, isTenantAdministratorRole } from '../Utils/getCurrentUserProfile'
+import { performReliableLogout } from '../Utils/performReliableLogout'
 import { buildApiAssetUrl } from '../Config/API'
 
 import {
@@ -107,7 +108,7 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     if (!result.isConfirmed) return
 
     closeDropdowns()
-    onLogout()
+    performReliableLogout(onLogout)
   }
 
   return (

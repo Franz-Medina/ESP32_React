@@ -27,13 +27,16 @@
 
 .users-page .dashboard-content-body {
   padding: 10px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   --users-panel-top-expanded: 28px;
   --users-panel-top-collapsed: 28px;
   --users-panel-top-current: var(--users-panel-top-expanded);
-  --users-panel-edge-spacing-expanded: var(--dashboard-frame-inset);
-  --users-panel-edge-spacing-collapsed: var(--dashboard-frame-inset);
+  --users-panel-edge-spacing-expanded: 0px;
+  --users-panel-edge-spacing-collapsed: 0px;
   --users-panel-edge-spacing-current: var(--users-panel-edge-spacing-expanded);
-  scrollbar-gutter: stable;
+  scrollbar-gutter: auto;
   scrollbar-width: thin;
   scrollbar-color: rgba(152, 0, 0, 0.28) transparent;
 }
@@ -107,9 +110,11 @@
 .users-panel {
   width: 100%;
   max-width: 100%;
-  min-height: calc(100% - var(--users-panel-top-current));
+  min-width: 0;
+  flex: 1;
+  min-height: 0;
   margin: var(--users-panel-top-current) 0 0;
-  padding: 0 var(--users-panel-edge-spacing-current) var(--users-panel-edge-spacing-current);
+  padding: 0;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
@@ -140,6 +145,8 @@
 }
 
 .users-table-shell {
+  width: 100%;
+  min-width: 0;
   min-height: 0;
   flex: 1;
   border: 1px solid #ececec;
@@ -153,11 +160,16 @@
 }
 
 .users-table-scroll {
+  position: relative;
   width: 100%;
+  min-width: 0;
+  min-height: 0;
   height: 100%;
   overflow-x: auto;
-  overflow-y: hidden;
+  overflow-y: auto;
   flex: 1;
+  display: flex;
+  flex-direction: column;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
   scrollbar-color: rgba(152, 0, 0, 0.24) transparent;
@@ -196,7 +208,7 @@
   position: sticky;
   top: 0;
   z-index: 1;
-  padding: 12px 14px;
+  padding: 6px 14px;
   border-bottom: 1px solid #ececec;
   border-right: 1px solid #e9dfdf;
   background: linear-gradient(
@@ -204,7 +216,7 @@
     rgba(152, 0, 0, 0.08) 0%,
     rgba(152, 0, 0, 0.03) 100%
   );
-  color: #1f1f1f;
+  color: #6b6b6b;
   font-size: 14px;
   font-weight: 600;
   line-height: 1.4;
@@ -212,6 +224,7 @@
   vertical-align: middle;
   white-space: nowrap;
   letter-spacing: 0.01em;
+  text-transform: uppercase;
 }
 
 .users-table thead th {
@@ -228,7 +241,7 @@
 }
 
 .users-table-body-row td {
-  padding: 10px 12px;
+  padding: 4px 12px;
   border-bottom: 1px solid #ececec;
   border-right: 1px solid #e9dfdf;
   background: rgba(255, 255, 255, 0.82);
@@ -250,7 +263,7 @@
 }
 
 .users-table-state-row td {
-  padding: 24px 18px;
+  padding: 0 18px;
   border-bottom: 0;
   background: transparent;
   color: #6b6b6b;
@@ -258,14 +271,33 @@
   font-weight: 400;
   line-height: 1.5;
   text-align: center;
+  vertical-align: middle;
 }
 
 .users-table-state-cell {
-  height: 96px;
+  height: clamp(320px, 52vh, 560px);
+  display: table-cell;
+  text-align: center;
+  vertical-align: middle;
 }
 
 .users-table-state-cell-error {
   color: #980000;
+}
+
+.users-table-empty-state {
+  position: absolute;
+  top: calc(50% + 18px);
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: calc(100% - 36px);
+  padding: 0 18px;
+  color: #6b6b6b;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.5;
+  text-align: center;
+  pointer-events: none;
 }
 
 .users-cell-text {
@@ -277,7 +309,7 @@
 }
 
 .users-picture-cell {
-  padding: 10px 12px !important;
+  padding: 4px 12px !important;
 }
 
 .users-profile-cell {
@@ -452,6 +484,7 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  line-height: 0;
 }
 
 .users-action-button-icon svg {
@@ -474,11 +507,11 @@
 
 @media (min-width: 1025px) {
   .dashboard-sidebar:not(.collapsed) + .dashboard-content .dashboard-content-body {
-    --users-panel-top-expanded: 43px;
+    --users-panel-top-expanded: 30px;
   }
 
   .dashboard-sidebar.collapsed + .dashboard-content .dashboard-content-body {
-    --users-panel-top-collapsed: 28px;
+    --users-panel-top-collapsed: 15px;
   }
 }
 
@@ -502,7 +535,7 @@
   }
 
   .users-table-head-row th {
-    padding: 14px 16px;
+    padding: 10px 14px;
   }
 }
 
@@ -624,7 +657,7 @@
     rgba(197, 42, 42, 0.18) 0%,
     rgba(197, 42, 42, 0.07) 100%
   );
-  color: #ffffff;
+  color: #98a2b3;
 }
 
 [data-theme='dark'] .users-table-head-row th:last-child {
@@ -654,13 +687,17 @@
   color: #ff7b7b;
 }
 
+[data-theme='dark'] .users-table-empty-state {
+  color: #98a2b3;
+}
+
 [data-theme='dark'] .users-profile-avatar {
   border-color: rgba(197, 42, 42, 0.24);
   background: transparent;
 }
 
 [data-theme='dark'] .users-picture-cell {
-  padding: 14px 16px !important;
+  padding: 4px 12px !important;
 }
 
 [data-theme='dark'] .users-profile-avatar-fallback {
