@@ -8,7 +8,7 @@ const {
   generateOtpCode,
   getOtpExpiryDate,
   sendOtpEmail,
-} = require("../utils/authHelpers");
+} = require("../Utils/authHelpers");
 
 router.post("/login", async (req, res) => {
   try {

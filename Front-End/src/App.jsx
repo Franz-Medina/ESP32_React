@@ -12,6 +12,12 @@ import Account from './Pages/Account.jsx'
 import logo from './Pictures/Avinya.png'
 import './Styles/App.css'
 
+import {
+  clearStoredAuthSession,
+  getStoredAuthToken,
+  hasPersistentAuthSession
+} from './Utils/authStorage'
+
 const AUTH_PAGE_KEYS = new Set([
   'login',
   'register',
@@ -20,19 +26,16 @@ const AUTH_PAGE_KEYS = new Set([
   'create-new-password'
 ])
 
-const getStoredToken = () =>
-  sessionStorage.getItem('tbToken') || localStorage.getItem('tbToken')
-
 const getStoredPage = () =>
   sessionStorage.getItem('avinya-current-page') || localStorage.getItem('avinya-current-page')
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(
-    () => !!getStoredToken()
+    () => !!getStoredAuthToken()
   )
   const [currentPage, setCurrentPage] = useState(() => {
     const storedPage = getStoredPage()
-    const hasStoredToken = !!getStoredToken()
+    const hasStoredToken = !!getStoredAuthToken()
 
     if (hasStoredToken) {
       return storedPage && !AUTH_PAGE_KEYS.has(storedPage) ? storedPage : 'dashboard'
@@ -66,15 +69,11 @@ function App() {
     const token = params.get('token')
 
     if (page === 'create-new-password' && token) {
-      sessionStorage.removeItem('tbToken')
-      sessionStorage.removeItem('tbUser')
-      sessionStorage.removeItem('tbRefreshToken')
+      clearStoredAuthSession()
+      
       sessionStorage.removeItem('avinya-current-page')
       sessionStorage.removeItem('avinya-pending-verification-email')
 
-      localStorage.removeItem('tbToken')
-      localStorage.removeItem('tbUser')
-      localStorage.removeItem('tbRefreshToken')
       localStorage.removeItem('avinya-current-page')
 
       setIsAuthenticated(false)
@@ -87,7 +86,7 @@ function App() {
   }, [])
 
   useEffect(() => {
-    const targetStorage = isAuthenticated && localStorage.getItem('tbToken')
+    const targetStorage = isAuthenticated && hasPersistentAuthSession()
       ? localStorage
       : sessionStorage
 
@@ -147,16 +146,12 @@ function App() {
   }
 
   const handleLogout = () => {
-    sessionStorage.removeItem('tbToken')
-    sessionStorage.removeItem('tbRefreshToken')
-    sessionStorage.removeItem('tbUser')
+    clearStoredAuthSession()
+
     sessionStorage.removeItem('avinya-current-page')
     sessionStorage.removeItem('avinya-pending-verification-email')
     sessionStorage.removeItem('avinya-reset-token')
 
-    localStorage.removeItem('tbToken')
-    localStorage.removeItem('tbRefreshToken')
-    localStorage.removeItem('tbUser')
     localStorage.removeItem('avinya-current-page')
 
     runAppTransition(() => {

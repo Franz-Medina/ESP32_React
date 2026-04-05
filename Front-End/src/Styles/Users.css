@@ -118,7 +118,7 @@
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
-  animation: usersPanelEnter 0.46s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: accountPanelEnter 0.46s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .users-panel-header {
@@ -146,6 +146,7 @@
 
 .users-table-shell {
   width: 100%;
+  height: 100%;
   min-width: 0;
   min-height: 0;
   flex: 1;
@@ -173,6 +174,7 @@
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
   scrollbar-color: rgba(152, 0, 0, 0.24) transparent;
+  box-sizing: border-box;
 }
 
 .users-table-scroll:focus-visible {
@@ -204,11 +206,23 @@
   table-layout: auto;
 }
 
+.users-table-col-no,
+.users-table-col-picture,
+.users-table-col-last-name,
+.users-table-col-first-name,
+.users-table-col-email,
+.users-table-col-country-code,
+.users-table-col-phone-number,
+.users-table-col-status,
+.users-table-col-actions {
+  width: auto;
+}
+
 .users-table-head-row th {
   position: sticky;
   top: 0;
   z-index: 1;
-  padding: 6px 14px;
+  padding: 4px 12px;
   border-bottom: 1px solid #ececec;
   border-right: 1px solid #e9dfdf;
   background: linear-gradient(
@@ -219,12 +233,14 @@
   color: #6b6b6b;
   font-size: 14px;
   font-weight: 600;
-  line-height: 1.4;
+  line-height: 1.25;
   text-align: center;
   vertical-align: middle;
   white-space: nowrap;
   letter-spacing: 0.01em;
   text-transform: uppercase;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 .users-table thead th {
@@ -241,17 +257,19 @@
 }
 
 .users-table-body-row td {
-  padding: 4px 12px;
+  padding: 3px 10px;
   border-bottom: 1px solid #ececec;
   border-right: 1px solid #e9dfdf;
   background: rgba(255, 255, 255, 0.82);
   color: #1f1f1f;
   font-size: 14px;
   font-weight: 400;
-  line-height: 1.4;
+  line-height: 1.25;
   text-align: center;
   vertical-align: middle;
   white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 .users-table-body-row td:last-child {
@@ -260,6 +278,14 @@
 
 .users-table-body-row:hover td {
   background: #ffffff;
+}
+
+.users-table-body-row.users-table-body-row-removing {
+  pointer-events: none;
+}
+
+.users-table-body-row.users-table-body-row-removing td {
+  animation: usersTableRowDelete 0.28s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 .users-table-state-row td {
@@ -301,15 +327,19 @@
 }
 
 .users-cell-text {
-  display: block;
-  width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  display: inline-block;
+  width: max-content;
+  min-width: 0;
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
   white-space: nowrap;
+  text-align: center;
+  vertical-align: middle;
 }
 
 .users-picture-cell {
-  padding: 4px 12px !important;
+  padding: 3px 10px !important;
 }
 
 .users-profile-cell {
@@ -320,8 +350,8 @@
 }
 
 .users-profile-avatar {
-  width: 52px;
-  height: 52px;
+  width: 42px;
+  height: 42px;
   border: 1px solid rgba(152, 0, 0, 0.14);
   border-radius: 999px;
   background: transparent;
@@ -362,10 +392,18 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
+  max-width: 100%;
   white-space: nowrap;
   padding: 0 2px;
+}
+
+.users-country-value span {
+  min-width: 0;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
 }
 
 .users-country-flag {
@@ -378,7 +416,12 @@
 }
 
 .users-status-badge {
-  min-height: 35px;
+  --users-inline-control-width: 120px;
+  width: var(--users-inline-control-width);
+  min-width: var(--users-inline-control-width);
+  max-width: var(--users-inline-control-width);
+  min-height: 32px;
+  height: 32px;
   padding: 0 14px;
   border: 1px solid transparent;
   border-radius: 5px;
@@ -390,6 +433,7 @@
   font-weight: 500;
   line-height: 1.2;
   white-space: nowrap;
+  box-sizing: border-box;
 }
 
 .users-status-badge.verified {
@@ -414,14 +458,20 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  flex-wrap: wrap;
+  gap: 8px;
+  flex-wrap: nowrap;
+  width: max-content;
+  margin: 0 auto;
 }
 
 .users-action-button {
-  width: 116px;
-  height: 35px;
-  padding: 0 16px;
+  --users-inline-control-width: 120px;
+  width: var(--users-inline-control-width);
+  min-width: var(--users-inline-control-width);
+  max-width: var(--users-inline-control-width);
+  height: 32px;
+  min-height: 32px;
+  padding: 0 14px;
   border: 1px solid transparent;
   border-radius: 5px;
   background: transparent;
@@ -434,6 +484,7 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
+  box-sizing: border-box;
   transition:
     border-color 0.25s ease,
     background-color 0.25s ease,
@@ -493,16 +544,169 @@
   display: block;
 }
 
-@keyframes usersPanelEnter {
-  0% {
-    opacity: 0;
-    transform: translateY(12px) scale(0.985);
-  }
+.users-edit-modal {
+  width: min(100%, 760px);
+}
 
-  100% {
+.users-edit-modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.users-edit-modal-actions {
+  margin-top: 8px;
+  padding-top: 0;
+}
+
+.users-edit-modal .account-photo-modal-title {
+  font-size: 20px;
+}
+
+.users-edit-modal .account-photo-modal-text,
+.users-edit-modal .account-input,
+.users-edit-modal .account-dropdown-value,
+.users-edit-modal .account-dropdown-value-text,
+.users-edit-modal .account-dropdown-option,
+.users-edit-modal .account-dropdown-option-label-desktop,
+.users-edit-modal .account-dropdown-option-label-mobile,
+.users-edit-modal .account-button,
+.users-edit-modal .account-error-row {
+  font-size: 14px;
+}
+
+.users-edit-modal .account-floating-label {
+  font-size: 14px;
+}
+
+.users-edit-modal .account-floating-input:focus + .account-floating-label,
+.users-edit-modal .account-floating-input:not(:placeholder-shown) + .account-floating-label,
+.users-edit-modal .account-floating-label-static {
+  font-size: 12px;
+}
+
+.users-edit-modal .account-phone-helper {
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.users-edit-modal .account-form-grid {
+  row-gap: 16px;
+  column-gap: 16px;
+}
+
+.users-edit-modal .account-phone-row {
+  margin-top: 0;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+@keyframes usersTableRowDelete {
+  0% {
     opacity: 1;
     transform: translateY(0) scale(1);
   }
+
+  100% {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.985);
+  }
+}
+
+.auth-swal-popup {
+  border-radius: 5px !important;
+  padding: 24px !important;
+  background: #ffffff !important;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.16) !important;
+}
+
+.auth-swal-html {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.auth-swal-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.auth-swal-symbol {
+  width: 64px;
+  height: 64px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 18px;
+  border: 2px solid transparent;
+}
+
+.auth-swal-symbol svg {
+  width: 28px;
+  height: 28px;
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.auth-swal-symbol-success {
+  border-color: rgba(73, 160, 98, 0.2);
+  background: rgba(73, 160, 98, 0.08);
+  color: #49a062;
+}
+
+.auth-swal-symbol-error {
+  border-color: rgba(152, 0, 0, 0.16);
+  background: rgba(152, 0, 0, 0.08);
+  color: #980000;
+}
+
+.auth-swal-heading {
+  margin: 0 0 10px;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: #1f1f1f;
+}
+
+.auth-swal-message {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.6;
+  color: #6b6b6b;
+  text-align: center;
+}
+
+[data-theme='dark'] .auth-swal-popup {
+  background: rgba(21, 24, 31, 0.96) !important;
+  border: 1px solid #262b35 !important;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28) !important;
+}
+
+[data-theme='dark'] .auth-swal-heading {
+  color: #ffffff;
+}
+
+[data-theme='dark'] .auth-swal-message {
+  color: #98a2b3;
+}
+
+[data-theme='dark'] .auth-swal-symbol-success {
+  border-color: rgba(110, 196, 135, 0.24);
+  background: rgba(110, 196, 135, 0.08);
+  color: #7ad694;
+}
+
+[data-theme='dark'] .auth-swal-symbol-error {
+  border-color: rgba(197, 42, 42, 0.28);
+  background: rgba(197, 42, 42, 0.16);
+  color: #ffdddd;
 }
 
 @media (min-width: 1025px) {
@@ -535,7 +739,7 @@
   }
 
   .users-table-head-row th {
-    padding: 10px 14px;
+    padding: 6px 10px;
   }
 }
 

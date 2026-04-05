@@ -174,10 +174,6 @@ function OTPVerification({ verificationEmail, onGoToLogin, onGoToRegister }) {
 
       if (error instanceof TypeError || message === 'Failed to fetch') {
         setOtpError('Unable to connect to the server. Please check your internet connection and try again.')
-      } else if (/already present in database/i.test(message)) {
-        setOtpError('This email already exists in ThingsBoard Cloud from an earlier failed attempt. Delete the old ThingsBoard user first, then verify again.')
-      } else if (/invalid uuid string: users/i.test(message)) {
-        setOtpError('The ThingsBoard tenant user lookup path is invalid in the backend. Please restart the backend after applying the Index.js fix.')
       } else {
         setOtpError(message || 'Something went wrong while verifying your code. Please try again.')
       }

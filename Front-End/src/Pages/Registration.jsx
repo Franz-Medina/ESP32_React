@@ -307,7 +307,7 @@ function Registration({ onGoToLogin, onRegistrationSuccess }) {
           <div className="login-text-group">
             <h1 className="login-title">AVINYA</h1>
             <p className="login-text">
-              Create your Avinya account to start managing your ThingsBoard devices.
+              Create your Avinya account to start managing your devices.
             </p>
           </div>
 

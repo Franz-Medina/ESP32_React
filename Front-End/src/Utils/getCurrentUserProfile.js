@@ -1,7 +1,7 @@
+import { getStoredAuthUser } from './authStorage'
+
 const getStoredUser = () => {
-  const rawUser =
-    sessionStorage.getItem('tbUser') ||
-    localStorage.getItem('tbUser')
+  const rawUser = getStoredAuthUser()
 
   if (!rawUser) {
     return null
@@ -27,21 +27,23 @@ const normalizeRoleLabel = (value = '') => {
   const normalizedValue = String(value).trim().toLowerCase()
 
   if (
+    normalizedValue === 'administrator' ||
     normalizedValue === 'tenant administrator' ||
     normalizedValue === 'tenant_admin' ||
     normalizedValue === 'tenant admin'
   ) {
-    return 'Tenant Administrator'
+    return 'Administrator'
   }
 
   if (
+    normalizedValue === 'user' ||
     normalizedValue === 'customer administrator' ||
     normalizedValue === 'customer_admin' ||
     normalizedValue === 'customer admin' ||
     normalizedValue === 'customer user' ||
     normalizedValue === 'customer_user'
   ) {
-    return 'Customer Administrator'
+    return 'User'
   }
 
   return ''
@@ -55,28 +57,20 @@ const getSafeRoleLabel = (user) => {
   }
 
   const authority = String(user?.authority || '').trim().toUpperCase()
-  const tenantAdminEmail = String(import.meta.env.VITE_TB_TENANT_USERNAME || '')
-    .trim()
-    .toLowerCase()
-  const currentEmail = String(user?.email || '').trim().toLowerCase()
 
   if (authority === 'TENANT_ADMIN') {
-    return 'Tenant Administrator'
+    return 'Administrator'
   }
 
   if (authority === 'CUSTOMER_ADMIN' || authority === 'CUSTOMER_USER') {
-    return 'Customer Administrator'
+    return 'User'
   }
 
-  if (tenantAdminEmail && currentEmail === tenantAdminEmail) {
-    return 'Tenant Administrator'
-  }
-
-  return 'Customer Administrator'
+  return 'User'
 }
 
-export const isTenantAdministratorRole = (roleLabel = '') =>
-  normalizeRoleLabel(roleLabel) === 'Tenant Administrator'
+export const isAdministratorRole = (roleLabel = '') =>
+  normalizeRoleLabel(roleLabel) === 'Administrator'
 
 export const getCurrentUserProfile = () => {
   const user = getStoredUser()
@@ -84,7 +78,7 @@ export const getCurrentUserProfile = () => {
   if (!user) {
     return {
       fullName: 'User',
-      roleLabel: 'Customer Administrator'
+      roleLabel: 'User'
     }
   }
 

@@ -83,11 +83,6 @@ const PASSWORD_SPECIAL_REGEX = /[^A-Za-z0-9\s]/;
 const OTP_CODE_REGEX = /^[A-Z0-9]{6}$/;
 const PASSWORD_RESET_TOKEN_REGEX = /^[a-f0-9]{64}$/i;
 
-const APP_ENCRYPTION_KEY = Buffer.from(process.env.APP_ENCRYPTION_KEY || "", "hex");
-const TB_BASE_URL = (process.env.TB_BASE_URL || "").replace(/\/$/, "");
-const TB_TENANT_USERNAME = process.env.TB_TENANT_USERNAME || "";
-const TB_TENANT_PASSWORD = process.env.TB_TENANT_PASSWORD || "";
-const TB_CUSTOMER_ADMIN_GROUP_NAME = "Customer Administrators";
 const IS_DEVELOPMENT = process.env.NODE_ENV !== "production";
 const MAIL_REQUIRED = process.env.MAIL_REQUIRED === "true";
 
@@ -132,8 +127,6 @@ const handleEmailDeliveryFailure = ({ label, email, fallbackValue, error }) => {
   throw error;
 };
 
-const getTbEntityId = (entity) => entity?.id?.id || entity?.id || null;
-
 const assertRequiredConfig = () => {
   if (!process.env.JWT_SECRET) {
     throw new Error("JWT_SECRET is required.");
@@ -144,14 +137,6 @@ const assertRequiredConfig = () => {
     (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS)
   ) {
     throw new Error("SMTP configuration is incomplete.");
-  }
-
-  if (APP_ENCRYPTION_KEY.length !== 32) {
-    throw new Error("APP_ENCRYPTION_KEY must be a 64-character hex string.");
-  }
-
-  if (!TB_BASE_URL || !TB_TENANT_USERNAME || !TB_TENANT_PASSWORD) {
-    throw new Error("ThingsBoard configuration is incomplete.");
   }
 };
 
@@ -262,10 +247,6 @@ const getDeleteAccountPasswordValidationError = (value) => {
 const getDeleteAccountConfirmPasswordValidationError = (password, confirmPassword) => {
   if (!confirmPassword) {
     return "Please confirm your password.";
-  }
-
-  if (confirmPassword !== confirmPassword.trim()) {
-    return "Confirm password must not start or end with spaces.";
   }
 
   if (password !== confirmPassword) {
@@ -451,17 +432,6 @@ const renameStoredProfilePictureIfNeeded = ({
   return getProfilePicturePublicPath(nextFileName);
 };
 
-const buildThingsBoardPhone = (phoneCountryCode = "", phoneNumber = "") => {
-  const normalizedCountryCode = String(phoneCountryCode || "").trim();
-  const normalizedPhoneDigits = String(phoneNumber || "").replace(/\D/g, "");
-
-  if (!normalizedPhoneDigits) {
-    return "";
-  }
-
-  return `${normalizedCountryCode}${normalizedPhoneDigits}`;
-};
-
 const mapUserRowToClientUser = (userRow) => ({
   id: userRow.id,
   firstName: userRow.first_name,
@@ -470,7 +440,7 @@ const mapUserRowToClientUser = (userRow) => ({
   isVerified: userRow.is_verified,
   phoneCountryCode: userRow.phone_country_code || "+63",
   phoneNumber: userRow.phone_number || "",
-  roleLabel: userRow.role_label || "Customer Administrator",
+  roleLabel: userRow.role_label || "User",
   profilePictureUrl: userRow.profile_picture_url || "",
 });
 
@@ -549,45 +519,6 @@ const hashPasswordResetToken = (token = "") =>
 const getPasswordResetExpiryDate = () =>
   new Date(Date.now() + PASSWORD_RESET_EXPIRY_MINUTES * 60 * 1000);
 
-const encryptSecret = (plainText = "") => {
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv("aes-256-gcm", APP_ENCRYPTION_KEY, iv);
-  const encrypted = Buffer.concat([
-    cipher.update(plainText, "utf8"),
-    cipher.final(),
-  ]);
-  const authTag = cipher.getAuthTag();
-
-  return [
-    iv.toString("hex"),
-    authTag.toString("hex"),
-    encrypted.toString("hex"),
-  ].join(":");
-};
-
-const decryptSecret = (encryptedValue = "") => {
-  const [ivHex, authTagHex, encryptedHex] = encryptedValue.split(":");
-
-  if (!ivHex || !authTagHex || !encryptedHex) {
-    throw new Error("Encrypted pending password is invalid.");
-  }
-
-  const decipher = crypto.createDecipheriv(
-    "aes-256-gcm",
-    APP_ENCRYPTION_KEY,
-    Buffer.from(ivHex, "hex")
-  );
-
-  decipher.setAuthTag(Buffer.from(authTagHex, "hex"));
-
-  const decrypted = Buffer.concat([
-    decipher.update(Buffer.from(encryptedHex, "hex")),
-    decipher.final(),
-  ]);
-
-  return decrypted.toString("utf8");
-};
-
 const ensureUsersTableExists = async () => {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
@@ -601,12 +532,8 @@ const ensureUsersTableExists = async () => {
       otp_expires_at TIMESTAMP,
       password_reset_token_hash TEXT,
       password_reset_expires_at TIMESTAMP,
-      pending_password_encrypted TEXT,
-      tb_password_encrypted TEXT,
-      tb_customer_id UUID,
-      tb_user_id UUID,
-      role_label VARCHAR(30) NOT NULL DEFAULT 'Customer Administrator'
-        CHECK (role_label IN ('Tenant Administrator', 'Customer Administrator')),
+      role_label VARCHAR(30) NOT NULL DEFAULT 'User'
+        CHECK (role_label IN ('Administrator', 'User')),
       phone_country_code VARCHAR(10),
       phone_number VARCHAR(30),
       profile_picture_url TEXT,
@@ -628,27 +555,7 @@ const ensureUsersTableSchema = async () => {
 
   await pool.query(`
     ALTER TABLE users
-    ADD COLUMN IF NOT EXISTS pending_password_encrypted TEXT;
-  `);
-
-  await pool.query(`
-    ALTER TABLE users
-    ADD COLUMN IF NOT EXISTS tb_password_encrypted TEXT;
-  `);
-
-  await pool.query(`
-    ALTER TABLE users
-    ADD COLUMN IF NOT EXISTS tb_customer_id UUID;
-  `);
-
-  await pool.query(`
-    ALTER TABLE users
-    ADD COLUMN IF NOT EXISTS tb_user_id UUID;
-  `);
-
-  await pool.query(`
-    ALTER TABLE users
-    ADD COLUMN IF NOT EXISTS role_label VARCHAR(30) NOT NULL DEFAULT 'Customer Administrator';
+    ADD COLUMN IF NOT EXISTS role_label VARCHAR(30) NOT NULL DEFAULT 'User';
   `);
 
   await pool.query(`
@@ -667,30 +574,54 @@ const ensureUsersTableSchema = async () => {
   `);
 
   await pool.query(`
-    DO $$
-    BEGIN
-      IF NOT EXISTS (
-        SELECT 1
-        FROM pg_constraint
-        WHERE conname = 'users_role_label_check'
-      ) THEN
-        ALTER TABLE users
-        ADD CONSTRAINT users_role_label_check
-        CHECK (role_label IN ('Tenant Administrator', 'Customer Administrator'));
-      END IF;
-    END
-    $$;
+    ALTER TABLE users
+    DROP COLUMN IF EXISTS pending_password_encrypted;
+  `);
+
+  await pool.query(`
+    ALTER TABLE users
+    DROP COLUMN IF EXISTS tb_password_encrypted;
+  `);
+
+  await pool.query(`
+    ALTER TABLE users
+    DROP COLUMN IF EXISTS tb_customer_id;
+  `);
+
+  await pool.query(`
+    ALTER TABLE users
+    DROP COLUMN IF EXISTS tb_user_id;
+  `);
+
+  await pool.query(`
+    ALTER TABLE users
+    DROP CONSTRAINT IF EXISTS users_role_label_check;
+  `);
+
+  await pool.query(`
+    ALTER TABLE users
+    ADD CONSTRAINT users_role_label_check
+    CHECK (role_label IN ('Administrator', 'User'));
+  `);
+
+  await pool.query(`
+    ALTER TABLE users
+    ALTER COLUMN role_label SET DEFAULT 'User';
   `);
 
   await pool.query(`
     UPDATE users
     SET role_label = CASE
-      WHEN LOWER(email) = 'tbd.avinya@gmail.com' THEN 'Tenant Administrator'
-      ELSE 'Customer Administrator'
+      WHEN role_label = 'Tenant Administrator' THEN 'Administrator'
+      WHEN role_label = 'Customer Administrator' THEN 'User'
+      WHEN role_label = 'Administrator' THEN 'Administrator'
+      WHEN role_label = 'User' THEN 'User'
+      WHEN LOWER(email) = 'tbd.avinya@gmail.com' THEN 'Administrator'
+      ELSE 'User'
     END
     WHERE role_label IS NULL
-       OR role_label NOT IN ('Tenant Administrator', 'Customer Administrator')
-       OR LOWER(email) = 'tbd.avinya@gmail.com';
+       OR role_label NOT IN ('Administrator', 'User')
+       OR role_label IN ('Tenant Administrator', 'Customer Administrator');
   `);
 };
 
@@ -1221,390 +1152,6 @@ const sendPasswordResetEmail = async ({ firstName, email, resetLink }) => {
   });
 };
 
-const tbRequest = async (
-  pathname,
-  { method = "GET", token = "", body, isText = false } = {}
-) => {
-  const response = await fetch(`${TB_BASE_URL}${pathname}`, {
-    method,
-    headers: {
-      Accept: isText ? "text/plain" : "application/json",
-      ...(body ? { "Content-Type": "application/json" } : {}),
-      ...(token ? { "X-Authorization": `Bearer ${token}` } : {}),
-    },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  });
-
-  const data = isText
-    ? await response.text()
-    : await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    console.error("THINGSBOARD REQUEST ERROR:", {
-      pathname,
-      method,
-      status: response.status,
-      body,
-      response: data,
-    });
-
-    throw new Error(
-      typeof data === "string"
-        ? data
-        : data.message || `ThingsBoard request failed: ${pathname}`
-    );
-  }
-
-  return data;
-};
-
-const tbLogin = async () => {
-  const data = await tbRequest("/api/auth/login", {
-    method: "POST",
-    body: {
-      username: TB_TENANT_USERNAME,
-      password: TB_TENANT_PASSWORD,
-    },
-  });
-
-  return data.token;
-};
-
-const tbGetUserToken = async (adminToken, userId) => {
-  return tbRequest(`/api/user/${userId}/token`, {
-    token: adminToken,
-  });
-};
-
-const tbChangeCurrentUserPassword = async (
-  userToken,
-  currentPassword,
-  newPassword
-) => {
-  return tbRequest("/api/auth/changePassword", {
-    method: "POST",
-    token: userToken,
-    body: {
-      currentPassword,
-      newPassword,
-    },
-  });
-};
-
-const tbSaveCurrentTenantAdminProfile = async (
-  token,
-  { email, firstName, lastName, phone = "" }
-) => {
-  const currentTbUser = await tbRequest("/api/auth/user", { token });
-
-  return tbRequest("/api/user?sendActivationMail=false", {
-    method: "POST",
-    token,
-    body: {
-      id: currentTbUser.id,
-      ...(currentTbUser.tenantId ? { tenantId: currentTbUser.tenantId } : {}),
-      ...(currentTbUser.customerId ? { customerId: currentTbUser.customerId } : {}),
-      authority: currentTbUser.authority || "TENANT_ADMIN",
-      email,
-      firstName,
-      lastName,
-      phone,
-      additionalInfo: currentTbUser.additionalInfo || {},
-    },
-  });
-};
-
-const findTbUserByEmail = async (token, email) => {
-  const data = await tbRequest(
-    `/api/users?pageSize=100&page=0&textSearch=${encodeURIComponent(email)}`,
-    { token }
-  );
-
-  return (
-    data?.data?.find(
-      (item) => item.email?.toLowerCase() === email.toLowerCase()
-    ) || null
-  );
-};
-
-const tbDeleteUser = async (token, userId) => {
-  return tbRequest(`/api/user/${userId}`, {
-    method: "DELETE",
-    token,
-    isText: true,
-  });
-};
-
-const tbDeleteCustomer = async (token, customerId) => {
-  return tbRequest(`/api/customer/${customerId}`, {
-    method: "DELETE",
-    token,
-    isText: true,
-  });
-};
-
-const findTbCustomerByTitle = async (token, title) => {
-  const data = await tbRequest(
-    `/api/customers?pageSize=100&page=0&textSearch=${encodeURIComponent(title)}`,
-    { token }
-  );
-
-  return (
-    data?.data?.find(
-      (item) => item.title?.toLowerCase() === title.toLowerCase()
-    ) || null
-  );
-};
-
-const findOrCreateTbCustomer = async (token, title) => {
-  const existingCustomer = await findTbCustomerByTitle(token, title);
-
-  if (existingCustomer) {
-    return existingCustomer;
-  }
-
-  return tbRequest("/api/customer", {
-    method: "POST",
-    token,
-    body: { title },
-  });
-};
-
-const findTbCustomerUserByEmail = async (token, customerId, email) => {
-  const data = await tbRequest(
-    `/api/customer/${customerId}/users?pageSize=100&page=0&textSearch=${encodeURIComponent(email)}`,
-    { token }
-  );
-
-  return (
-    data?.data?.find(
-      (item) => item.email?.toLowerCase() === email.toLowerCase()
-    ) || null
-  );
-};
-
-const findTbCustomerAdminGroup = async (token, customerId) => {
-  const groupsResponse = await tbRequest(
-    `/api/entityGroups/CUSTOMER/${customerId}/USER`,
-    { token }
-  );
-
-  const groups = Array.isArray(groupsResponse)
-    ? groupsResponse
-    : groupsResponse?.data || [];
-
-  return (
-    groups.find(
-      (group) =>
-        group.name?.trim().toLowerCase() ===
-        TB_CUSTOMER_ADMIN_GROUP_NAME.toLowerCase()
-    ) || null
-  );
-};
-
-const addTbUserToGroup = async (token, entityGroupId, userId) => {
-  return tbRequest(`/api/entityGroup/${entityGroupId}/addEntities`, {
-    method: "POST",
-    token,
-    body: [userId],
-  });
-};
-
-const toTbUserIdPayload = (userId) => ({
-  entityType: "USER",
-  id: userId,
-});
-
-const saveTbCustomerUser = async (
-  token,
-  { userId = null, customerId, email, firstName, lastName, phone = "" }
-) => {
-  return tbRequest("/api/user?sendActivationMail=false", {
-    method: "POST",
-    token,
-    body: {
-      ...(userId ? { id: toTbUserIdPayload(userId) } : {}),
-      authority: "CUSTOMER_USER",
-      email,
-      firstName,
-      lastName,
-      phone,
-      customerId: {
-        entityType: "CUSTOMER",
-        id: customerId,
-      },
-    },
-  });
-};
-
-const createOrReuseTbCustomerUser = async (
-  token,
-  customerId,
-  { email, firstName, lastName }
-) => {
-  const existingCustomerUser = await findTbCustomerUserByEmail(
-    token,
-    customerId,
-    email
-  );
-
-  if (existingCustomerUser) {
-    return {
-      user: await saveTbCustomerUser(token, {
-        userId: getTbEntityId(existingCustomerUser),
-        customerId,
-        email,
-        firstName,
-        lastName,
-      }),
-      isNew: false,
-    };
-  }
-
-  try {
-    return {
-      user: await saveTbCustomerUser(token, {
-        customerId,
-        email,
-        firstName,
-        lastName,
-      }),
-      isNew: true,
-    };
-  } catch (error) {
-    if (!/already present in database/i.test(String(error.message || ""))) {
-      throw error;
-    }
-
-    const duplicateCustomerUser = await findTbCustomerUserByEmail(
-      token,
-      customerId,
-      email
-    );
-
-    if (!duplicateCustomerUser) {
-      throw error;
-    }
-
-    return {
-      user: await saveTbCustomerUser(token, {
-        userId: getTbEntityId(duplicateCustomerUser),
-        customerId,
-        email,
-        firstName,
-        lastName,
-      }),
-      isNew: false,
-    };
-  }
-};
-
-const getTbUserActivationLink = async (token, userId) => {
-  return tbRequest(`/api/user/${userId}/activationLink`, {
-    token,
-    isText: true,
-  });
-};
-
-const activateTbUser = async (activationToken, password) => {
-  return tbRequest("/api/noauth/activate?sendActivationMail=false", {
-    method: "POST",
-    body: {
-      activateToken: activationToken,
-      password,
-    },
-  });
-};
-
-const syncVerifiedUserToThingsBoard = async ({
-  firstName,
-  lastName,
-  email,
-  pendingPasswordEncrypted,
-  existingTbCustomerId,
-  existingTbUserId,
-}) => {
-  const adminToken = await tbLogin();
-  const plainPassword = decryptSecret(pendingPasswordEncrypted);
-
-  const normalizedFirstName = (firstName || "")
-    .trim()
-    .split(/\s+/)[0]
-    .toUpperCase();
-
-  const customerTitle = `AVINYA - ${normalizedFirstName || "USER"}`;
-
-  const customer = existingTbCustomerId
-    ? { id: { id: existingTbCustomerId } }
-    : await findOrCreateTbCustomer(adminToken, customerTitle);
-
-  const tbCustomerId = getTbEntityId(customer);
-
-  const tbUserResult = existingTbUserId
-    ? {
-        user: await saveTbCustomerUser(adminToken, {
-          userId: existingTbUserId,
-          customerId: tbCustomerId,
-          email,
-          firstName,
-          lastName,
-        }),
-        isNew: false,
-      }
-    : await createOrReuseTbCustomerUser(adminToken, tbCustomerId, {
-        email,
-        firstName,
-        lastName,
-      });
-
-  const tbUser = tbUserResult.user;
-  const tbUserId = getTbEntityId(tbUser);
-
-  if (tbUserResult.isNew) {
-    const activationLink = await getTbUserActivationLink(adminToken, tbUserId);
-
-    const activationToken = new URL(activationLink).searchParams.get("activateToken");
-
-    if (!activationToken) {
-      throw new Error("ThingsBoard activation token was not returned.");
-    }
-
-    await activateTbUser(activationToken, plainPassword);
-  }
-
-  const customerAdminGroup = await findTbCustomerAdminGroup(
-    adminToken,
-    tbCustomerId
-  );
-
-  if (!customerAdminGroup) {
-    throw new Error(
-      'ThingsBoard "Customer Administrators" group was not found for this customer.'
-    );
-  }
-
-  const customerAdminGroupId = getTbEntityId(customerAdminGroup);
-
-  console.log("TB GROUP ASSIGNMENT:", {
-    customerId: tbCustomerId,
-    groupName: TB_CUSTOMER_ADMIN_GROUP_NAME,
-    customerAdminGroupId,
-    tbUserId,
-    email,
-  });
-
-  await addTbUserToGroup(
-    adminToken,
-    customerAdminGroupId,
-    tbUserId
-  );
-
-  return {
-    tbCustomerId,
-    tbUserId: getTbEntityId(tbUser),
-  };
-};
-
 app.get("/account/me", authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(
@@ -1701,18 +1248,16 @@ app.put("/account/profile", authenticateToken, async (req, res) => {
 
     const currentUserResult = await client.query(
       `SELECT
-         id,
-         email,
-         tb_customer_id,
-         tb_user_id,
-         is_verified,
-         role_label,
-         phone_country_code,
-         phone_number,
-         profile_picture_url
-       FROM users
-       WHERE id = $1
-       FOR UPDATE`,
+        id,
+        email,
+        is_verified,
+        role_label,
+        phone_country_code,
+        phone_number,
+        profile_picture_url
+      FROM users
+      WHERE id = $1
+      FOR UPDATE`,
       [req.user.id]
     );
 
@@ -1738,33 +1283,6 @@ app.put("/account/profile", authenticateToken, async (req, res) => {
       await client.query("ROLLBACK");
       return res.status(409).json({
         message: "This email address is already registered.",
-      });
-    }
-
-    const nextThingsBoardPhone = buildThingsBoardPhone(
-      trimmedPhoneCountryCode,
-      trimmedPhoneNumber
-    );
-
-    if (currentUser.role_label === "Tenant Administrator") {
-      const adminToken = await tbLogin();
-
-      await tbSaveCurrentTenantAdminProfile(adminToken, {
-        email: trimmedEmail,
-        firstName: trimmedFirstName,
-        lastName: trimmedLastName,
-        phone: nextThingsBoardPhone,
-      });
-    } else if (currentUser.tb_user_id && currentUser.tb_customer_id) {
-      const adminToken = await tbLogin();
-
-      await saveTbCustomerUser(adminToken, {
-        userId: currentUser.tb_user_id,
-        customerId: currentUser.tb_customer_id,
-        email: trimmedEmail,
-        firstName: trimmedFirstName,
-        lastName: trimmedLastName,
-        phone: nextThingsBoardPhone,
       });
     }
 
@@ -1874,8 +1392,6 @@ app.delete("/account", authenticateToken, async (req, res) => {
          id,
          email,
          password,
-         tb_customer_id,
-         tb_user_id,
          profile_picture_url,
          role_label
        FROM users
@@ -1891,9 +1407,9 @@ app.delete("/account", authenticateToken, async (req, res) => {
 
     const currentUser = currentUserResult.rows[0];
 
-    if (currentUser.role_label === "Tenant Administrator") {
+    if (currentUser.role_label === "Administrator") {
       return res.status(403).json({
-        message: "Tenant Administrator account cannot be deleted.",
+        message: "Administrator account cannot be deleted.",
       });
     }
 
@@ -1906,25 +1422,6 @@ app.delete("/account", authenticateToken, async (req, res) => {
       return res.status(400).json({
         message: "Invalid email or password. Please try again.",
       });
-    }
-
-    if (currentUser.tb_customer_id || currentUser.tb_user_id) {
-      const adminToken = await tbLogin();
-
-      if (currentUser.tb_customer_id) {
-        await tbDeleteCustomer(adminToken, currentUser.tb_customer_id);
-      } else {
-        const fallbackTbUser =
-          currentUser.tb_user_id
-            ? { id: { id: currentUser.tb_user_id } }
-            : await findTbUserByEmail(adminToken, currentUser.email);
-
-        const fallbackTbUserId = getTbEntityId(fallbackTbUser);
-
-        if (fallbackTbUserId) {
-          await tbDeleteUser(adminToken, fallbackTbUserId);
-        }
-      }
     }
 
     await client.query("BEGIN");
@@ -1958,7 +1455,7 @@ app.delete("/account", authenticateToken, async (req, res) => {
   }
 });
 
-app.get("/users/customer-administrators", authenticateToken, async (req, res) => {
+app.get("/users", authenticateToken, async (req, res) => {
   try {
     const requestingUserResult = await pool.query(
       `SELECT role_label
@@ -1974,7 +1471,7 @@ app.get("/users/customer-administrators", authenticateToken, async (req, res) =>
       });
     }
 
-    if (requestingUserResult.rows[0].role_label !== "Tenant Administrator") {
+    if (requestingUserResult.rows[0].role_label !== "Administrator") {
       return res.status(403).json({
         message: "You are not authorized to view this page.",
       });
@@ -1992,7 +1489,7 @@ app.get("/users/customer-administrators", authenticateToken, async (req, res) =>
          role_label,
          profile_picture_url
        FROM users
-       WHERE role_label = 'Customer Administrator'
+       WHERE role_label = 'User'
        ORDER BY id ASC`
     );
 
@@ -2000,11 +1497,317 @@ app.get("/users/customer-administrators", authenticateToken, async (req, res) =>
       users: result.rows.map(mapUserRowToClientUser),
     });
   } catch (error) {
-    console.error("CUSTOMER ADMIN USERS LIST ERROR:", error);
+    console.error("USERS LIST ERROR:", error);
 
     return res.status(500).json({
-      message: "Unable to load customer administrators right now.",
+      message: "Unable to load users right now.",
     });
+  }
+});
+
+app.put("/users/:userId", authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+
+  try {
+    const targetUserId = Number.parseInt(req.params.userId, 10);
+    const trimmedFirstName =
+      typeof req.body.firstName === "string" ? req.body.firstName.trim() : "";
+    const trimmedLastName =
+      typeof req.body.lastName === "string" ? req.body.lastName.trim() : "";
+    const trimmedEmail = normalizeEmail(
+      typeof req.body.email === "string" ? req.body.email : ""
+    );
+    const trimmedPhoneCountryCode =
+      typeof req.body.phoneCountryCode === "string"
+        ? req.body.phoneCountryCode.trim()
+        : "+63";
+    const trimmedPhoneNumber =
+      typeof req.body.phoneNumber === "string" ? req.body.phoneNumber.trim() : "";
+
+    if (!Number.isInteger(targetUserId) || targetUserId < 1) {
+      return res.status(400).json({
+        message: "Invalid user account.",
+      });
+    }
+
+    const firstNameValidationError = getNameValidationError(trimmedFirstName, "First name");
+    const lastNameValidationError = getNameValidationError(trimmedLastName, "Last name");
+    const emailValidationError = getEmailValidationError(trimmedEmail);
+    const phoneCountryCodeValidationError =
+      getPhoneCountryCodeValidationError(trimmedPhoneCountryCode);
+    const phoneNumberValidationError = getPhoneNumberValidationError(trimmedPhoneNumber);
+
+    if (firstNameValidationError) {
+      return res.status(400).json({ message: firstNameValidationError });
+    }
+
+    if (lastNameValidationError) {
+      return res.status(400).json({ message: lastNameValidationError });
+    }
+
+    if (emailValidationError) {
+      return res.status(400).json({ message: emailValidationError });
+    }
+
+    if (phoneCountryCodeValidationError) {
+      return res.status(400).json({ message: phoneCountryCodeValidationError });
+    }
+
+    if (phoneNumberValidationError) {
+      return res.status(400).json({ message: phoneNumberValidationError });
+    }
+
+    await client.query("BEGIN");
+
+    const requestingUserResult = await client.query(
+      `SELECT id, role_label
+       FROM users
+       WHERE id = $1
+       LIMIT 1`,
+      [req.user.id]
+    );
+
+    if (requestingUserResult.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({
+        message: "User account not found.",
+      });
+    }
+
+    if (requestingUserResult.rows[0].role_label !== "Administrator") {
+      await client.query("ROLLBACK");
+      return res.status(403).json({
+        message: "You are not authorized to edit this account.",
+      });
+    }
+
+    const targetUserResult = await client.query(
+      `SELECT
+        id,
+        email,
+        is_verified,
+        role_label,
+        profile_picture_url
+      FROM users
+      WHERE id = $1
+      FOR UPDATE`,
+      [targetUserId]
+    );
+
+    if (targetUserResult.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({
+        message: "User account not found.",
+      });
+    }
+
+    const targetUser = targetUserResult.rows[0];
+
+    if (targetUser.role_label !== "User") {
+      await client.query("ROLLBACK");
+      return res.status(403).json({
+        message: "You can only edit user accounts.",
+      });
+    }
+
+    const duplicateEmailResult = await client.query(
+      `SELECT id
+       FROM users
+       WHERE email = $1
+         AND id <> $2
+       LIMIT 1`,
+      [trimmedEmail, targetUser.id]
+    );
+
+    if (duplicateEmailResult.rows.length > 0) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({
+        message: "This email address is already registered.",
+      });
+    }
+
+    const nextProfilePictureUrl = targetUser.profile_picture_url
+      ? renameStoredProfilePictureIfNeeded({
+          previousProfilePictureUrl: targetUser.profile_picture_url,
+          firstName: trimmedFirstName,
+          lastName: trimmedLastName,
+          email: trimmedEmail,
+        }) || ""
+      : "";
+
+    const updatedUserResult = await client.query(
+      `UPDATE users
+       SET first_name = $1,
+           last_name = $2,
+           email = $3,
+           phone_country_code = $4,
+           phone_number = $5,
+           profile_picture_url = NULLIF($6, '')
+       WHERE id = $7
+       RETURNING
+         id,
+         first_name,
+         last_name,
+         email,
+         is_verified,
+         phone_country_code,
+         phone_number,
+         role_label,
+         profile_picture_url`,
+      [
+        trimmedFirstName,
+        trimmedLastName,
+        trimmedEmail,
+        trimmedPhoneCountryCode,
+        trimmedPhoneNumber,
+        nextProfilePictureUrl,
+        targetUser.id,
+      ]
+    );
+
+    await client.query("COMMIT");
+
+    return res.status(200).json({
+      message: "User account updated successfully.",
+      user: mapUserRowToClientUser(updatedUserResult.rows[0]),
+    });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error("USER UPDATE ERROR:", error);
+
+    return res.status(500).json({
+      message:
+        error.message ||
+        "Something went wrong while saving this account. Please try again.",
+    });
+  } finally {
+    client.release();
+  }
+});
+
+app.delete("/users/:userId", authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+
+  try {
+    const targetUserId = Number.parseInt(req.params.userId, 10);
+    const rawPassword = typeof req.body.password === "string" ? req.body.password : "";
+    const rawConfirmPassword =
+      typeof req.body.confirmPassword === "string" ? req.body.confirmPassword : "";
+
+    if (!Number.isInteger(targetUserId) || targetUserId < 1) {
+      return res.status(400).json({
+        message: "Invalid user account.",
+      });
+    }
+
+    const passwordValidationError =
+      getDeleteAccountPasswordValidationError(rawPassword);
+    const confirmPasswordValidationError =
+      getDeleteAccountConfirmPasswordValidationError(
+        rawPassword,
+        rawConfirmPassword
+      );
+
+    if (passwordValidationError) {
+      return res.status(400).json({
+        message: passwordValidationError,
+      });
+    }
+
+    if (confirmPasswordValidationError) {
+      return res.status(400).json({
+        message: confirmPasswordValidationError,
+      });
+    }
+
+    const requestingUserResult = await client.query(
+      `SELECT id, email, password, role_label
+       FROM users
+       WHERE id = $1
+       LIMIT 1`,
+      [req.user.id]
+    );
+
+    if (requestingUserResult.rows.length === 0) {
+      return res.status(404).json({
+        message: "User account not found.",
+      });
+    }
+
+    const requestingUser = requestingUserResult.rows[0];
+
+    if (requestingUser.role_label !== "Administrator") {
+      return res.status(403).json({
+        message: "You are not authorized to delete this account.",
+      });
+    }
+
+    const isPasswordMatch = await bcrypt.compare(
+      rawPassword,
+      requestingUser.password
+    );
+
+    if (!isPasswordMatch) {
+      return res.status(400).json({
+        message: "Invalid email or password. Please try again.",
+      });
+    }
+
+    const targetUserResult = await client.query(
+       `SELECT
+         id,
+         email,
+         profile_picture_url,
+         role_label
+       FROM users
+       WHERE id = $1
+       LIMIT 1`,
+      [targetUserId]
+    );
+
+    if (targetUserResult.rows.length === 0) {
+      return res.status(404).json({
+        message: "User account not found.",
+      });
+    }
+
+    const targetUser = targetUserResult.rows[0];
+
+    if (targetUser.role_label !== "User") {
+      return res.status(403).json({
+        message: "You can only delete user accounts.",
+      });
+    }
+
+    await client.query("BEGIN");
+
+    await client.query(`DELETE FROM users WHERE id = $1`, [targetUser.id]);
+
+    await client.query("COMMIT");
+
+    if (targetUser.profile_picture_url) {
+      try {
+        removeStoredProfilePicture(targetUser.profile_picture_url);
+      } catch (fileError) {
+        console.error("TENANT DELETE TARGET PROFILE PICTURE ERROR:", fileError);
+      }
+    }
+
+    return res.status(200).json({
+      message: "User account deleted successfully.",
+      deletedUserId: targetUser.id,
+    });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error("USER DELETE ERROR:", error);
+
+    return res.status(500).json({
+      message:
+        error.message ||
+        "Something went wrong while deleting this account. Please try again.",
+    });
+  } finally {
+    client.release();
   }
 });
 
@@ -2064,7 +1867,6 @@ app.post("/register", registrationLimiter, async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(rawPassword, 10);
-    const pendingPasswordEncrypted = encryptSecret(rawPassword);
     const otpCode = generateOtpCode();
     const otpExpiresAt = getOtpExpiryDate();
 
@@ -2077,10 +1879,9 @@ app.post("/register", registrationLimiter, async (req, res) => {
           otp_code,
           otp_expires_at,
           is_verified,
-          pending_password_encrypted,
           role_label
         )
-      VALUES ($1, $2, $3, $4, $5, $6, FALSE, $7, $8)
+      VALUES ($1, $2, $3, $4, $5, $6, FALSE, $7)
       RETURNING id, first_name, last_name, email, is_verified, created_at`,
       [
         trimmedFirstName,
@@ -2089,8 +1890,7 @@ app.post("/register", registrationLimiter, async (req, res) => {
         hashedPassword,
         otpCode,
         otpExpiresAt,
-        pendingPasswordEncrypted,
-        "Customer Administrator",
+        "User",
       ]
     );
 
@@ -2176,10 +1976,7 @@ app.post("/otp/verify", otpVerificationLimiter, async (req, res) => {
           email,
           is_verified,
           otp_code,
-          otp_expires_at,
-          pending_password_encrypted,
-          tb_customer_id,
-          tb_user_id
+          otp_expires_at
       FROM users
       WHERE email = $1`,
       [trimmedEmail]
@@ -2217,32 +2014,13 @@ app.post("/otp/verify", otpVerificationLimiter, async (req, res) => {
       });
     }
 
-    if (!user.pending_password_encrypted && !user.tb_user_id) {
-      return res.status(500).json({
-        message: "Pending password data is missing. Please register again.",
-      });
-    }
-
-    const { tbCustomerId, tbUserId } = await syncVerifiedUserToThingsBoard({
-      firstName: user.first_name,
-      lastName: user.last_name,
-      email: user.email,
-      pendingPasswordEncrypted: user.pending_password_encrypted,
-      existingTbCustomerId: user.tb_customer_id,
-      existingTbUserId: user.tb_user_id,
-    });
-
     await pool.query(
       `UPDATE users
       SET is_verified = TRUE,
           otp_code = NULL,
-          otp_expires_at = NULL,
-          tb_password_encrypted = $4,
-          pending_password_encrypted = NULL,
-          tb_customer_id = $2,
-          tb_user_id = $3
+          otp_expires_at = NULL
       WHERE id = $1`,
-      [user.id, tbCustomerId, tbUserId, user.pending_password_encrypted]
+      [user.id]
     );
 
     return res.status(200).json({
@@ -2253,15 +2031,6 @@ app.post("/otp/verify", otpVerificationLimiter, async (req, res) => {
       message: error.message,
       stack: error.stack,
     });
-
-    const normalizedErrorMessage = String(error.message || "");
-
-    if (/permission/i.test(normalizedErrorMessage)) {
-      return res.status(500).json({
-        message:
-          "ThingsBoard denied one of the sync steps for this tenant administrator account. The tenant-wide user lookup has been removed, but please make sure this tenant admin can create customer users and assign them to the customer group.",
-      });
-    }
 
     return res.status(500).json({
       message:
@@ -2508,7 +2277,7 @@ app.post("/password-reset/confirm", passwordResetConfirmLimiter, async (req, res
     const hashedToken = hashPasswordResetToken(rawToken);
 
     const result = await pool.query(
-      `SELECT id, email, tb_user_id, tb_password_encrypted
+      `SELECT id, email
       FROM users
       WHERE password_reset_token_hash = $1
         AND password_reset_expires_at IS NOT NULL
@@ -2525,12 +2294,6 @@ app.post("/password-reset/confirm", passwordResetConfirmLimiter, async (req, res
 
     const user = result.rows[0];
 
-    if (!user.tb_user_id) {
-      return res.status(409).json({
-        message: "This account is not linked to ThingsBoard yet.",
-      });
-    }
-
     const passwordValidationError = getPasswordValidationError(rawPassword, user.email);
 
     if (passwordValidationError) {
@@ -2540,35 +2303,14 @@ app.post("/password-reset/confirm", passwordResetConfirmLimiter, async (req, res
     }
 
     const hashedPassword = await bcrypt.hash(rawPassword, 10);
-    const nextTbPasswordEncrypted = encryptSecret(rawPassword);
-
-    if (user.tb_user_id) {
-      if (!user.tb_password_encrypted) {
-        return res.status(500).json({
-          message: "ThingsBoard password sync data is missing for this account.",
-        });
-      }
-
-      const currentTbPassword = decryptSecret(user.tb_password_encrypted);
-      const adminToken = await tbLogin();
-      const userTokenData = await tbGetUserToken(adminToken, user.tb_user_id);
-      const userToken = userTokenData.token;
-
-      await tbChangeCurrentUserPassword(
-        userToken,
-        currentTbPassword,
-        rawPassword
-      );
-    }
 
     await pool.query(
       `UPDATE users
       SET password = $1,
           password_reset_token_hash = NULL,
-          password_reset_expires_at = NULL,
-          tb_password_encrypted = $3
+          password_reset_expires_at = NULL
       WHERE id = $2`,
-      [hashedPassword, user.id, nextTbPasswordEncrypted]
+      [hashedPassword, user.id]
     );
 
     return res.status(200).json({
@@ -2579,14 +2321,6 @@ app.post("/password-reset/confirm", passwordResetConfirmLimiter, async (req, res
       message: error.message,
       stack: error.stack,
     });
-
-    const normalizedErrorMessage = String(error.message || "");
-
-    if (normalizedErrorMessage.includes("WRITE") && normalizedErrorMessage.includes("PROFILE")) {
-      return res.status(403).json({
-        message: "ThingsBoard user does not have permission to change its password yet. Assign a role with Profile Write permission to this customer user in ThingsBoard Cloud first.",
-      });
-    }
 
     return res.status(500).json({
       message: error.message || "Something went wrong while updating your password. Please try again.",

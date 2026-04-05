@@ -10,6 +10,7 @@ import {
 } from '../Components/Icons.jsx'
 
 import { API_URL } from '../Config/API'
+import { setStoredAuthSession } from '../Utils/authStorage'
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -112,17 +113,14 @@ function Login({ onLoginSuccess, onGoToRegister, onGoToForgotPassword }) {
         throw new Error(data.message || 'Something went wrong while logging in. Please try again.')
       }
 
-      const targetStorage = rememberMe ? localStorage : sessionStorage
-      const otherStorage = rememberMe ? sessionStorage : localStorage
+      sessionStorage.removeItem('avinya-current-page')
+      localStorage.removeItem('avinya-current-page')
 
-      otherStorage.removeItem('tbToken')
-      otherStorage.removeItem('tbUser')
-      otherStorage.removeItem('tbRefreshToken')
-      otherStorage.removeItem('avinya-current-page')
-
-      targetStorage.setItem('tbToken', data.token)
-      targetStorage.setItem('tbUser', JSON.stringify(data.user))
-      targetStorage.removeItem('tbRefreshToken')
+      setStoredAuthSession({
+        token: data.token,
+        user: data.user,
+        rememberMe
+      })
 
       localStorage.setItem('avinya-remember-me', rememberMe ? 'true' : 'false')
       sessionStorage.removeItem('avinya-otp-expiry-at')
@@ -166,7 +164,7 @@ function Login({ onLoginSuccess, onGoToRegister, onGoToForgotPassword }) {
           <div className="login-text-group">
             <h1 className="login-title">AVINYA</h1>
             <p className="login-text">
-              Login to your Avinya account to continue managing your ThingsBoard devices.
+              Login to your Avinya account to continue managing your devices.
             </p>
           </div>
 

@@ -1,11 +1,4 @@
-const AUTH_STORAGE_KEYS = ['tbToken', 'tbRefreshToken', 'tbUser']
-
-export const clearStoredAuthSession = () => {
-  AUTH_STORAGE_KEYS.forEach((key) => {
-    sessionStorage.removeItem(key)
-    localStorage.removeItem(key)
-  })
-}
+import { clearStoredAuthSession } from './authStorage'
 
 export const performReliableLogout = (onLogout) => {
   clearStoredAuthSession()

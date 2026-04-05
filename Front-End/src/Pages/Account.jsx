@@ -20,10 +20,11 @@ import {
   TrashIcon,
   SaveIcon
 } from '../Components/Icons.jsx'
-import { getCurrentUserProfile, isTenantAdministratorRole } from '../Utils/getCurrentUserProfile'
+import { getCurrentUserProfile, isAdministratorRole } from '../Utils/getCurrentUserProfile'
 import { performReliableLogout } from '../Utils/performReliableLogout'
 import { getCroppedImageDataUrl } from '../Utils/cropImage'
 import { API_URL, buildApiAssetUrl } from '../Config/API'
+import { getStoredAuthToken } from '../Utils/authStorage'
 
 const getInitialAccountForm = (user = {}) => {
   const safeFullName = String(user.fullName || '').trim()
@@ -178,10 +179,6 @@ const getDeleteConfirmPasswordValidationError = (password, confirmPassword) => {
     return 'Please confirm your password.'
   }
 
-  if (confirmPassword !== confirmPassword.trim()) {
-    return 'Confirm password must not start or end with spaces.'
-  }
-
   if (password !== confirmPassword) {
     return 'Passwords do not match.'
   }
@@ -200,11 +197,6 @@ const COUNTRY_CODE_OPTIONS = countries
   }))
   .sort((a, b) => a.label.localeCompare(b.label))
 
-const getStoredAuthToken = () =>
-  sessionStorage.getItem('tbToken') ||
-  localStorage.getItem('tbToken') ||
-  ''
-
 const getCountryOptionIdFromDialCode = (dialCode = '') =>
   COUNTRY_CODE_OPTIONS.find(
     (option) => option.value === String(dialCode || '').trim()
@@ -214,7 +206,9 @@ const updateStoredUserProfile = (nextProfile = {}) => {
   const storages = [sessionStorage, localStorage]
 
   storages.forEach((storage) => {
-    const rawUser = storage.getItem('tbUser')
+    const rawUser =
+      storage.getItem('authUser') ||
+      storage.getItem('tbUser')
 
     if (!rawUser) {
       return
@@ -224,7 +218,7 @@ const updateStoredUserProfile = (nextProfile = {}) => {
       const parsedUser = JSON.parse(rawUser)
 
       storage.setItem(
-        'tbUser',
+        'authUser',
         JSON.stringify({
           ...parsedUser,
           firstName: String(nextProfile.firstName || parsedUser.firstName || '').trim(),
@@ -238,8 +232,13 @@ const updateStoredUserProfile = (nextProfile = {}) => {
           profilePictureUrl: String(nextProfile.profilePictureUrl || '').trim()
         })
       )
-    } catch {
+
       storage.removeItem('tbUser')
+      storage.removeItem('tbRefreshToken')
+    } catch {
+      storage.removeItem('authUser')
+      storage.removeItem('tbUser')
+      storage.removeItem('tbRefreshToken')
     }
   })
 }
@@ -251,7 +250,7 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   const [isCountryCodeOpen, setIsCountryCodeOpen] = useState(false)
 
   const user = getCurrentUserProfile()
-  const isTenantAdministrator = isTenantAdministratorRole(user.roleLabel)
+  const isAdministrator = isAdministratorRole(user.roleLabel)
 
   const [profileForm, setProfileForm] = useState(() => getInitialAccountForm(user))
   const [savedProfileFormSnapshot, setSavedProfileFormSnapshot] = useState(() =>
@@ -543,7 +542,7 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   }
 
   const handleOpenDeleteAccountModal = async () => {
-    if (isTenantAdministrator) {
+    if (isAdministrator) {
       return
     }
 
@@ -593,6 +592,15 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     resetDeleteAccountState()
   }
 
+  const closeDeleteAccountModalForSubmit = async () => {
+    setIsDeleteAccountModalClosing(true)
+
+    await new Promise((resolve) => setTimeout(resolve, ACCOUNT_MODAL_TRANSITION_MS))
+
+    setIsDeleteAccountModalOpen(false)
+    setIsDeleteAccountModalClosing(false)
+  }
+
   const handleConfirmDeleteAccount = async (event) => {
     event.preventDefault()
 
@@ -613,8 +621,17 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
       return
     }
 
+    const submittedDeleteAccountForm = {
+      password: deleteAccountForm.password,
+      confirmPassword: deleteAccountForm.confirmPassword
+    }
+
     try {
-      setIsDeletingAccount(true)
+      await closeDeleteAccountModalForSubmit()
+
+      flushSync(() => {
+        setIsDeletingAccount(true)
+      })
 
       const response = await fetch(`${API_URL}/account`, {
         method: 'DELETE',
@@ -623,31 +640,17 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
           Accept: 'application/json',
           Authorization: `Bearer ${authToken}`
         },
-        body: JSON.stringify({
-          password: deleteAccountForm.password,
-          confirmPassword: deleteAccountForm.confirmPassword
-        })
+        body: JSON.stringify(submittedDeleteAccountForm)
       })
 
       const data = await response.json().catch(() => ({}))
 
       if (!response.ok) {
-        const errorMessage =
+        throw new Error(
           data.message || 'Something went wrong while deleting your account. Please try again.'
-
-        if (applyDeleteAccountFieldError(errorMessage)) {
-          setIsDeletingAccount(false)
-          return
-        }
-
-        throw new Error(errorMessage)
+        )
       }
 
-      setIsDeleteAccountModalClosing(true)
-
-      await new Promise((resolve) => setTimeout(resolve, ACCOUNT_MODAL_TRANSITION_MS))
-
-      resetDeleteAccountState()
       setIsDeleteAccountRedirecting(true)
 
       await new Promise((resolve) => setTimeout(resolve, 620))
@@ -656,6 +659,8 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
       onLogout()
     } catch (error) {
       setIsDeletingAccount(false)
+      setIsDeleteAccountRedirecting(false)
+      resetDeleteAccountState()
 
       await showAccountSaveResultAlert({
         type: 'error',
@@ -915,31 +920,6 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
       normalizedMessage.includes('profile picture')
     ) {
       setProfileImageError(message)
-      return true
-    }
-
-    return false
-  }
-
-  const applyDeleteAccountFieldError = (message = '') => {
-    const normalizedMessage = String(message || '').trim().toLowerCase()
-
-    if (!normalizedMessage) {
-      return false
-    }
-
-    if (normalizedMessage.includes('invalid email or password')) {
-      setDeleteAuthError('Invalid email or password. Please try again.')
-      return true
-    }
-
-    if (normalizedMessage.includes('confirm password')) {
-      setDeleteConfirmPasswordError(message)
-      return true
-    }
-
-    if (normalizedMessage.includes('password')) {
-      setDeletePasswordError(message)
       return true
     }
 
@@ -1321,7 +1301,7 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
               </div>
             </div>
 
-            {isTenantAdministrator && (
+            {isAdministrator && (
               <button
                   type="button"
                   className="dashboard-sidebar-link"
@@ -1340,7 +1320,7 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
               </button>
             )}
 
-            {isTenantAdministrator && (
+            {isAdministrator && (
               <button
                   type="button"
                   className="dashboard-sidebar-link"
@@ -1778,7 +1758,7 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                 </div>
 
                 <div className="account-actions">
-                  {!isTenantAdministrator && (
+                  {!isAdministrator && (
                     <button
                       type="button"
                       className="account-button account-button-secondary"
@@ -1955,7 +1935,9 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                       placeholder=" "
                       value={deleteAccountForm.password}
                       onChange={handleDeleteAccountInputChange('password')}
-                      autoComplete="new-password"
+                      autoComplete="current-password"
+                      autoCapitalize="none"
+                      spellCheck={false}
                       aria-invalid={hasDeletePasswordFieldError}
                       disabled={isDeletingAccount}
                     />
@@ -1999,7 +1981,9 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                       placeholder=" "
                       value={deleteAccountForm.confirmPassword}
                       onChange={handleDeleteAccountInputChange('confirmPassword')}
-                      autoComplete="new-password"
+                      autoComplete="current-password"
+                      autoCapitalize="none"
+                      spellCheck={false}
                       aria-invalid={hasDeleteConfirmPasswordFieldError}
                       disabled={isDeletingAccount}
                     />
@@ -2074,7 +2058,7 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
         </div>
       )}
 
-      {isDeleteAccountRedirecting && (
+      {!isDeleteAccountModalOpen && (isDeletingAccount || isDeleteAccountRedirecting) && (
         <div className="account-save-overlay" role="status" aria-live="polite" aria-busy="true">
           <div className="account-save-card">
             <img src={logo} alt="Avinya Logo" className="account-save-logo" />
@@ -2087,16 +2071,16 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
       )}
 
       {isSavingProfile && (
-    <div className="account-save-overlay" role="status" aria-live="polite" aria-busy="true">
-      <div className="account-save-card">
-        <img src={logo} alt="Avinya Logo" className="account-save-logo" />
-        <p className="account-save-title">Saving Changes</p>
-        <div className="account-save-loader" aria-hidden="true">
-          <span className="account-save-loader-bar"></span>
+        <div className="account-save-overlay" role="status" aria-live="polite" aria-busy="true">
+          <div className="account-save-card">
+            <img src={logo} alt="Avinya Logo" className="account-save-logo" />
+            <p className="account-save-title">Saving Changes</p>
+            <div className="account-save-loader" aria-hidden="true">
+              <span className="account-save-loader-bar"></span>
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
-  )}
+      )}
 
   </main>
   )

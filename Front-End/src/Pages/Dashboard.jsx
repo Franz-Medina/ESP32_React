@@ -3,7 +3,7 @@ import Swal from 'sweetalert2'
 import 'sweetalert2/dist/sweetalert2.min.css'
 import logo from '../Pictures/Avinya.png'
 import '../Styles/Dashboard.css'
-import { getCurrentUserProfile, isTenantAdministratorRole } from '../Utils/getCurrentUserProfile'
+import { getCurrentUserProfile, isAdministratorRole } from '../Utils/getCurrentUserProfile'
 import { performReliableLogout } from '../Utils/performReliableLogout'
 import { buildApiAssetUrl } from '../Config/API'
 
@@ -27,7 +27,7 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
   
   const user = getCurrentUserProfile()
-  const isTenantAdministrator = isTenantAdministratorRole(user.roleLabel)
+  const isAdministrator = isAdministratorRole(user.roleLabel)
 
   const sidebarProfileImagePreview = buildApiAssetUrl(user.profilePictureUrl)
 
@@ -210,7 +210,7 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
               </div>
             </div>
 
-            {isTenantAdministrator && (
+            {isAdministrator && (
               <button
                 type="button"
                 className="dashboard-sidebar-link"
@@ -229,7 +229,7 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
               </button>
             )}
 
-            {isTenantAdministrator && (
+            {isAdministrator && (
               <button
                 type="button"
                 className="dashboard-sidebar-link"
