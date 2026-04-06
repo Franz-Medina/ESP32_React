@@ -2179,8 +2179,8 @@
 
 .dashboard-widget-wrapper {
   position: relative;
+  width: fit-content;
   border-radius: 16px;
-  overflow: hidden;
 }
 
 .widget-drag-handle {
@@ -2189,7 +2189,7 @@
   right: 48px;
   width: 28px;
   height: 28px;
-  background: rgba(152, 0, 0, 0.9);
+  background: rgba(152, 0, 0, 0.95);
   color: #ffffff;
   border-radius: 8px;
   display: flex;
@@ -2197,8 +2197,8 @@
   justify-content: center;
   font-size: 18px;
   cursor: grab;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-  z-index: 10;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  z-index: 30;
   opacity: 0;
   transition: opacity 0.2s ease;
 }
@@ -2213,7 +2213,7 @@
   right: 12px;
   width: 28px;
   height: 28px;
-  background:#980000;
+  background: #ef4444;
   color: #ffffff;
   border: none;
   border-radius: 8px;
@@ -2222,8 +2222,8 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-  z-index: 11;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  z-index: 31;
   opacity: 0;
   transition: opacity 0.2s ease;
 }
@@ -2236,6 +2236,15 @@
   background: #b91c1c;
   transform: scale(1.1);
 }
+
+[data-theme='dark'] .widget-drag-handle {
+  background: rgba(197, 42, 42, 0.95);
+}
+
+[data-theme='dark'] .widget-delete-btn {
+  background: #ef4444;
+}
+
 
 .add-widget-float-btn {
   position: fixed;
