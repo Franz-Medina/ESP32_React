@@ -26,6 +26,14 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
   
+  const [isEditMode, setIsEditMode] = useState(false)
+  const [showAddModal, setShowAddModal] = useState(false)
+
+  const [widgets, setWidgets] = useState([
+    { id: 'control-1', type: 'ControlSwitch' },
+    { id: 'led-1', type: 'LEDIndicator' },
+  ])
+
   const user = getCurrentUserProfile()
   const isAdministrator = isAdministratorRole(user.roleLabel)
 
@@ -37,6 +45,34 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     .join('')
     .slice(0, 2) || 'A'
 
+  const availableWidgets = [
+    { type: 'ControlSwitch', name: 'Pump Control' },
+    { type: 'ServoMotor', name: 'Servo Motor' },
+    { type: 'LEDIndicator', name: 'LED Indicator' },
+    { type: 'BatteryGauge', name: 'Battery Gauge' },
+    { type: 'ProgressWidget', name: 'Progress Widget' },
+    { type: 'TimeSeriesChart', name: 'Time Series Chart' },
+    { type: 'MarkdownCard', name: 'Markdown Card' },
+    { type: 'CountWidgets', name: 'Count Widgets' },
+    { type: 'EntitiesTable', name: 'Entities Table' },
+    { type: 'AlarmList', name: 'Alarm List' },
+    { type: 'PumpControl', name: 'Pump Control (Advanced)' },
+  ]
+
+  const WidgetMap = {
+    ControlSwitch,
+    ServoMotor,
+    LEDIndicator,
+    BatteryGauge,
+    ProgressWidget,
+    TimeSeriesChart,
+    MarkdownCard,
+    CountWidgets,
+    EntitiesTable,
+    AlarmList,
+    PumpControl,
+  }
+
   const closeDropdowns = () => {
     setIsEntitiesOpen(false)
     setIsProfileMenuOpen(false)
@@ -47,24 +83,17 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
 
     const handleOutsideClick = (event) => {
       if (!(event.target instanceof Element)) return
-
       if (!event.target.closest('.dashboard-sidebar-user-group')) {
         setIsProfileMenuOpen(false)
       }
     }
 
     document.addEventListener('mousedown', handleOutsideClick)
-
-    return () => {
-      document.removeEventListener('mousedown', handleOutsideClick)
-    }
+    return () => document.removeEventListener('mousedown', handleOutsideClick)
   }, [])
 
   const handleSidebarToggle = () => {
-    if (!isSidebarCollapsed) {
-      closeDropdowns()
-    }
-
+    if (!isSidebarCollapsed) closeDropdowns()
     setIsSidebarCollapsed((prev) => !prev)
   }
 
@@ -106,9 +135,41 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     })
 
     if (!result.isConfirmed) return
-
     closeDropdowns()
     performReliableLogout(onLogout)
+  }
+
+  const handleDragStart = (e, id) => {
+    e.dataTransfer.setData('text/plain', id)
+  }
+
+  const handleDragOver = (e) => {
+    e.preventDefault()
+  }
+
+  const handleDrop = (e, targetId) => {
+    e.preventDefault()
+    const draggedId = e.dataTransfer.getData('text/plain')
+    if (draggedId === targetId) return
+
+    setWidgets((prev) => {
+      const newWidgets = [...prev]
+      const draggedIndex = newWidgets.findIndex((w) => w.id === draggedId)
+      const targetIndex = newWidgets.findIndex((w) => w.id === targetId)
+      const [draggedItem] = newWidgets.splice(draggedIndex, 1)
+      newWidgets.splice(targetIndex, 0, draggedItem)
+      return newWidgets
+    })
+  }
+
+  const deleteWidget = (id) => {
+    setWidgets((prev) => prev.filter((w) => w.id !== id))
+  }
+
+  const addWidget = (type) => {
+    const newId = `widget-${Date.now()}`
+    setWidgets((prev) => [...prev, { id: newId, type }])
+    setShowAddModal(false)
   }
 
   return (
@@ -378,17 +439,84 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
       </aside>
 
       <section className="dashboard-content">
-        <div className="dashboard-content-body dashboard-content-body-frame">
-          <h1 className="dashboard-content-title">Dashboard</h1>
+        <div className={`dashboard-content-body dashboard-content-body-frame ${isEditMode ? 'edit-mode' : ''}`}>
+          <div className="dashboard-header">
+            <h1 className="dashboard-content-title">Dashboard</h1>
 
-          <div className="widgets-grid">
-            <ControlSwitch/>
+            <button
+              className={`edit-mode-btn ${isEditMode ? 'active' : ''}`}
+              onClick={() => setIsEditMode(!isEditMode)}
+            >
+              {isEditMode ? 'Exit Edit Mode' : 'Edit Mode'}
+            </button>
           </div>
 
-          <div className="widgets-grid">
-            <LEDIndicator/>
+          <div
+            className={`widgets-grid ${isEditMode ? 'edit-mode' : ''}`}
+          >
+            {widgets.map((widget) => {
+              const Component = WidgetMap[widget.type]
+              if (!Component) return null
+
+              return (
+                <div
+                  key={widget.id}
+                  className="dashboard-widget-wrapper"
+                  draggable={isEditMode}
+                  onDragStart={(e) => handleDragStart(e, widget.id)}
+                  onDragOver={handleDragOver}
+                  onDrop={(e) => handleDrop(e, widget.id)}
+                >
+                  <Component />
+                  {isEditMode && (
+                    <>
+                      <div className="widget-drag-handle">≡</div>
+                      <button
+                        className="widget-delete-btn"
+                        onClick={() => deleteWidget(widget.id)}
+                        title="Remove widget"
+                      >
+                        ✕
+                      </button>
+                    </>
+                  )}
+                </div>
+              )
+            })}
           </div>
 
+          {isEditMode && (
+            <button
+              className="add-widget-float-btn"
+              onClick={() => setShowAddModal(true)}
+              title="Add new widget"
+            >
+              +
+            </button>
+          )}
+
+          {showAddModal && (
+            <div className="modal-overlay" onClick={() => setShowAddModal(false)}>
+              <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                <div className="modal-header">
+                  <h2>Add Widget</h2>
+                  <button className="modal-close" onClick={() => setShowAddModal(false)}>✕</button>
+                </div>
+
+                <div className="available-widgets-list">
+                  {availableWidgets.map((widget) => (
+                    <button
+                      key={widget.type}
+                      className="widget-option"
+                      onClick={() => addWidget(widget.type)}
+                    >
+                      <span className="widget-option-name">{widget.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </section>
     </main>

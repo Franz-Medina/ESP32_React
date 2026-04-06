@@ -2132,3 +2132,230 @@
   color: #ffdddd;
   box-shadow: 0 6px 14px rgba(0, 0, 0, 0.18);
 }
+
+.dashboard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  padding: 0 8px;
+}
+
+.edit-mode-btn {
+  height: 38px;
+  padding: 0 20px;
+  border-radius: 9999px;
+  background: transparent;
+  border: 1px solid #e4e4e4;
+  color: #6b6b6b;
+  font-weight: 600;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.edit-mode-btn:hover {
+  background: #ffffff;
+  border-color: #cfcfcf;
+  color: #980000;
+  transform: translateY(-1px);
+}
+
+.edit-mode-btn.active {
+  background: rgba(152, 0, 0, 0.08);
+  border-color: rgba(152, 0, 0, 0.14);
+  color: #980000;
+}
+
+.widgets-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  gap: 20px;
+  width: 100%;
+}
+
+.dashboard-widget-wrapper {
+  position: relative;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.widget-drag-handle {
+  position: absolute;
+  top: 12px;
+  right: 48px;
+  width: 28px;
+  height: 28px;
+  background: rgba(152, 0, 0, 0.9);
+  color: #ffffff;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  cursor: grab;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  z-index: 10;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.widgets-grid.edit-mode .dashboard-widget-wrapper:hover .widget-drag-handle {
+  opacity: 1;
+}
+
+.widget-delete-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  background:#980000;
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  z-index: 11;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.widgets-grid.edit-mode .dashboard-widget-wrapper:hover .widget-delete-btn {
+  opacity: 1;
+}
+
+.widget-delete-btn:hover {
+  background: #b91c1c;
+  transform: scale(1.1);
+}
+
+.add-widget-float-btn {
+  position: fixed;
+  bottom: 32px;
+  right: 32px;
+  width: 56px;
+  height: 56px;
+  border-radius: 9999px;
+  background: #980000;
+  color: #ffffff;
+  font-size: 32px;
+  font-weight: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 24px rgba(152, 0, 0, 0.3);
+  cursor: pointer;
+  z-index: 9999;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.add-widget-float-btn:hover {
+  transform: scale(1.1);
+  box-shadow: 0 12px 32px rgba(152, 0, 0, 0.4);
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+}
+
+.modal-content {
+  background: #ffffff;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 480px;
+  padding: 24px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+}
+
+[data-theme='dark'] .modal-content {
+  background: rgba(21, 24, 31, 0.96);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.modal-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: #1f1f1f;
+  margin: 0;
+}
+
+[data-theme='dark'] .modal-header h2 {
+  color: #ffffff;
+}
+
+.modal-close {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  font-size: 24px;
+  color: #6b6b6b;
+  cursor: pointer;
+}
+
+.available-widgets-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.widget-option {
+  height: 64px;
+  border: 1px solid #e4e4e4;
+  border-radius: 12px;
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  color: #1f1f1f;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.widget-option:hover {
+  border-color: #980000;
+  background: rgba(152, 0, 0, 0.06);
+  color: #980000;
+  transform: translateY(-2px);
+}
+
+[data-theme='dark'] .widget-option {
+  background: #171b22;
+  border-color: #323947;
+  color: #ffffff;
+}
+
+[data-theme='dark'] .widget-option:hover {
+  border-color: #ffdddd;
+  background: rgba(197, 42, 42, 0.12);
+  color: #ffdddd;
+}
+
+[data-theme='dark'] .widgets-grid.edit-mode .dashboard-widget-wrapper .widget-drag-handle {
+  background: rgba(197, 42, 42, 0.9);
+}
+
+[data-theme='dark'] .widget-delete-btn {
+  background: #ef4444;
+}
