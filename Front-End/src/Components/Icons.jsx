@@ -56,6 +56,83 @@ export function GlobeIcon() {
   )
 }
 
+export function SearchIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="11" cy="11" r="7"></circle>
+      <path d="m20 20-3.5-3.5"></path>
+    </svg>
+  )
+}
+
+export function FilterIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M4 6h16"></path>
+      <path d="M7 12h10"></path>
+      <path d="M10 18h4"></path>
+    </svg>
+  )
+}
+
+export function SortIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M11 6h10"></path>
+      <path d="M11 12h7"></path>
+      <path d="M11 18h4"></path>
+      <path d="m6 4-3 3 3 3"></path>
+      <path d="M3 7h6"></path>
+      <path d="m6 20 3-3-3-3"></path>
+      <path d="M3 17h6"></path>
+    </svg>
+  )
+}
+
+export function DownloadIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M12 3v12"></path>
+      <path d="m7 10 5 5 5-5"></path>
+      <path d="M5 21h14"></path>
+    </svg>
+  )
+}
+
+export function FirstPageIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M18 6l-6 6 6 6"></path>
+      <path d="M6 5v14"></path>
+    </svg>
+  )
+}
+
+export function PreviousPageIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M15 18l-6-6 6-6"></path>
+    </svg>
+  )
+}
+
+export function NextPageIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M9 6l6 6-6 6"></path>
+    </svg>
+  )
+}
+
+export function LastPageIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M6 6l6 6-6 6"></path>
+      <path d="M18 5v14"></path>
+    </svg>
+  )
+}
+
 export function CameraIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

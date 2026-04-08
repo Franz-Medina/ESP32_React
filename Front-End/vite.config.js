@@ -9,9 +9,10 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       '/api': {
-        target: 'https://thingsboard.cloud',
+        target: 'http://localhost:5000',
         changeOrigin: true,
-        secure: true
+        secure: false,
+        rewrite: (path) => path.replace(/^\/api/, '')
       }
     }
   }

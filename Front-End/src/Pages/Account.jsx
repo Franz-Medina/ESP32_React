@@ -678,7 +678,7 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     COUNTRY_CODE_OPTIONS[0]
 
   const phoneNumberHelperText =
-    'Exclude the selected country code. Example: 9123456789. Do not start with 0 and do not add spaces.'
+    'Enter digits only, without the country code. Example: 9123456789. No leading 0 or spaces.'
 
   const currentProfileFormValues = normalizeAccountFormValues(profileForm)
 

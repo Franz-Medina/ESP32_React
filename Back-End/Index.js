@@ -8,6 +8,7 @@ const crypto = require("crypto");
 const path = require("path");
 const fs = require("fs");
 const rateLimit = require("express-rate-limit");
+const PDFDocument = require("pdfkit");
 require("dotenv").config();
 
 const app = express();
@@ -443,6 +444,305 @@ const mapUserRowToClientUser = (userRow) => ({
   roleLabel: userRow.role_label || "User",
   profilePictureUrl: userRow.profile_picture_url || "",
 });
+
+const USERS_SORT_SQL = {
+  newest: "created_at DESC, id DESC",
+  oldest: "created_at ASC, id ASC",
+  last_name_asc: "LOWER(last_name) ASC, LOWER(first_name) ASC, id ASC",
+  last_name_desc: "LOWER(last_name) DESC, LOWER(first_name) DESC, id DESC",
+  first_name_asc: "LOWER(first_name) ASC, LOWER(last_name) ASC, id ASC",
+  first_name_desc: "LOWER(first_name) DESC, LOWER(last_name) DESC, id DESC",
+  email_asc: "LOWER(email) ASC, id ASC",
+  email_desc: "LOWER(email) DESC, id DESC",
+};
+
+const USERS_EXPORT_MAX_ROWS = 1000;
+
+const USERS_PDF_SORT_LABELS = {
+  newest: "Newest",
+  oldest: "Oldest",
+  last_name_asc: "Last Name A-Z",
+  last_name_desc: "Last Name Z-A",
+  first_name_asc: "First Name A-Z",
+  first_name_desc: "First Name Z-A",
+  email_asc: "Email A-Z",
+  email_desc: "Email Z-A",
+};
+
+const getUsersRouteFilters = (source = {}) => {
+  const search = typeof source.search === "string" ? source.search.trim() : "";
+  const escapedSearch = search.replace(/[\\%_]/g, "\\$&");
+  const status =
+    typeof source.status === "string" ? source.status.trim().toLowerCase() : "all";
+  const countryCode =
+    typeof source.countryCode === "string" ? source.countryCode.trim() : "all";
+  const photo =
+    typeof source.photo === "string" ? source.photo.trim().toLowerCase() : "all";
+  const sortBy =
+    typeof source.sortBy === "string" ? source.sortBy.trim().toLowerCase() : "newest";
+
+  return {
+    search,
+    escapedSearch,
+    status: ["all", "verified", "not_verified"].includes(status) ? status : "all",
+    countryCode: countryCode || "all",
+    photo: ["all", "with_photo", "without_photo"].includes(photo) ? photo : "all",
+    sortBy: USERS_SORT_SQL[sortBy] ? sortBy : "newest",
+  };
+};
+
+const buildUsersListWhereClause = (filters) => {
+  const params = ["User"];
+  const whereParts = [`role_label = $1`];
+  let nextParamIndex = 2;
+
+  if (filters.escapedSearch) {
+    params.push(`%${filters.escapedSearch}%`);
+    whereParts.push(`(
+      first_name ILIKE $${nextParamIndex} ESCAPE '\\'
+      OR last_name ILIKE $${nextParamIndex} ESCAPE '\\'
+      OR email ILIKE $${nextParamIndex} ESCAPE '\\'
+      OR COALESCE(phone_country_code, '') ILIKE $${nextParamIndex} ESCAPE '\\'
+      OR COALESCE(phone_number, '') ILIKE $${nextParamIndex} ESCAPE '\\'
+      OR CONCAT_WS(' ', first_name, last_name) ILIKE $${nextParamIndex} ESCAPE '\\'
+      OR CONCAT_WS(', ', last_name, first_name) ILIKE $${nextParamIndex} ESCAPE '\\'
+      OR CASE WHEN is_verified THEN 'Verified' ELSE 'Not Verified' END ILIKE $${nextParamIndex} ESCAPE '\\'
+    )`);
+    nextParamIndex += 1;
+  }
+
+  if (filters.status === "verified") {
+    whereParts.push("is_verified = TRUE");
+  } else if (filters.status === "not_verified") {
+    whereParts.push("is_verified = FALSE");
+  }
+
+  if (filters.countryCode !== "all") {
+    params.push(filters.countryCode);
+    whereParts.push(
+      `COALESCE(NULLIF(TRIM(phone_country_code), ''), '+63') = $${nextParamIndex}`
+    );
+    nextParamIndex += 1;
+  }
+
+  if (filters.photo === "with_photo") {
+    whereParts.push(`COALESCE(NULLIF(TRIM(profile_picture_url), ''), '') <> ''`);
+  } else if (filters.photo === "without_photo") {
+    whereParts.push(`COALESCE(NULLIF(TRIM(profile_picture_url), ''), '') = ''`);
+  }
+
+  return {
+    params,
+    whereSql: `WHERE ${whereParts.join("\n       AND ")}`,
+  };
+};
+
+const getUsersSortSql = (sortBy = "newest") =>
+  USERS_SORT_SQL[sortBy] || USERS_SORT_SQL.newest;
+
+const getUsersPdfFilterSummaryText = (filters, totalCount) =>
+  [
+    `Search: ${filters.search || "All users"}`,
+    `Status: ${
+      filters.status === "verified"
+        ? "Verified"
+        : filters.status === "not_verified"
+        ? "Not Verified"
+        : "All"
+    }`,
+    `Country Code: ${filters.countryCode !== "all" ? filters.countryCode : "All"}`,
+    `Photo: ${
+      filters.photo === "with_photo"
+        ? "With Photo"
+        : filters.photo === "without_photo"
+        ? "Without Photo"
+        : "All"
+    }`,
+    `Sort: ${USERS_PDF_SORT_LABELS[filters.sortBy] || "Newest"}`,
+    `Rows: ${totalCount}`,
+  ].join(" | ");
+
+const getUsersPdfReadableDate = (date = new Date()) =>
+  new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(date);
+
+const getUsersPdfReadableTime = (date = new Date()) =>
+  new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  }).format(date);
+
+const getUsersPdfGeneratedOnText = (date = new Date()) =>
+  `Generated on ${getUsersPdfReadableDate(date)} at ${getUsersPdfReadableTime(date)}`;
+
+const getUsersPdfFontFamily = () => ({
+  regular: "Helvetica",
+  semibold: "Helvetica-Bold",
+});
+
+const getUsersPdfFileName = (date = new Date()) =>
+  `Avinya Users - ${getUsersPdfReadableDate(date)}.pdf`;
+
+const createUsersPdfBuffer = ({ rows, filters, generatedAt = new Date() }) =>
+  new Promise((resolve, reject) => {
+    const doc = new PDFDocument({
+      size: "A4",
+      layout: "landscape",
+      margin: 32,
+      info: {
+        Title: "Avinya Users Report",
+        Author: "Avinya",
+      },
+    });
+
+    const chunks = [];
+    const pdfFonts = getUsersPdfFontFamily();
+    const columns = [
+      { key: "no", label: "No.", width: 34, align: "center" },
+      { key: "photo", label: "Photo", width: 60, align: "center" },
+      { key: "last_name", label: "Last Name", width: 92, align: "center" },
+      { key: "first_name", label: "First Name", width: 92, align: "center" },
+      { key: "email", label: "Email", width: 230, align: "center" },
+      { key: "phone_country_code", label: "Country Code", width: 92, align: "center" },
+      { key: "phone_number", label: "Phone Number", width: 92, align: "center" },
+      { key: "status", label: "Status", width: 78, align: "center" },
+    ];
+    const rowHeight = 24;
+    const pageLeft = doc.page.margins.left;
+    const pageTop = doc.page.margins.top;
+    const getPageBottom = () => doc.page.height - doc.page.margins.bottom;
+
+    const drawCellText = (
+      text,
+      x,
+      y,
+      width,
+      align = "center",
+      color = "#1f1f1f",
+      font = pdfFonts.regular
+    ) => {
+      doc
+        .font(font)
+        .fontSize(9)
+        .fillColor(color)
+        .text(String(text ?? "—"), x + 6, y + 7, {
+          width: width - 12,
+          align,
+          lineBreak: false,
+          ellipsis: true,
+        });
+    };
+
+    const drawTableHeader = (y) => {
+      let x = pageLeft;
+
+      columns.forEach((column) => {
+        doc.rect(x, y, column.width, rowHeight).fillAndStroke("#980000", "#dddddd");
+        drawCellText(column.label, x, y, column.width, "center", "#ffffff", pdfFonts.semibold);
+        x += column.width;
+      });
+    };
+
+    const drawTableRow = (row, y, rowIndex) => {
+      let x = pageLeft;
+
+      columns.forEach((column) => {
+        const backgroundColor = rowIndex % 2 === 0 ? "#ffffff" : "#faf7f7";
+
+        doc.rect(x, y, column.width, rowHeight).fillAndStroke(backgroundColor, "#ececec");
+
+        const cellValue =
+          column.key === "no"
+            ? rowIndex + 1
+            : column.key === "status"
+            ? row.is_verified
+              ? "Verified"
+              : "Not Verified"
+            : column.key === "photo"
+            ? row.profile_picture_url
+              ? "Yes"
+              : "No"
+            : column.key === "phone_country_code"
+            ? row.phone_country_code || "+63"
+            : column.key === "phone_number"
+            ? row.phone_number || "N/A"
+            : row[column.key] || "—";
+
+        drawCellText(
+          cellValue,
+          x,
+          y,
+          column.width,
+          column.align || "center",
+          column.key === "status" && row.is_verified ? "#980000" : "#1f1f1f",
+          column.key === "status" ? pdfFonts.semibold : pdfFonts.regular
+        );
+
+        x += column.width;
+      });
+    };
+
+    doc.on("data", (chunk) => chunks.push(chunk));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+
+    doc
+      .font(pdfFonts.semibold)
+      .fontSize(20)
+      .fillColor("#1f1f1f")
+      .text("Users Report", pageLeft, pageTop);
+
+    doc
+      .font(pdfFonts.regular)
+      .fontSize(10)
+      .fillColor("#6b6b6b")
+      .text(getUsersPdfGeneratedOnText(generatedAt), pageLeft, pageTop + 28);
+
+    doc
+      .font(pdfFonts.regular)
+      .fontSize(9)
+      .fillColor("#6b6b6b")
+      .text(getUsersPdfFilterSummaryText(filters, rows.length), pageLeft, pageTop + 48, {
+        width: doc.page.width - doc.page.margins.left - doc.page.margins.right,
+        lineGap: 3,
+      });
+
+    let currentY = pageTop + 92;
+    drawTableHeader(currentY);
+    currentY += rowHeight;
+
+    rows.forEach((row, rowIndex) => {
+      if (currentY + rowHeight > getPageBottom()) {
+        doc.addPage({
+          size: "A4",
+          layout: "landscape",
+          margin: 32,
+        });
+
+        currentY = doc.page.margins.top;
+        drawTableHeader(currentY);
+        currentY += rowHeight;
+      }
+
+      drawTableRow(row, currentY, rowIndex);
+      currentY += rowHeight;
+    });
+
+    if (rows.length === 0) {
+      doc
+        .font(pdfFonts.regular)
+        .fontSize(10)
+        .fillColor("#6b6b6b")
+        .text("No matching users found for the selected filters.", pageLeft, currentY + 16);
+    }
+
+    doc.end();
+  });
 
 const registrationLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -1457,6 +1757,21 @@ app.delete("/account", authenticateToken, async (req, res) => {
 
 app.get("/users", authenticateToken, async (req, res) => {
   try {
+    const filters = getUsersRouteFilters(req.query);
+
+    const requestedPage = Number.parseInt(String(req.query.page || ""), 10);
+    const requestedLimit = Number.parseInt(String(req.query.limit || ""), 10);
+
+    const safeLimit = Number.isInteger(requestedLimit)
+      ? Math.min(Math.max(requestedLimit, 1), 15)
+      : 15;
+
+    const safeRequestedPage =
+      Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+
+    const { params: baseParams, whereSql } = buildUsersListWhereClause(filters);
+    const sortSql = getUsersSortSql(filters.sortBy);
+
     const requestingUserResult = await pool.query(
       `SELECT role_label
        FROM users
@@ -1477,6 +1792,90 @@ app.get("/users", authenticateToken, async (req, res) => {
       });
     }
 
+    const totalCountResult = await pool.query(
+      `SELECT COUNT(*)::int AS total_count
+      FROM users
+      ${whereSql}`,
+      baseParams
+    );
+
+    const totalCount = Number(totalCountResult.rows[0]?.total_count || 0);
+    const totalPages = Math.max(1, Math.ceil(totalCount / safeLimit));
+    const currentPage = Math.min(safeRequestedPage, totalPages);
+    const offset = (currentPage - 1) * safeLimit;
+
+    const listParams = [...baseParams, safeLimit, offset];
+
+    const result = await pool.query(
+      `SELECT
+        id,
+        first_name,
+        last_name,
+        email,
+        is_verified,
+        phone_country_code,
+        phone_number,
+        role_label,
+        profile_picture_url
+      FROM users
+      ${whereSql}
+      ORDER BY ${sortSql}
+      LIMIT $${baseParams.length + 1}
+      OFFSET $${baseParams.length + 2}`,
+      listParams
+    );
+
+    return res.status(200).json({
+      users: result.rows.map(mapUserRowToClientUser),
+      pagination: {
+        page: currentPage,
+        limit: safeLimit,
+        totalCount,
+        totalPages,
+        search: filters.search,
+        status: filters.status,
+        countryCode: filters.countryCode,
+        photo: filters.photo,
+        sortBy: filters.sortBy,
+        hasPreviousPage: currentPage > 1,
+        hasNextPage: currentPage < totalPages,
+      },
+    });
+  } catch (error) {
+    console.error("USERS LIST ERROR:", error);
+
+    return res.status(500).json({
+      message: "Unable to load users right now.",
+    });
+  }
+});
+
+app.get("/users/export/pdf", authenticateToken, async (req, res) => {
+  try {
+    const requestingUserResult = await pool.query(
+      `SELECT role_label
+       FROM users
+       WHERE id = $1
+       LIMIT 1`,
+      [req.user.id]
+    );
+
+    if (requestingUserResult.rows.length === 0) {
+      return res.status(404).json({
+        message: "User account not found.",
+      });
+    }
+
+    if (requestingUserResult.rows[0].role_label !== "Administrator") {
+      return res.status(403).json({
+        message: "You are not authorized to export this page.",
+      });
+    }
+
+    const filters = getUsersRouteFilters(req.query);
+    const { params, whereSql } = buildUsersListWhereClause(filters);
+    const sortSql = getUsersSortSql(filters.sortBy);
+
     const result = await pool.query(
       `SELECT
          id,
@@ -1486,21 +1885,35 @@ app.get("/users", authenticateToken, async (req, res) => {
          is_verified,
          phone_country_code,
          phone_number,
-         role_label,
-         profile_picture_url
+         profile_picture_url,
+         created_at
        FROM users
-       WHERE role_label = 'User'
-       ORDER BY id ASC`
+       ${whereSql}
+       ORDER BY ${sortSql}
+       LIMIT ${USERS_EXPORT_MAX_ROWS}`,
+      params
     );
 
-    return res.status(200).json({
-      users: result.rows.map(mapUserRowToClientUser),
+    const exportGeneratedAt = new Date();
+
+    const pdfBuffer = await createUsersPdfBuffer({
+      rows: result.rows,
+      filters,
+      generatedAt: exportGeneratedAt,
     });
+
+    const fileName = getUsersPdfFileName(exportGeneratedAt);
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Length", pdfBuffer.length);
+    res.setHeader("Content-Disposition", `inline; filename="${fileName}"`);
+
+    return res.status(200).send(pdfBuffer);
   } catch (error) {
-    console.error("USERS LIST ERROR:", error);
+    console.error("USERS EXPORT PDF ERROR:", error);
 
     return res.status(500).json({
-      message: "Unable to load users right now.",
+      message: "Unable to generate the PDF file right now.",
     });
   }
 });
