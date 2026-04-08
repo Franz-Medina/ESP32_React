@@ -2,10 +2,6 @@ import React, { useState, useEffect } from "react";
 import { arc } from "d3-shape";
 import { scaleLinear } from "d3-scale";
 
-const TB_URL = import.meta.env.VITE_TB_URL;
-const TB_API_KEY = import.meta.env.VITE_TB_API_KEY;
-const DEVICE_ID = import.meta.env.VITE_DEVICE_ID_SPEED;
-
 const Gauge = ({
   value = 0,
   min = 0,
@@ -71,33 +67,70 @@ const Gauge = ({
 const SpeedGauge = () => {
   const [speed, setSpeed] = useState(null);
   const [error, setError] = useState(null);
+  const [token, setToken] = useState(null);
+
+  const DEVICE_ID = import.meta.env.VITE_DEVICE_ID_SPEED;
+
+  const TB_BASE_URL = "";
+  const TB_EMAIL = import.meta.env.VITE_TB_EMAIL;
+  const TB_PASSWORD = import.meta.env.VITE_TB_PASSWORD;
+
+  const login = async () => {
+    const res = await fetch(`${TB_BASE_URL}/api/auth/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        username: TB_EMAIL,
+        password: TB_PASSWORD
+      })
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      console.error("LOGIN ERROR:", text);
+      throw new Error("Login failed");
+    }
+
+    const data = await res.json();
+    setToken(data.token);
+    return data.token;
+  };
+
+  const fetchSpeed = async () => {
+    try {
+      const jwt = token || await login();
+
+      const res = await fetch(
+        `${TB_BASE_URL}/api/plugins/telemetry/DEVICE/${DEVICE_ID}/values/timeseries?keys=speed&limit=1`,
+        {
+          headers: {
+            "X-Authorization": `Bearer ${jwt}`
+          }
+        }
+      );
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const data = await res.json();
+
+      if (data.speed && data.speed.length > 0) {
+        setSpeed(parseFloat(data.speed[0].value));
+      } else {
+        setSpeed(0);
+      }
+
+      setError(null);
+    } catch (err) {
+      console.error("FETCH ERROR:", err);
+      setError("Telemetry error");
+    }
+  };
 
   useEffect(() => {
-    const fetchSpeed = async () => {
-      try {
-        const res = await fetch(
-          `${TB_URL}/api/plugins/telemetry/DEVICE/${DEVICE_ID}/values/timeseries?keys=speed`,
-          {
-            headers: {
-              "X-Authorization": `ApiKey ${TB_API_KEY}`
-            }
-          }
-        );
-
-        if (!res.ok) throw new Error("Failed to fetch speed");
-
-        const data = await res.json();
-
-        if (data.speed && data.speed.length > 0) {
-          setSpeed(parseFloat(data.speed[0].value));
-        }
-      } catch (err) {
-        console.error(err);
-        setError("Telemetry error");
-      }
-    };
-
     fetchSpeed();
+
     const interval = setInterval(fetchSpeed, 2000);
     return () => clearInterval(interval);
   }, []);

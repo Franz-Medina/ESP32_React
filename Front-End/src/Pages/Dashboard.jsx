@@ -26,7 +26,6 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
   
-  const [isEditMode, setIsEditMode] = useState(false)
   const [showAddModal, setShowAddModal] = useState(false)
 
   const [widgets, setWidgets] = useState([
@@ -439,20 +438,15 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
       </aside>
 
       <section className="dashboard-content">
-        <div className={`dashboard-content-body dashboard-content-body-frame ${isEditMode ? 'edit-mode' : ''}`}>
+        <div className={`dashboard-content-body dashboard-content-body-frame`}>
           <div className="dashboard-header">
             <h1 className="dashboard-content-title">Dashboard</h1>
 
-            <button
-              className={`edit-mode-btn ${isEditMode ? 'active' : ''}`}
-              onClick={() => setIsEditMode(!isEditMode)}
-            >
-              {isEditMode ? 'Exit Edit Mode' : 'Edit Mode'}
-            </button>
+            
           </div>
 
           <div
-            className={`widgets-grid ${isEditMode ? 'edit-mode' : ''}`}
+            className={`widgets-grid`}
           >
             {widgets.map((widget) => {
               const Component = WidgetMap[widget.type]
@@ -462,30 +456,18 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                 <div
                   key={widget.id}
                   className="dashboard-widget-wrapper"
-                  draggable={isEditMode}
+                  draggable={false}
                   onDragStart={(e) => handleDragStart(e, widget.id)}
                   onDragOver={handleDragOver}
                   onDrop={(e) => handleDrop(e, widget.id)}
                 >
                   <Component />
-                  {isEditMode && (
-                    <>
-                      <div className="widget-drag-handle">≡</div>
-                      <button
-                        className="widget-delete-btn"
-                        onClick={() => deleteWidget(widget.id)}
-                        title="Remove widget"
-                      >
-                        ✕
-                      </button>
-                    </>
-                  )}
+                  
                 </div>
               )
             })}
           </div>
 
-          {isEditMode && (
             <button
               className="add-widget-float-btn"
               onClick={() => setShowAddModal(true)}
@@ -493,7 +475,6 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
             >
               +
             </button>
-          )}
 
           {showAddModal && (
             <div className="modal-overlay" onClick={() => setShowAddModal(false)}>

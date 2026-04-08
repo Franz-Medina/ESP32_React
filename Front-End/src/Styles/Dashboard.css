@@ -2158,7 +2158,7 @@
 }
 
 .edit-mode-btn:hover {
-  background: #ffffff;
+  background: transparent;
   border-color: #cfcfcf;
   color: #980000;
   transform: translateY(-1px);
@@ -2235,6 +2235,10 @@
 .widget-delete-btn:hover {
   background: #b91c1c;
   transform: scale(1.1);
+}
+
+[data-theme='dark'] .edit-mode-btn {
+  border: 1px solid #980000;
 }
 
 [data-theme='dark'] .widget-drag-handle {

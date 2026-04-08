@@ -1,10 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { arc } from "d3-shape";
 import { scaleLinear } from "d3-scale";
-import { format } from "d3-format";
-
-const TB_URL = import.meta.env.VITE_TB_URL;
-const TB_API_KEY = import.meta.env.VITE_TB_API_KEY;
 
 const UltraSonicGauge = ({
   value = 0,
@@ -40,10 +36,6 @@ const UltraSonicGauge = ({
     .endAngle(angle)
     .cornerRadius(1)();
 
-  const colorScale = scaleLinear()
-    .domain([0, 1])
-    .range(["#dbdbe7", "#720101"]);
-
   const markerLocation = [
     Math.cos(angle - Math.PI / 2) * 0.82,
     Math.sin(angle - Math.PI / 2) * 0.82
@@ -74,55 +66,98 @@ const UltraSonic = () => {
 
   const [distance, setDistance] = useState(null);
   const [error, setError] = useState(null);
+  const [token, setToken] = useState(null);
+
+  const TB_BASE_URL = "";
+  const TB_EMAIL = import.meta.env.VITE_TB_EMAIL;
+  const TB_PASSWORD = import.meta.env.VITE_TB_PASSWORD;
+
+  const login = async () => {
+    const res = await fetch(`${TB_BASE_URL}/api/auth/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        username: TB_EMAIL,
+        password: TB_PASSWORD
+      })
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      console.error("LOGIN ERROR:", text);
+      throw new Error("Login failed");
+    }
+
+    const data = await res.json();
+    setToken(data.token);
+    return data.token;
+  };
 
   const fetchDistance = async () => {
     if (!deviceId) return;
 
     try {
+      const jwt = token || await login();
+
       const res = await fetch(
-        `${TB_URL}/api/plugins/telemetry/DEVICE/${deviceId}/values/timeseries?keys=distance`,
+        `${TB_BASE_URL}/api/plugins/telemetry/DEVICE/${deviceId}/values/timeseries?keys=distance&limit=1`,
         {
           headers: {
-            "X-Authorization": `ApiKey ${TB_API_KEY}`
+            "X-Authorization": `Bearer ${jwt}`
           }
         }
       );
 
-      if (!res.ok) throw new Error();
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const data = await res.json();
 
       if (data.distance && data.distance.length > 0) {
         const latest = parseFloat(data.distance[0].value);
         setDistance(latest);
+      } else {
+        setDistance(0);
       }
+
+      setError(null);
     } catch (err) {
-      console.error("Telemetry fetch failed:", err);
+      console.error("FETCH ERROR:", err);
       setError("Failed to fetch telemetry");
     }
   };
 
-  useEffect(() => {
-    if (!connected) return;
-
-    fetchDistance();
-    const interval = setInterval(fetchDistance, 2000);
-    return () => clearInterval(interval);
-  }, [connected, deviceId]);
-
-  const connectDevice = () => {
+  const connectDevice = async () => {
     if (!deviceId.trim()) {
       alert("Please enter a Device ID");
       return;
     }
-    setConnected(true);
+
+    try {
+      await login();
+      setConnected(true);
+      console.log("✅ Connected");
+      fetchDistance();
+    } catch (err) {
+      console.error(err);
+      alert("Login failed");
+    }
   };
 
   const disconnectDevice = () => {
     setConnected(false);
     setDeviceId("");
     setDistance(null);
+    setToken(null);
   };
+
+  useEffect(() => {
+    if (!connected) return;
+
+    const interval = setInterval(fetchDistance, 2000);
+    return () => clearInterval(interval);
+  }, [connected, deviceId]);
 
   return (
     <div className="text-center">

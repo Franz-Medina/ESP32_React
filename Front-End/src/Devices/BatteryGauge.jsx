@@ -1,9 +1,6 @@
 import React, { useState, useEffect } from "react";
 import "./Styles/BatteryGauge.css";
 
-const TB_URL = import.meta.env.VITE_TB_URL;
-const TB_API_KEY = import.meta.env.VITE_TB_API_KEY;
-
 function BatteryGauge({ 
   title = "BATTERY GAUGE", 
   dataKey = "battery", 
@@ -13,6 +10,34 @@ function BatteryGauge({
   const [isConnected, setIsConnected] = useState(!!propDeviceId);
   const [batteryLevel, setBatteryLevel] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const [token, setToken] = useState(null);
+
+  const TB_BASE_URL = "";
+  const TB_EMAIL = import.meta.env.VITE_TB_EMAIL;
+  const TB_PASSWORD = import.meta.env.VITE_TB_PASSWORD;
+
+  const login = async () => {
+    const res = await fetch(`${TB_BASE_URL}/api/auth/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        username: TB_EMAIL,
+        password: TB_PASSWORD
+      })
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      console.error("LOGIN ERROR:", text);
+      throw new Error("Login failed");
+    }
+
+    const data = await res.json();
+    setToken(data.token);
+    return data.token;
+  };
 
   const fetchBattery = async () => {
     if (!deviceId) return;
@@ -20,21 +45,27 @@ function BatteryGauge({
     try {
       setIsLoading(true);
 
+      const jwt = token || await login();
+
       const response = await fetch(
-        `${TB_URL}/api/plugins/telemetry/DEVICE/${deviceId}/values/timeseries?keys=${dataKey}&limit=1`,
+        `${TB_BASE_URL}/api/plugins/telemetry/DEVICE/${deviceId}/values/timeseries?keys=${dataKey}&limit=1`,
         {
           headers: {
-            "X-Authorization": `ApiKey ${TB_API_KEY}`,
+            "X-Authorization": `Bearer ${jwt}`
           },
         }
       );
 
-      if (!response.ok) throw new Error("Failed to fetch battery data");
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
       const data = await response.json();
       const latest = data[dataKey]?.[0]?.value;
 
-      const level = latest !== undefined ? Math.max(0, Math.min(100, parseFloat(latest))) : 0;
+      const level =
+        latest !== undefined
+          ? Math.max(0, Math.min(100, parseFloat(latest)))
+          : 0;
+
       setBatteryLevel(level);
     } catch (err) {
       console.error(err);
@@ -51,15 +82,27 @@ function BatteryGauge({
     return () => clearInterval(interval);
   }, [isConnected, deviceId]);
 
-  const handleConnect = () => {
-    console.log("Pretend connecting to device:", deviceId || "test-device");
-    setIsConnected(true);
+  const handleConnect = async () => {
+    if (!deviceId) {
+      alert("Please enter Device ID");
+      return;
+    }
+
+    try {
+      await login();
+      setIsConnected(true);
+      console.log("✅ Connected");
+    } catch (err) {
+      console.error(err);
+      alert("Login failed");
+    }
   };
 
   const handleDisconnect = () => {
     setIsConnected(false);
     setDeviceId("");
     setBatteryLevel(0);
+    setToken(null);
   };
 
   const getBatteryColor = (level) => {
@@ -95,7 +138,7 @@ function BatteryGauge({
       ) : (
         <div className="battery-control">
           <div className="battery-status">
-            Connected to <strong>{deviceId || "test-device"}</strong> (test mode)
+            Connected to <strong>{deviceId}</strong>
           </div>
 
           <div className="battery-container">
@@ -111,6 +154,8 @@ function BatteryGauge({
             </div>
             <div className="battery-cap" />
           </div>
+
+          {isLoading && <p>Loading...</p>}
 
           <button 
             className="battery-btn"
