@@ -36,9 +36,10 @@
   --users-inline-control-width: 118px;
   --users-inline-control-height: 30px;
   --users-actions-gap: 8px;
-  --users-toolbar-button-width: 168px;
+  --users-toolbar-gap: 12px;
+  --users-toolbar-button-width: 184px;
   --users-search-button-width: var(--users-toolbar-button-width);
-  --users-toolbar-width: 520px;
+  --users-toolbar-width: 640px;
   --users-filter-control-height: 48px;
   --users-filter-status-width: 170px;
   --users-filter-country-width: 252px;
@@ -135,11 +136,11 @@
 }
 
 .users-page-topbar .dashboard-content-title {
-  margin: 0 0 0 8px;
+  margin: 0 0 12px 0;
 }
 
 .users-page .dashboard-sidebar.collapsed + .dashboard-content .users-page-topbar .dashboard-content-title {
-  margin: 0 0 0 15px;
+  margin: 0;
 }
 
 .users-export-button {
@@ -169,7 +170,13 @@
 }
 
 .users-export-button-toolbar {
-  flex: 0 0 var(--users-search-button-width);
+  grid-area: export;
+  width: var(--users-toolbar-button-width);
+  min-width: var(--users-toolbar-button-width);
+  max-width: var(--users-toolbar-button-width);
+  flex: none;
+  justify-self: start;
+  align-self: start;
 }
 
 .users-export-button:hover {
@@ -215,7 +222,7 @@
   flex: 1;
   min-height: 0;
   margin: 0;
-  padding: 0 10px 10px;
+  padding: 0;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
@@ -224,20 +231,28 @@
 
 .users-panel-toolbar {
   margin-bottom: 12px;
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-start;
-  gap: 12px;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'filters export'
+    'search search';
+  align-items: start;
+  column-gap: var(--users-toolbar-gap);
+  row-gap: var(--users-toolbar-gap);
 }
 
 .users-filters-group {
-  flex: 1 1 760px;
+  grid-area: filters;
   min-width: 0;
-  display: flex;
+  display: grid;
+  grid-template-columns:
+    minmax(150px, 1fr)
+    minmax(210px, 1.2fr)
+    minmax(160px, 1fr)
+    minmax(160px, 1fr)
+    minmax(var(--users-toolbar-button-width), 0.95fr);
   align-items: stretch;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: var(--users-toolbar-gap);
 }
 
 .users-filter-field {
@@ -270,27 +285,18 @@
 
 .users-filter-dropdown {
   position: relative;
-  flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
 }
 
-.users-filter-field-status {
-  width: var(--users-filter-status-width);
-  flex: 0 0 var(--users-filter-status-width);
-}
-
-.users-filter-field-country {
-  width: var(--users-filter-country-width);
-  flex: 0 0 var(--users-filter-country-width);
-}
-
-.users-filter-field-photo {
-  width: var(--users-filter-photo-width);
-  flex: 0 0 var(--users-filter-photo-width);
-}
-
+.users-filter-field-status,
+.users-filter-field-country,
+.users-filter-field-photo,
 .users-filter-field-sort {
-  width: var(--users-filter-sort-width);
-  flex: 0 0 var(--users-filter-sort-width);
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  flex: none;
 }
 
 .users-filter-dropdown.open {
@@ -534,10 +540,10 @@
 }
 
 .users-filter-reset-button {
-  width: var(--users-filter-reset-width);
-  min-width: var(--users-filter-reset-width);
-  max-width: var(--users-filter-reset-width);
-  flex: 0 0 var(--users-filter-reset-width);
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  flex: none;
   height: var(--users-filter-control-height);
   padding: 0 16px;
   border: 1px solid #dddddd;
@@ -585,14 +591,16 @@
 }
 
 .users-search-form {
+  grid-area: search;
   width: min(100%, var(--users-toolbar-width));
   max-width: var(--users-toolbar-width);
-  margin-left: 0;
-  flex: 1 1 var(--users-toolbar-width);
+  margin: 0;
+  flex: none;
+  justify-self: start;
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--users-search-button-width);
   align-items: stretch;
-  gap: var(--users-actions-gap);
+  gap: var(--users-toolbar-gap);
 }
 
 .users-search-field {
@@ -1510,24 +1518,31 @@
 }
 
 .users-pdf-preview-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, max-content));
+  justify-content: start;
+  align-content: start;
+  gap: 10px 12px;
 }
 
 .users-pdf-preview-tag {
-  min-height: 30px;
-  padding: 0 12px;
+  min-height: 32px;
+  max-width: 100%;
+  padding: 0 14px;
   border: 1px solid rgba(152, 0, 0, 0.14);
   border-radius: 999px;
   background: rgba(152, 0, 0, 0.08);
   color: #980000;
   font-size: 14px;
   font-weight: 500;
-  line-height: 1;
+  line-height: 1.2;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  justify-self: start;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .users-pdf-preview-frame-shell {
@@ -1718,18 +1733,46 @@
   }
 }
 
-@media (max-width: 1200px) {
+@media (max-width: 1280px) {
+  .users-panel-toolbar {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      'filters'
+      'export'
+      'search';
+    row-gap: var(--users-toolbar-gap);
+  }
+
   .users-filters-group {
-    flex: 1 1 100%;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .users-export-button-toolbar {
-    flex: 0 0 var(--users-search-button-width);
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    justify-self: stretch;
   }
 
   .users-search-form {
-    flex: 1 1 420px;
+    width: 100%;
     max-width: none;
+  }
+}
+
+@media (max-width: 992px) {
+  .users-filters-group {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .users-pdf-preview-tags {
+    grid-template-columns: 1fr;
+  }
+
+  .users-pdf-preview-tag {
+    justify-self: start;
   }
 }
 
@@ -1749,16 +1792,25 @@
   }
 
   .users-panel {
-    margin-top: 0;
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
   }
 
   .users-panel-toolbar {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      'filters'
+      'export'
+      'search';
     margin-bottom: 12px;
+    row-gap: var(--users-toolbar-gap);
   }
 
   .users-filters-group {
     width: 100%;
-    flex: 1 1 100%;
+    grid-template-columns: 1fr;
+    gap: var(--users-toolbar-gap);
   }
 
   .users-filter-dropdown,
@@ -1776,8 +1828,12 @@
   .users-search-form {
     width: 100%;
     max-width: none;
-    flex: 1 1 100%;
     grid-template-columns: 1fr;
+    gap: var(--users-toolbar-gap);
+  }
+
+  .users-export-button-toolbar {
+    justify-self: stretch;
   }
 
   .users-search-button {
