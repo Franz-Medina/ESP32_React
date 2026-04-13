@@ -46,6 +46,9 @@
   --users-filter-photo-width: 188px;
   --users-filter-sort-width: 188px;
   --users-filter-reset-width: var(--users-toolbar-button-width);
+  --users-pdf-preview-tag-width: 280px;
+  --users-pdf-preview-tag-column-gap: 12px;
+  --users-pdf-preview-tag-row-gap: 12px;
   --users-col-no: 54px;
   --users-col-picture: 118px;
   --users-col-last-name: 112px;
@@ -1519,15 +1522,24 @@
 
 .users-pdf-preview-tags {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, max-content));
+  width: calc((var(--users-pdf-preview-tag-width) * 2) + var(--users-pdf-preview-tag-column-gap));
+  max-width: 100%;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-areas:
+    'search status'
+    'country photo'
+    'sort rows';
   justify-content: start;
+  justify-items: stretch;
   align-content: start;
-  gap: 10px 12px;
+  gap: var(--users-pdf-preview-tag-row-gap) var(--users-pdf-preview-tag-column-gap);
 }
 
 .users-pdf-preview-tag {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
   min-height: 32px;
-  max-width: 100%;
   padding: 0 14px;
   border: 1px solid rgba(152, 0, 0, 0.14);
   border-radius: 999px;
@@ -1536,13 +1548,39 @@
   font-size: 14px;
   font-weight: 500;
   line-height: 1.2;
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
-  justify-self: start;
+  justify-self: stretch;
+  align-self: stretch;
+  box-sizing: border-box;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.users-pdf-preview-tag:nth-child(1) {
+  grid-area: search;
+}
+
+.users-pdf-preview-tag:nth-child(2) {
+  grid-area: status;
+}
+
+.users-pdf-preview-tag:nth-child(3) {
+  grid-area: country;
+}
+
+.users-pdf-preview-tag:nth-child(4) {
+  grid-area: photo;
+}
+
+.users-pdf-preview-tag:nth-child(5) {
+  grid-area: sort;
+}
+
+.users-pdf-preview-tag:nth-child(6) {
+  grid-area: rows;
 }
 
 .users-pdf-preview-frame-shell {
@@ -1768,11 +1806,23 @@
 
 @media (max-width: 900px) {
   .users-pdf-preview-tags {
+    width: 100%;
     grid-template-columns: 1fr;
+    grid-template-areas:
+      'search'
+      'status'
+      'country'
+      'photo'
+      'sort'
+      'rows';
+    gap: var(--users-pdf-preview-tag-row-gap);
   }
 
   .users-pdf-preview-tag {
-    justify-self: start;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    justify-self: stretch;
   }
 }
 
