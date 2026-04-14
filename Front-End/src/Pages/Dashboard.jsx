@@ -20,6 +20,7 @@ import {
   MarkdownCard,
 } from '../Devices'
 import ControlSwitch from '../Devices/ControlSwitch'
+import UltraSonic from '../Devices/UltraSonic'
 
 const GRID_COLS = 18
 const CELL_SIZE = 80
@@ -36,7 +37,6 @@ const WIDGET_DEFAULT_SIZE = {
   CountWidgets:    [3, 2],
   EntitiesTable:   [6, 4],
   AlarmList:       [4, 3],
-  PumpControl:     [4, 3],
 }
 
 const WIDGETS_STORAGE_KEY = 'avinya_dashboard_widgets_v2'
@@ -147,7 +147,7 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   }
 
   const availableWidgets = [
-    { type: 'ControlSwitch',   name: 'Pump Control',           icon: '⚙️',  description: 'Toggle pump on/off' },
+    { type: 'ControlSwitch',   name: 'Control Switch',           icon: '⚙️',  description: 'Toggle on/off' },
     { type: 'ServoMotor',      name: 'Servo Motor',             icon: '🔧',  description: 'Control servo position' },
     { type: 'LEDIndicator',    name: 'LED Indicator',           icon: '💡',  description: 'Visual status light' },
     { type: 'BatteryGauge',    name: 'Battery Gauge',           icon: '🔋',  description: 'Battery level display' },
@@ -157,12 +157,12 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     { type: 'CountWidgets',    name: 'Count Widgets',           icon: '🔢',  description: 'Numeric counter display' },
     { type: 'EntitiesTable',   name: 'Entities Table',          icon: '📋',  description: 'Tabular entity data' },
     { type: 'AlarmList',       name: 'Alarm List',              icon: '🔔',  description: 'Active alarm monitor' },
-    { type: 'PumpControl',     name: 'Pump Control (Advanced)', icon: '🚿',  description: 'Advanced pump controls' },
+    { type: 'UltraSonic',      name: 'UltraSonic Sensor',       icon: '�',  description: 'Distance measurement' },
   ]
 
   const WidgetMap = {
     ControlSwitch, ServoMotor, LEDIndicator, BatteryGauge, ProgressWidget,
-    TimeSeriesChart, MarkdownCard, CountWidgets, EntitiesTable, AlarmList, PumpControl,
+    TimeSeriesChart, MarkdownCard, CountWidgets, EntitiesTable, AlarmList, UltraSonic,
   }
 
   const addWidget = (type) => {

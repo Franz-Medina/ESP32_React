@@ -1,33 +1,25 @@
 import React, { useState, useEffect } from "react";
-import "./Styles/CountWidget.css";
+import "./Styles/WidgetStyle.css";
 
 function CountWidgets() {
   const [alarmCount, setAlarmCount] = useState(0);
   const [entityCount, setEntityCount] = useState(0);
   const [token, setToken] = useState(null);
 
-  const TB_BASE_URL = "";
   const TB_EMAIL = import.meta.env.VITE_TB_EMAIL;
   const TB_PASSWORD = import.meta.env.VITE_TB_PASSWORD;
 
   const login = async () => {
-    const res = await fetch(`${TB_BASE_URL}/api/auth/login`, {
+    const res = await fetch(`/api/auth/login`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         username: TB_EMAIL,
         password: TB_PASSWORD
       })
     });
 
-    if (!res.ok) {
-      const text = await res.text();
-      console.error("LOGIN ERROR:", text);
-      throw new Error("Login failed");
-    }
-
+    if (!res.ok) throw new Error("Login failed");
     const data = await res.json();
     setToken(data.token);
     return data.token;
@@ -38,22 +30,16 @@ function CountWidgets() {
       const jwt = token || await login();
 
       const alarmRes = await fetch(
-        `${TB_BASE_URL}/api/alarm/count?status=ACTIVE`,
-        {
-          headers: { "X-Authorization": `Bearer ${jwt}` },
-        }
+        `/api/alarm/count?status=ACTIVE`,
+        { headers: { "X-Authorization": `Bearer ${jwt}` } }
       );
 
       const entityRes = await fetch(
-        `${TB_BASE_URL}/api/tenant/entities?pageSize=1&page=0&textSearch=`,
-        {
-          headers: { "X-Authorization": `Bearer ${jwt}` },
-        }
+        `/api/tenant/entities?pageSize=1&page=0&textSearch=`,
+        { headers: { "X-Authorization": `Bearer ${jwt}` } }
       );
 
-      if (!alarmRes.ok || !entityRes.ok) {
-        throw new Error("Failed to fetch counts");
-      }
+      if (!alarmRes.ok || !entityRes.ok) throw new Error("Failed to fetch counts");
 
       const alarmData = await alarmRes.json();
       const entityData = await entityRes.json();
@@ -72,11 +58,11 @@ function CountWidgets() {
   }, []);
 
   return (
-    <div className="count-widget">
-      <div className="count-title">COUNT WIDGETS</div>
+    <div className="widget">
+      <div className="widget-title">COUNT WIDGETS</div>
 
       <div className="counts-grid">
-        <div className="count-panel alarm-panel">
+        <div className="widget-panel alarm-panel">
           <div className="panel-header">
             <span className="panel-title">Alarm count</span>
             <div className="panel-meta">
@@ -88,11 +74,11 @@ function CountWidgets() {
             <div className="icon-wrapper alarm-icon">
               <span>⚠️</span>
             </div>
-            <div className="count-value">{alarmCount}</div>
+            <div className="widget-value">{alarmCount}</div>
           </div>
         </div>
 
-        <div className="count-panel entity-panel">
+        <div className="widget-panel entity-panel">
           <div className="panel-header">
             <span className="panel-title">Entity count</span>
             <div className="panel-meta">
@@ -104,7 +90,7 @@ function CountWidgets() {
             <div className="icon-wrapper entity-icon">
               <span>📦</span>
             </div>
-            <div className="count-value">{entityCount}</div>
+            <div className="widget-value">{entityCount}</div>
           </div>
         </div>
       </div>

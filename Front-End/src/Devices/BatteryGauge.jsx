@@ -1,15 +1,28 @@
 import React, { useState, useEffect } from "react";
-import "./Styles/BatteryGauge.css";
+import "./Styles/WidgetStyle.css";
 
 function BatteryGauge({ 
   title = "BATTERY GAUGE", 
-  dataKey = "battery", 
-  deviceId: propDeviceId = null 
+  dataKey = "battery"
 }) {
-  const [deviceId, setDeviceId] = useState(propDeviceId || "");
-  const [isConnected, setIsConnected] = useState(!!propDeviceId);
+  const STORAGE_KEY = 'avinya_devices';
+
+  const loadDefaultDeviceId = () => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return parsed.defaultId ?? null;
+    } catch {
+      return null;
+    }
+  };
+
+  const [deviceId, setDeviceId] = useState(() => loadDefaultDeviceId());
+  const [isConnected, setIsConnected] = useState(false);
   const [batteryLevel, setBatteryLevel] = useState(0);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [token, setToken] = useState(null);
 
   const TB_BASE_URL = "";
@@ -17,30 +30,23 @@ function BatteryGauge({
   const TB_PASSWORD = import.meta.env.VITE_TB_PASSWORD;
 
   const login = async () => {
-    const res = await fetch(`${TB_BASE_URL}/api/auth/login`, {
+    const res = await fetch(`/api/auth/login`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         username: TB_EMAIL,
         password: TB_PASSWORD
       })
     });
 
-    if (!res.ok) {
-      const text = await res.text();
-      console.error("LOGIN ERROR:", text);
-      throw new Error("Login failed");
-    }
-
+    if (!res.ok) throw new Error("Login failed");
     const data = await res.json();
     setToken(data.token);
     return data.token;
   };
 
-  const fetchBattery = async () => {
-    if (!deviceId) return;
+  const fetchBattery = async (devId) => {
+    if (!devId) return;
 
     try {
       setIsLoading(true);
@@ -48,11 +54,9 @@ function BatteryGauge({
       const jwt = token || await login();
 
       const response = await fetch(
-        `${TB_BASE_URL}/api/plugins/telemetry/DEVICE/${deviceId}/values/timeseries?keys=${dataKey}&limit=1`,
+        `${TB_BASE_URL}/api/plugins/telemetry/DEVICE/${devId}/values/timeseries?keys=${dataKey}&limit=1`,
         {
-          headers: {
-            "X-Authorization": `Bearer ${jwt}`
-          },
+          headers: { "X-Authorization": `Bearer ${jwt}` }
         }
       );
 
@@ -61,49 +65,85 @@ function BatteryGauge({
       const data = await response.json();
       const latest = data[dataKey]?.[0]?.value;
 
-      const level =
-        latest !== undefined
-          ? Math.max(0, Math.min(100, parseFloat(latest)))
-          : 0;
+      const level = latest !== undefined
+        ? Math.max(0, Math.min(100, parseFloat(latest)))
+        : 0;
 
       setBatteryLevel(level);
+      setError(null);
     } catch (err) {
       console.error(err);
+      throw err;
     } finally {
       setIsLoading(false);
     }
   };
 
-  useEffect(() => {
-    if (!isConnected || !deviceId) return;
-
-    fetchBattery();
-    const interval = setInterval(fetchBattery, 10000);
-    return () => clearInterval(interval);
-  }, [isConnected, deviceId]);
-
-  const handleConnect = async () => {
-    if (!deviceId) {
-      alert("Please enter Device ID");
+  const connectToDefault = async () => {
+    const defaultId = loadDefaultDeviceId();
+    if (!defaultId) {
+      setError("No default device set. Go to Devices page to set one.");
+      setIsLoading(false);
       return;
     }
 
+    setDeviceId(defaultId);
+    setIsLoading(true);
+    setError(null);
+
     try {
       await login();
+      await fetchBattery(defaultId);
       setIsConnected(true);
-      console.log("✅ Connected");
+      console.log("✅ Auto-connected to default device:", defaultId);
     } catch (err) {
       console.error(err);
-      alert("Login failed");
+      let msg = err.message;
+      if (msg.includes("404")) msg = "Device not found";
+      else if (msg.includes("401") || msg.includes("403")) msg = "Login failed";
+      else msg = "Failed to connect";
+      setError(msg);
+      setIsConnected(false);
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const handleDisconnect = () => {
     setIsConnected(false);
-    setDeviceId("");
-    setBatteryLevel(0);
+    setIsLoading(true);
+    setError(null);
     setToken(null);
+    setTimeout(connectToDefault, 100);
   };
+
+  useEffect(() => {
+    connectToDefault();
+  }, []);
+
+  useEffect(() => {
+    if (!isConnected || !deviceId) return;
+
+    const interval = setInterval(() => {
+      fetchBattery(deviceId).catch(() => {});
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [isConnected, deviceId]);
+
+  useEffect(() => {
+    const handleStorage = (e) => {
+      if (e.key === STORAGE_KEY) {
+        const newDefault = loadDefaultDeviceId();
+        if (newDefault && newDefault !== deviceId) {
+          setDeviceId(newDefault);
+          handleDisconnect();
+        }
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, [deviceId]);
 
   const getBatteryColor = (level) => {
     if (level > 70) return "#22c55e";
@@ -114,55 +154,37 @@ function BatteryGauge({
   const batteryColor = getBatteryColor(batteryLevel);
 
   return (
-    <div className="battery-gauge-widget">
-      <div className="battery-title">{title}</div>
+    <div className="widget">
+      <div className="widget-title">{title}</div>
 
-      {!isConnected ? (
-        <div className="battery-connect">
-          <div className="battery-input-group">
-            <input
-              type="text"
-              placeholder="Device ID"
-              value={deviceId}
-              onChange={(e) => setDeviceId(e.target.value)}
-              className="battery-input"
-            />
-            <button
-              onClick={handleConnect}
-              className="battery-btn battery-btn-primary"
-            >
-              CONNECT
-            </button>
-          </div>
+      {isLoading ? (
+        <div className="widget-loading">Connecting to default device...</div>
+      ) : !deviceId ? (
+        <div className="widget-no-default">
+          <p>No default device set.</p>
+          <small>Go to <strong>Devices</strong> page and set a default Device ID.</small>
         </div>
       ) : (
-        <div className="battery-control">
-          <div className="battery-status">
+        <div className="widget-control">
+          <div className="widget-status">
             Connected to <strong>{deviceId}</strong>
           </div>
 
-          <div className="battery-container">
-            <div className="battery-body">
-              <div 
-                className="battery-level"
+          {error && <div className="widget-error">⚠️ {error}</div>}
+
+          <div className="widget-container">
+            <div className="widget-body">
+              <div
+                className="widget-level"
                 style={{
                   width: `${batteryLevel}%`,
                   backgroundColor: batteryColor
                 }}
               />
-              <div className="battery-percentage">{batteryLevel}%</div>
+              <div className="widget-percentage">{batteryLevel}%</div>
             </div>
-            <div className="battery-cap" />
+            <div className="widget-cap" />
           </div>
-
-          {isLoading && <p>Loading...</p>}
-
-          <button 
-            className="battery-btn"
-            onClick={handleDisconnect}
-          >
-            Change Device
-          </button>
         </div>
       )}
     </div>
