@@ -7,6 +7,8 @@ import { getCurrentUserProfile, isAdministratorRole } from '../Utils/getCurrentU
 import { performReliableLogout } from '../Utils/performReliableLogout'
 import { buildApiAssetUrl } from '../Config/API'
 
+import { logDeviceAdded, logDeviceRemoved } from './Logs'
+
 const MAX_DEVICES = 5
 const STORAGE_KEY = 'avinya_devices'
 
