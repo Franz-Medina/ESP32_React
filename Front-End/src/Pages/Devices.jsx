@@ -441,13 +441,7 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
 
       <section className="dashboard-content">
         <div className="dashboard-content-body dashboard-content-body-frame">
-<<<<<<< HEAD
-          <div className="dashboard-page-title-row">
-            <h1 className="dashboard-content-title">Devices</h1>
-          </div>
-=======
-
-          <div className="dashboard-header devices-page-topbar">
+          <div className="dashboard-header dashboard-page-title-row devices-page-topbar">
             <h1 id="devices-page-title" className="dashboard-content-title">Devices</h1>
             <span className="devices-topbar-count">
               {devices.length} of {MAX_DEVICES} Device IDs Used
@@ -583,7 +577,6 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
               })}
             </div>
           </section>
->>>>>>> ff2c2e8c377abb0676789e876a63bb18185ff269
         </div>
       </section>
 

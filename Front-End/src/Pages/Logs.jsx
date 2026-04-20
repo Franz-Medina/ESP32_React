@@ -440,13 +440,7 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                   aria-expanded={isProfileMenuOpen}
                   onClick={handleProfileMenuToggle}
                 >
-<<<<<<< HEAD
                   <ProfileMenuIcon isOpen={isProfileMenuOpen} />
-=======
-                  <svg viewBox="0 0 24 24" fill="currentColor">
-                    <circle cx="12" cy="5" r="1.8" /><circle cx="12" cy="12" r="1.8" /><circle cx="12" cy="19" r="1.8" />
-                  </svg>
->>>>>>> ff2c2e8c377abb0676789e876a63bb18185ff269
                 </button>
               </div>
 
@@ -477,15 +471,11 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
 
       <section className="dashboard-content">
         <div className="dashboard-content-body dashboard-content-body-frame">
-<<<<<<< HEAD
-          <div className="dashboard-page-title-row">
-            <h1 className="dashboard-content-title">Logs</h1>
-          </div>
-=======
-
-          <div className="dashboard-header logs-page-topbar">
+          <div className="dashboard-header dashboard-page-title-row logs-page-topbar">
             <h1 id="logs-page-title" className="dashboard-content-title">Logs</h1>
-            <span className="logs-topbar-count">{totalCount} {totalCount === 1 ? 'Entry' : 'Entries'}</span>
+            <span className="logs-topbar-count">
+              {totalCount} {totalCount === 1 ? 'Entry' : 'Entries'}
+            </span>
           </div>
 
           <section className="logs-panel" aria-labelledby="logs-page-title">
@@ -776,7 +766,6 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
               </div>
             </div>
           </section>
->>>>>>> ff2c2e8c377abb0676789e876a63bb18185ff269
         </div>
       </section>
     </main>

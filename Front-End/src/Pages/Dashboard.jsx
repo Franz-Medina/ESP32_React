@@ -129,7 +129,16 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     return () => document.removeEventListener('mousedown', handleOutsideClick)
   }, [])
 
-  const closeDropdowns = () => { setIsEntitiesOpen(false); setIsProfileMenuOpen(false) }
+  const closeDropdowns = () => {
+    setIsEntitiesOpen(false)
+    setIsProfileMenuOpen(false)
+  }
+
+  const handleProfileMenuToggle = (event) => {
+    event.stopPropagation()
+    setIsEntitiesOpen(false)
+    setIsProfileMenuOpen((prev) => !prev)
+  }
 
   const handleLogout = async (e) => {
     e.preventDefault(); e.stopPropagation()
@@ -383,9 +392,23 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
             </button>
 
             <div className={`dashboard-sidebar-user-group ${isProfileMenuOpen ? 'open' : ''}`}>
-              <div className="dashboard-sidebar-user" data-tooltip="Profile"
-                onClick={isSidebarCollapsed ? (e) => { e.stopPropagation(); setIsEntitiesOpen(false); setIsProfileMenuOpen(p => !p) } : undefined}
-                role={isSidebarCollapsed ? 'button' : undefined} tabIndex={isSidebarCollapsed ? 0 : undefined}>
+              <div
+                className="dashboard-sidebar-user"
+                data-tooltip="Profile"
+                onClick={isSidebarCollapsed ? handleProfileMenuToggle : undefined}
+                role={isSidebarCollapsed ? 'button' : undefined}
+                tabIndex={isSidebarCollapsed ? 0 : undefined}
+                onKeyDown={
+                  isSidebarCollapsed
+                    ? (event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault()
+                          handleProfileMenuToggle(event)
+                        }
+                      }
+                    : undefined
+                }
+              >
                 <div className="dashboard-sidebar-user-avatar" aria-hidden="true">
                   {sidebarProfileImagePreview
                     ? <img src={sidebarProfileImagePreview} alt="" className="dashboard-sidebar-user-avatar-image" />
@@ -398,8 +421,6 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                   <span className="dashboard-sidebar-user-name">{user.fullName}</span>
                   <span className="dashboard-sidebar-user-email">{user.roleLabel}</span>
                 </div>
-<<<<<<< HEAD
-
                 <button
                   type="button"
                   className="dashboard-sidebar-user-more"
@@ -408,14 +429,6 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                   onClick={handleProfileMenuToggle}
                 >
                   <ProfileMenuIcon isOpen={isProfileMenuOpen} />
-=======
-                <button type="button" className="dashboard-sidebar-user-more" aria-label="More user options"
-                  aria-expanded={isProfileMenuOpen}
-                  onClick={(e) => { e.stopPropagation(); setIsEntitiesOpen(false); setIsProfileMenuOpen(p => !p) }}>
-                  <svg viewBox="0 0 24 24" fill="currentColor">
-                    <circle cx="12" cy="5" r="1.8" /><circle cx="12" cy="12" r="1.8" /><circle cx="12" cy="19" r="1.8" />
-                  </svg>
->>>>>>> ff2c2e8c377abb0676789e876a63bb18185ff269
                 </button>
               </div>
               <div className={`dashboard-sidebar-user-menu ${isProfileMenuOpen ? 'open' : ''}`}>
@@ -444,14 +457,8 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
       </aside>
 
       <section className="dashboard-content">
-<<<<<<< HEAD
-        <div className={`dashboard-content-body dashboard-content-body-frame`}>
-          <div className="dashboard-header dashboard-page-title-row">
-=======
         <div className="dashboard-content-body dashboard-content-body-frame">
-
-          <div className="dashboard-header">
->>>>>>> ff2c2e8c377abb0676789e876a63bb18185ff269
+          <div className="dashboard-header dashboard-page-title-row">
             <h1 className="dashboard-content-title">Dashboard</h1>
             <button type="button" className={`edit-mode-btn ${isEditMode ? 'active' : ''}`} onClick={() => setIsEditMode(p => !p)}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="15" height="15">
