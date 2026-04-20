@@ -18,7 +18,8 @@ import {
   EyeClosedIcon,
   PhotoRemoveIcon,
   TrashIcon,
-  SaveIcon
+  SaveIcon,
+  ProfileMenuIcon
 } from '../Components/Icons.jsx'
 import { getCurrentUserProfile, isAdministratorRole } from '../Utils/getCurrentUserProfile'
 import { performReliableLogout } from '../Utils/performReliableLogout'
@@ -1418,15 +1419,11 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                 <button
                   type="button"
                   className="dashboard-sidebar-user-more"
-                  aria-label="More user options"
+                  aria-label={isProfileMenuOpen ? 'Close profile menu' : 'Open profile menu'}
                   aria-expanded={isProfileMenuOpen}
                   onClick={handleProfileMenuToggle}
                 >
-                  <svg viewBox="0 0 24 24" fill="currentColor">
-                    <circle cx="12" cy="5" r="1.8" />
-                    <circle cx="12" cy="12" r="1.8" />
-                    <circle cx="12" cy="19" r="1.8" />
-                  </svg>
+                  <ProfileMenuIcon isOpen={isProfileMenuOpen} />
                 </button>
               </div>
 
@@ -1468,7 +1465,9 @@ const Account = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
 
       <section className="dashboard-content">
         <div className="dashboard-content-body dashboard-content-body-frame">
-          <h1 className="dashboard-content-title">Account</h1>
+          <div className="dashboard-page-title-row">
+            <h1 className="dashboard-content-title">Account</h1>
+          </div>
 
           <section className="account-panel" aria-labelledby="account-profile-heading">
             <div className="account-layout">

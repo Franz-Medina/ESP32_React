@@ -133,6 +133,25 @@ export function LastPageIcon() {
   )
 }
 
+export function ProfileMenuIcon({ isOpen = false }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {isOpen ? (
+        <path d="M6 14l6-6 6 6"></path>
+      ) : (
+        <path d="M6 10l6 6 6-6"></path>
+      )}
+    </svg>
+  )
+}
+
 export function CameraIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
