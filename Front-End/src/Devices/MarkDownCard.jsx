@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import "./Styles/MarkdownCard.css";
+import "./Styles/WidgetStyle.css";
 
 function MarkdownCard({ 
   title = "Information",
@@ -31,44 +31,44 @@ function MarkdownCard({
   };
 
   return (
-    <div className="markdown-widget">
-      <div className="markdown-title">{title}</div>
+    <div className="widget">
+      <div className="widget-title">{title}</div>
 
-      <div className="markdown-content">
+      <div className="widget-content">
         {isEditing ? (
           <textarea
             value={tempContent}
             onChange={(e) => setTempContent(e.target.value)}
             placeholder="Write markdown here..."
-            className="markdown-textarea"
+            className="widget-textarea"
           />
         ) : (
           <div 
-            className="markdown-body"
+            className="widget-body"
             dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }}
           />
         )}
       </div>
 
       {allowEditing && (
-        <div className="markdown-edit-area">
+        <div className="widget-edit-area">
           {!isEditing ? (
             <button //Need to find an favicon to replace the pencil emoji
-              className="markdown-btn markdown-btn-edit"
+              className="widget-btn widget-btn-edit"
               onClick={() => setIsEditing(true)}
             >
               ✏️ Edit
             </button>
           ) : (
-            <div className="markdown-edit-actions">
+            <div className="widget-edit-actions">
               <button 
-                className="markdown-btn"
+                className="widget-btn"
                 onClick={handleCancel}
               >
                 Cancel
               </button>
               <button 
-                className="markdown-btn markdown-btn-primary"
+                className="widget-btn widget-btn-primary"
                 onClick={handleSave}
               >
                 Save Changes

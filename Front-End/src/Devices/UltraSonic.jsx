@@ -61,138 +61,145 @@ const UltraSonicGauge = ({
 };
 
 const UltraSonic = () => {
-  const [deviceId, setDeviceId] = useState("");
-  const [connected, setConnected] = useState(false);
+  const STORAGE_KEY = 'avinya_devices';
 
+  const loadDefaultDeviceId = () => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return parsed.defaultId ?? null;
+    } catch {
+      return null;
+    }
+  };
+
+  const [deviceId, setDeviceId] = useState(() => loadDefaultDeviceId());
+  const [connected, setConnected] = useState(false);
   const [distance, setDistance] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [token, setToken] = useState(null);
 
-  const TB_BASE_URL = "";
   const TB_EMAIL = import.meta.env.VITE_TB_EMAIL;
   const TB_PASSWORD = import.meta.env.VITE_TB_PASSWORD;
 
   const login = async () => {
-    const res = await fetch(`${TB_BASE_URL}/api/auth/login`, {
+    const res = await fetch(`/api/auth/login`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         username: TB_EMAIL,
         password: TB_PASSWORD
       })
     });
 
-    if (!res.ok) {
-      const text = await res.text();
-      console.error("LOGIN ERROR:", text);
-      throw new Error("Login failed");
-    }
-
+    if (!res.ok) throw new Error("Login failed");
     const data = await res.json();
     setToken(data.token);
     return data.token;
   };
 
-  const fetchDistance = async () => {
-    if (!deviceId) return;
-
+  const fetchDistance = async (devId) => {
+    if (!devId) return;
     try {
       const jwt = token || await login();
-
       const res = await fetch(
-        `${TB_BASE_URL}/api/plugins/telemetry/DEVICE/${deviceId}/values/timeseries?keys=distance&limit=1`,
-        {
-          headers: {
-            "X-Authorization": `Bearer ${jwt}`
-          }
-        }
+        `/api/plugins/telemetry/DEVICE/${devId}/values/timeseries?keys=distance&limit=1`,
+        { headers: { "X-Authorization": `Bearer ${jwt}` } }
       );
-
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
       const data = await res.json();
-
       if (data.distance && data.distance.length > 0) {
         const latest = parseFloat(data.distance[0].value);
         setDistance(latest);
       } else {
         setDistance(0);
       }
-
       setError(null);
     } catch (err) {
       console.error("FETCH ERROR:", err);
-      setError("Failed to fetch telemetry");
+      throw err;
     }
   };
 
-  const connectDevice = async () => {
-    if (!deviceId.trim()) {
-      alert("Please enter a Device ID");
+  const connectToDefault = async () => {
+    const defaultId = loadDefaultDeviceId();
+    if (!defaultId) {
+      setError("No default device set. Go to Devices page to set one.");
+      setIsLoading(false);
       return;
     }
-
+    setDeviceId(defaultId);
+    setIsLoading(true);
+    setError(null);
     try {
       await login();
+      await fetchDistance(defaultId);
       setConnected(true);
-      console.log("✅ Connected");
-      fetchDistance();
     } catch (err) {
-      console.error(err);
-      alert("Login failed");
+      let msg = err.message;
+      if (msg.includes("404")) msg = "Device not found";
+      else if (msg.includes("401") || msg.includes("403")) msg = "Login failed";
+      else msg = "Failed to connect";
+      setError(msg);
+      setConnected(false);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const disconnectDevice = () => {
+  const handleDisconnect = () => {
     setConnected(false);
-    setDeviceId("");
-    setDistance(null);
+    setIsLoading(true);
+    setError(null);
     setToken(null);
+    setTimeout(connectToDefault, 100);
   };
 
   useEffect(() => {
-    if (!connected) return;
+    connectToDefault();
+  }, []);
 
-    const interval = setInterval(fetchDistance, 2000);
+  useEffect(() => {
+    if (!connected || !deviceId) return;
+    const interval = setInterval(() => {
+      fetchDistance(deviceId).catch(() => {});
+    }, 2000);
     return () => clearInterval(interval);
   }, [connected, deviceId]);
 
+  useEffect(() => {
+    const handleStorage = (e) => {
+      if (e.key === STORAGE_KEY) {
+        const newDefault = loadDefaultDeviceId();
+        if (newDefault && newDefault !== deviceId) {
+          setDeviceId(newDefault);
+          handleDisconnect();
+        }
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, [deviceId]);
+
   return (
     <div className="text-center">
-      {!connected ? (
-        <>
-          <h5>Ultrasonic Distance</h5>
+      <h5>Ultrasonic Distance</h5>
 
-          <input
-            type="text"
-            placeholder="Enter Device ID"
-            value={deviceId}
-            onChange={(e) => setDeviceId(e.target.value)}
-          />
-
-          <button onClick={connectDevice}>
-            Connect
-          </button>
-        </>
+      {isLoading ? (
+        <p>Loading distance...</p>
+      ) : !deviceId ? (
+        <div>
+          <p>No default device set.</p>
+          <small>Go to <strong>Devices</strong> page and set a default Device ID.</small>
+        </div>
+      ) : error ? (
+        <p className="text-danger">{error}</p>
+      ) : distance !== null ? (
+        <UltraSonicGauge value={distance} />
       ) : (
-        <>
-          <h5>Ultrasonic Distance</h5>
-          <p>Device: {deviceId}</p>
-
-          {error ? (
-            <p className="text-danger">{error}</p>
-          ) : distance !== null ? (
-            <UltraSonicGauge value={distance} />
-          ) : (
-            <p>Loading distance...</p>
-          )}
-
-          <button onClick={disconnectDevice}>
-            Change Device
-          </button>
-        </>
+        <p>Loading distance...</p>
       )}
     </div>
   );

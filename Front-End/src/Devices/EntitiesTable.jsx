@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import "./Styles/EntitiesTable.css";
+import "./Styles/WidgetStyle.css";
 
 function EntitiesTable() {
   const [entities, setEntities] = useState([]);
@@ -81,10 +81,10 @@ function EntitiesTable() {
   };
 
   return (
-    <div className="entities-widget">
-      <div className="entities-title">ENTITIES TABLE</div>
+    <div className="widget">
+      <div className="widget-title">ENTITIES TABLE</div>
 
-      <div className="entities-header">
+      <div className="widget-header">
         <div className="last-updated">
           {lastUpdated
             ? `Last updated: ${formatTime(lastUpdated)}`
@@ -92,7 +92,7 @@ function EntitiesTable() {
         </div>
 
         <button
-          className="entities-refresh-btn"
+          className="widget-refresh-btn"
           onClick={fetchEntities}
           disabled={loading}
           title="Refresh"
@@ -108,7 +108,7 @@ function EntitiesTable() {
 
         {error && <div className="error-state">{error}</div>}
 
-        <table className="entities-table">
+        <table className="widget-table">
           <thead>
             <tr>
               <th>Name</th>
