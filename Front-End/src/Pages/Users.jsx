@@ -1835,80 +1835,84 @@ const Users = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
 
           <section className="users-panel" aria-labelledby="users-page-title">
             <div className="users-panel-toolbar">
-              <div className="users-filters-group" aria-label="Users filters">
-                <UsersFilterDropdown
-                  id="users-status-filter"
-                  label="Status"
-                  icon={<FilterIcon />}
-                  className="users-filter-field-status"
-                  value={usersStatusFilter}
-                  options={USERS_STATUS_FILTER_OPTIONS}
-                  isOpen={openUsersFilterDropdown === 'status'}
-                  onToggle={() => handleUsersFilterDropdownToggle('status')}
-                  onSelect={handleUsersStatusFilterChange}
-                  disabled={isUsersToolbarDisabled}
-                />
+              <div className="users-toolbar-top">
+                <div className="users-filters-group" aria-label="Users filters">
+                  <UsersFilterDropdown
+                    id="users-status-filter"
+                    label="Status"
+                    icon={<FilterIcon />}
+                    className="users-filter-field-status"
+                    value={usersStatusFilter}
+                    options={USERS_STATUS_FILTER_OPTIONS}
+                    isOpen={openUsersFilterDropdown === 'status'}
+                    onToggle={() => handleUsersFilterDropdownToggle('status')}
+                    onSelect={handleUsersStatusFilterChange}
+                    disabled={isUsersToolbarDisabled}
+                  />
 
-                <UsersFilterDropdown
-                  id="users-country-code-filter"
-                  label="Country Code"
-                  icon={<GlobeIcon />}
-                  className="users-filter-field-country"
-                  value={usersCountryCodeFilter}
-                  options={USERS_COUNTRY_FILTER_OPTIONS}
-                  isOpen={openUsersFilterDropdown === 'country'}
-                  onToggle={() => handleUsersFilterDropdownToggle('country')}
-                  onSelect={handleUsersCountryCodeFilterChange}
-                  disabled={isUsersToolbarDisabled}
-                />
+                  <UsersFilterDropdown
+                    id="users-country-code-filter"
+                    label="Country Code"
+                    icon={<GlobeIcon />}
+                    className="users-filter-field-country"
+                    value={usersCountryCodeFilter}
+                    options={USERS_COUNTRY_FILTER_OPTIONS}
+                    isOpen={openUsersFilterDropdown === 'country'}
+                    onToggle={() => handleUsersFilterDropdownToggle('country')}
+                    onSelect={handleUsersCountryCodeFilterChange}
+                    disabled={isUsersToolbarDisabled}
+                  />
 
-                <UsersFilterDropdown
-                  id="users-photo-filter"
-                  label="Profile Picture"
-                  icon={<FilterIcon />}
-                  className="users-filter-field-photo"
-                  value={usersPhotoFilter}
-                  options={USERS_PHOTO_FILTER_OPTIONS}
-                  isOpen={openUsersFilterDropdown === 'photo'}
-                  onToggle={() => handleUsersFilterDropdownToggle('photo')}
-                  onSelect={handleUsersPhotoFilterChange}
-                  disabled={isUsersToolbarDisabled}
-                />
+                  <UsersFilterDropdown
+                    id="users-photo-filter"
+                    label="Profile Picture"
+                    icon={<FilterIcon />}
+                    className="users-filter-field-photo"
+                    value={usersPhotoFilter}
+                    options={USERS_PHOTO_FILTER_OPTIONS}
+                    isOpen={openUsersFilterDropdown === 'photo'}
+                    onToggle={() => handleUsersFilterDropdownToggle('photo')}
+                    onSelect={handleUsersPhotoFilterChange}
+                    disabled={isUsersToolbarDisabled}
+                  />
 
-                <UsersFilterDropdown
-                  id="users-sort-filter"
-                  label="Sort By"
-                  icon={<SortIcon />}
-                  className="users-filter-field-sort"
-                  value={usersSortBy}
-                  options={USERS_SORT_OPTIONS}
-                  isOpen={openUsersFilterDropdown === 'sort'}
-                  onToggle={() => handleUsersFilterDropdownToggle('sort')}
-                  onSelect={handleUsersSortByChange}
-                  disabled={isUsersToolbarDisabled}
-                />
+                  <UsersFilterDropdown
+                    id="users-sort-filter"
+                    label="Sort By"
+                    icon={<SortIcon />}
+                    className="users-filter-field-sort"
+                    value={usersSortBy}
+                    options={USERS_SORT_OPTIONS}
+                    isOpen={openUsersFilterDropdown === 'sort'}
+                    onToggle={() => handleUsersFilterDropdownToggle('sort')}
+                    onSelect={handleUsersSortByChange}
+                    disabled={isUsersToolbarDisabled}
+                  />
+                </div>
 
-                <button
-                  type="button"
-                  className="users-filter-reset-button"
-                  onClick={handleUsersResetFilters}
-                  disabled={isUsersToolbarDisabled || areUsersFiltersAtDefault}
-                >
-                  Reset Filters
-                </button>
+                <div className="users-toolbar-actions">
+                  <button
+                    type="button"
+                    className="users-filter-reset-button"
+                    onClick={handleUsersResetFilters}
+                    disabled={isUsersToolbarDisabled || areUsersFiltersAtDefault}
+                  >
+                    Reset Filters
+                  </button>
+
+                  <button
+                    type="button"
+                    className="users-export-button users-export-button-toolbar"
+                    onClick={handleOpenUsersPdfPreview}
+                    disabled={isUsersToolbarDisabled}
+                  >
+                    <span className="users-export-button-icon" aria-hidden="true">
+                      <DownloadIcon />
+                    </span>
+                    <span>Export PDF</span>
+                  </button>
+                </div>
               </div>
-
-              <button
-                type="button"
-                className="users-export-button users-export-button-toolbar"
-                onClick={handleOpenUsersPdfPreview}
-                disabled={isUsersToolbarDisabled}
-              >
-                <span className="users-export-button-icon" aria-hidden="true">
-                  <DownloadIcon />
-                </span>
-                <span>Export PDF</span>
-              </button>
 
               <form
                 className="users-search-form"

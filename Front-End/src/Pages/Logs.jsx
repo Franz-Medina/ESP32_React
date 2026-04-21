@@ -6,7 +6,16 @@ import '../Styles/Logs.css'
 import { getCurrentUserProfile, isAdministratorRole } from '../Utils/getCurrentUserProfile'
 import { performReliableLogout } from '../Utils/performReliableLogout'
 import { buildApiAssetUrl } from '../Config/API'
-import { ProfileMenuIcon } from '../Components/Icons.jsx'
+import {
+  ProfileMenuIcon,
+  SearchIcon,
+  FilterIcon,
+  TrashIcon,
+  FirstPageIcon,
+  PreviousPageIcon,
+  NextPageIcon,
+  LastPageIcon
+} from '../Components/Icons.jsx'
 
 const LOGS_STORAGE_KEY = 'avinya_activity_logs'
 const LOGS_PER_PAGE = 15
@@ -122,15 +131,29 @@ const getLogsPaginationItems = (currentPage, totalPages) => {
 const formatTimestamp = (iso) => {
   try {
     const date = new Date(iso)
-    return new Intl.DateTimeFormat('en-US', {
-      month: 'short',
-      day:   'numeric',
-      year:  'numeric',
-      hour:  'numeric',
-      minute:'2-digit',
-      second:'2-digit',
-      hour12: true,
+
+    if (Number.isNaN(date.getTime())) {
+      return iso
+    }
+
+    const dateParts = new Intl.DateTimeFormat('en-US', {
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric'
+    }).formatToParts(date)
+
+    const month = dateParts.find((part) => part.type === 'month')?.value || ''
+    const day = dateParts.find((part) => part.type === 'day')?.value || ''
+    const year = dateParts.find((part) => part.type === 'year')?.value || ''
+
+    const timePart = new Intl.DateTimeFormat('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true
     }).format(date)
+
+    return `${month}, ${day}, ${year} | ${timePart}`
   } catch {
     return iso
   }
@@ -141,13 +164,17 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   const [isSidebarCollapsed,setIsSidebarCollapsed]= useState(false)
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
 
-  const [allLogs,          setAllLogs]          = useState(() => loadLogs())
+  const [allLogs,          setAllLogs]           = useState(() => loadLogs())
   const [typeFilter,       setTypeFilter]        = useState('all')
   const [searchInput,      setSearchInput]       = useState('')
   const [appliedSearch,    setAppliedSearch]     = useState('')
   const [currentPage,      setCurrentPage]       = useState(1)
   const [isTypeDropOpen,   setIsTypeDropOpen]    = useState(false)
   const [tableAnimKey,     setTableAnimKey]      = useState(0)
+  const [isLogsLoading,    setIsLogsLoading]     = useState(true)
+  const [logsTableLoadingTitle, setLogsTableLoadingTitle] = useState('Loading Logs')
+  const [isLogsTableTransitioning, setIsLogsTableTransitioning] = useState(true)
+  const [hasLogsLoadedOnce, setHasLogsLoadedOnce] = useState(false)
 
   const user = getCurrentUserProfile()
   const isAdministrator = isAdministratorRole(user.roleLabel)
@@ -158,6 +185,18 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
       .map((v) => String(v).trim().charAt(0).toUpperCase())
       .join('')
       .slice(0, 2) || 'A'
+
+  const startLogsTableTransition = useCallback((title = 'Loading Logs') => {
+    setLogsTableLoadingTitle(title)
+    setIsLogsLoading(true)
+    setIsLogsTableTransitioning(true)
+    setTableAnimKey((k) => k + 1)
+  }, [])
+
+  const resetToFirstPage = useCallback((title = 'Loading Logs') => {
+    startLogsTableTransition(title)
+    setCurrentPage(1)
+  }, [startLogsTableTransition])
 
   useEffect(() => {
     const sync = () => setAllLogs(loadLogs())
@@ -182,10 +221,23 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     if (!isAdministrator) onNavigate('dashboard')
   }, [isAdministrator, onNavigate])
 
-  const resetToFirstPage = useCallback(() => {
-    setCurrentPage(1)
-    setTableAnimKey((k) => k + 1)
-  }, [])
+  useEffect(() => {
+    startLogsTableTransition('Loading Logs')
+  }, [startLogsTableTransition])
+
+  useEffect(() => {
+    if (!isLogsLoading) {
+      return
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setIsLogsLoading(false)
+      setIsLogsTableTransitioning(false)
+      setHasLogsLoadedOnce(true)
+    }, 420)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [isLogsLoading])
 
   const filteredLogs = allLogs.filter((log) => {
     const matchType = typeFilter === 'all' || log.type === typeFilter
@@ -211,24 +263,55 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   const pageLogs   = filteredLogs.slice(pageStart, pageStart + LOGS_PER_PAGE)
   const paginationItems = getLogsPaginationItems(safePage, totalPages)
 
+  const isLogsToolbarDisabled = isLogsLoading
+  const isLogsSearchDisabled =
+    isLogsLoading ||
+    (searchInput.trim().length === 0 && appliedSearch.length === 0)
+
+  const handleLogsPageChange = (nextPage) => {
+    if (isLogsLoading) {
+      return
+    }
+
+    if (nextPage < 1 || nextPage > totalPages || nextPage === safePage) {
+      return
+    }
+
+    startLogsTableTransition('Loading Logs')
+    setCurrentPage(nextPage)
+  }
+
   const handleTypeFilterChange = (value) => {
+    if (value === typeFilter) {
+      setIsTypeDropOpen(false)
+      return
+    }
+
     setTypeFilter(value)
     setIsTypeDropOpen(false)
-    resetToFirstPage()
+    resetToFirstPage('Filtering Logs')
   }
 
   const handleSearchSubmit = (e) => {
     e.preventDefault()
-    setAppliedSearch(searchInput.trim())
-    resetToFirstPage()
+
+    const nextSearchValue = searchInput.trim()
+
+    if (nextSearchValue === appliedSearch) {
+      if (currentPage !== 1) {
+        startLogsTableTransition('Searching Logs')
+        setCurrentPage(1)
+      }
+      return
+    }
+
+    startLogsTableTransition('Searching Logs')
+    setAppliedSearch(nextSearchValue)
+    setCurrentPage(1)
   }
 
   const handleSearchInputChange = (e) => {
     setSearchInput(e.target.value)
-    if (!e.target.value.trim()) {
-      setAppliedSearch('')
-      resetToFirstPage()
-    }
   }
 
   const handleClearLogs = async () => {
@@ -253,18 +336,28 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     })
 
     if (!result.isConfirmed) return
+
     saveLogs([])
     setAllLogs([])
-    resetToFirstPage()
+    resetToFirstPage('Loading Logs')
   }
 
   const areFiltersAtDefault = typeFilter === 'all' && !appliedSearch && !searchInput
 
+  const logsEmptyStateMessage =
+    appliedSearch || typeFilter !== 'all'
+      ? 'No matching logs found.'
+      : 'No logs found.'
+
   const handleResetFilters = () => {
+    if (areFiltersAtDefault) {
+      return
+    }
+
     setTypeFilter('all')
     setSearchInput('')
     setAppliedSearch('')
-    resetToFirstPage()
+    resetToFirstPage('Filtering Logs')
   }
 
   const closeDropdowns = () => {
@@ -507,120 +600,133 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
 
       <section className="dashboard-content">
         <div className="dashboard-content-body dashboard-content-body-frame">
-          <div className="dashboard-header dashboard-page-title-row logs-page-topbar">
+          <div className="dashboard-header dashboard-page-title-row">
             <h1 id="logs-page-title" className="dashboard-content-title">Logs</h1>
-            <span className="logs-topbar-count">
-              {totalCount} {totalCount === 1 ? 'Entry' : 'Entries'}
-            </span>
           </div>
 
           <section className="logs-panel" aria-labelledby="logs-page-title">
 
             <div className="logs-panel-toolbar">
-
-              <div className="logs-filters-group">
-
-                <div className={`logs-filter-dropdown ${isTypeDropOpen ? 'open' : ''}`}>
-                  <button
-                    type="button"
-                    id="logs-type-filter"
-                    className={`logs-filter-field logs-filter-dropdown-trigger ${isTypeDropOpen ? 'logs-filter-dropdown-trigger-open' : ''}`}
-                    onClick={() => setIsTypeDropOpen((p) => !p)}
-                    aria-haspopup="listbox"
-                    aria-expanded={isTypeDropOpen}
-                  >
-                    <span className="logs-filter-field-icon" aria-hidden="true">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
-                      </svg>
-                    </span>
-                    <div className="logs-filter-floating-control">
-                      <span className="logs-filter-dropdown-value">
-                        {selectedTypeOption.label}
+              <div className="logs-toolbar-top">
+                <div className="logs-filters-group">
+                  <div className={`logs-filter-dropdown ${isTypeDropOpen ? 'open' : ''}`}>
+                    <button
+                      type="button"
+                      id="logs-type-filter"
+                      className={`logs-filter-field logs-filter-dropdown-trigger ${isTypeDropOpen ? 'logs-filter-dropdown-trigger-open' : ''}`}
+                      onClick={() => setIsTypeDropOpen((p) => !p)}
+                      aria-haspopup="listbox"
+                      aria-expanded={isTypeDropOpen}
+                      disabled={isLogsToolbarDisabled}
+                    >
+                      <span className="logs-filter-field-icon" aria-hidden="true">
+                        <FilterIcon />
                       </span>
-                      <span className="logs-filter-label logs-filter-label-static">Action Type</span>
-                    </div>
-                    <span className="logs-filter-field-arrow" aria-hidden="true">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d={isTypeDropOpen ? 'M18 15l-6-6-6 6' : 'M6 9l6 6 6-6'} />
-                      </svg>
-                    </span>
-                  </button>
+                      <div className="logs-filter-floating-control">
+                        <span className="logs-filter-dropdown-value">
+                          {selectedTypeOption.label}
+                        </span>
+                        <span className="logs-filter-label logs-filter-label-static">Action Type</span>
+                      </div>
+                      <span className="logs-filter-field-arrow" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d={isTypeDropOpen ? 'M18 15l-6-6-6 6' : 'M6 9l6 6 6-6'} />
+                        </svg>
+                      </span>
+                    </button>
 
-                  <div className={`logs-filter-dropdown-menu ${isTypeDropOpen ? 'open' : ''}`} role="listbox" aria-labelledby="logs-type-filter">
-                    {ALL_LOG_TYPE_FILTER_OPTIONS.map((option) => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        className={`logs-filter-dropdown-option ${typeFilter === option.value ? 'active' : ''}`}
-                        onClick={() => handleTypeFilterChange(option.value)}
-                        role="option"
-                        aria-selected={typeFilter === option.value}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
+                    <div
+                      className={`logs-filter-dropdown-menu ${isTypeDropOpen ? 'open' : ''}`}
+                      role="listbox"
+                      aria-labelledby="logs-type-filter"
+                    >
+                      {ALL_LOG_TYPE_FILTER_OPTIONS.map((option) => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          className={`logs-filter-dropdown-option ${typeFilter === option.value ? 'active' : ''}`}
+                          onClick={() => handleTypeFilterChange(option.value)}
+                          role="option"
+                          aria-selected={typeFilter === option.value}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  className="logs-filter-reset-button"
-                  onClick={handleResetFilters}
-                  disabled={areFiltersAtDefault}
-                >
-                  Reset Filters
-                </button>
-              </div>
-
-              <div className="logs-toolbar-right">
-                <button
-                  type="button"
-                  className="logs-clear-button"
-                  onClick={handleClearLogs}
-                  disabled={allLogs.length === 0}
-                >
-                  <span className="logs-clear-button-icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" />
-                    </svg>
-                  </span>
-                  <span>Clear All</span>
-                </button>
-
-                <form className="logs-search-form" onSubmit={handleSearchSubmit} role="search" aria-label="Search logs">
-                  <div className="logs-search-field">
-                    <span className="logs-search-input-icon" aria-hidden="true">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
-                      </svg>
-                    </span>
-                    <div className="logs-search-floating-control">
-                      <input
-                        id="logs-search-input"
-                        type="search"
-                        className="logs-search-input logs-search-floating-input"
-                        placeholder=" "
-                        value={searchInput}
-                        onChange={handleSearchInputChange}
-                        aria-label="Search logs"
-                      />
-                      <label htmlFor="logs-search-input" className="logs-search-floating-label">Search</label>
-                    </div>
-                  </div>
-                  <button type="submit" className="logs-search-button">
-                    <span className="logs-search-button-icon" aria-hidden="true">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
-                      </svg>
-                    </span>
-                    <span>Search</span>
+                <div className="logs-toolbar-actions">
+                  <button
+                    type="button"
+                    className="logs-filter-reset-button"
+                    onClick={handleResetFilters}
+                    disabled={isLogsToolbarDisabled || areFiltersAtDefault}
+                  >
+                    Reset Filters
                   </button>
-                </form>
+
+                  <button
+                    type="button"
+                    className="logs-clear-button"
+                    onClick={handleClearLogs}
+                    disabled={isLogsToolbarDisabled || allLogs.length === 0}
+                  >
+                    <span className="logs-clear-button-icon" aria-hidden="true">
+                      <TrashIcon />
+                    </span>
+                    <span>Clear All</span>
+                  </button>
+                </div>
               </div>
+
+              <form className="logs-search-form" onSubmit={handleSearchSubmit} role="search" aria-label="Search logs">
+                <div className="logs-search-field">
+                  <span className="logs-search-input-icon" aria-hidden="true">
+                    <SearchIcon />
+                  </span>
+                  <div className="logs-search-floating-control">
+                    <input
+                      id="logs-search-input"
+                      type="search"
+                      className="logs-search-input logs-search-floating-input"
+                      placeholder=" "
+                      value={searchInput}
+                      onChange={handleSearchInputChange}
+                      aria-label="Search logs"
+                      disabled={isLogsToolbarDisabled}
+                    />
+                    <label htmlFor="logs-search-input" className="logs-search-floating-label">Search</label>
+                  </div>
+                </div>
+
+                <button type="submit" className="logs-search-button" disabled={isLogsSearchDisabled}>
+                  <span className="logs-search-button-icon" aria-hidden="true">
+                    <SearchIcon />
+                  </span>
+                  <span>Search</span>
+                </button>
+              </form>
             </div>
 
             <div className="logs-table-shell">
+              {isLogsTableTransitioning && hasLogsLoadedOnce && (
+                <div
+                  className="logs-table-loading-overlay"
+                  role="status"
+                  aria-live="polite"
+                  aria-busy="true"
+                >
+                  <div className="logs-table-loading-card">
+                    <img src={logo} alt="Avinya Logo" className="logs-table-loading-logo" />
+                    <p className="logs-table-loading-title">{logsTableLoadingTitle}</p>
+                    <div className="logs-table-loading-loader" aria-hidden="true">
+                      <span className="logs-table-loading-loader-bar"></span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div
                 className={`logs-table-scroll ${pageLogs.length === 0 ? 'logs-table-scroll-empty' : ''}`}
                 role="region"
@@ -702,9 +808,7 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
 
                 {pageLogs.length === 0 && (
                   <div className="logs-table-empty-state" aria-live="polite">
-                    {allLogs.length === 0
-                      ? 'No activity has been recorded yet.'
-                      : 'No logs match your current filters.'}
+                    {logsEmptyStateMessage}
                   </div>
                 )}
               </div>
@@ -715,14 +819,12 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                     <button
                       type="button"
                       className="logs-pagination-button logs-pagination-button-with-icon logs-pagination-button-start"
-                      onClick={() => { setCurrentPage(1); setTableAnimKey((k) => k + 1) }}
-                      disabled={safePage === 1}
+                      onClick={() => handleLogsPageChange(1)}
+                      disabled={safePage === 1 || isLogsLoading}
                       aria-label="First page"
                     >
                       <span className="logs-pagination-button-icon" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M11 17l-5-5 5-5" /><path d="M18 17l-5-5 5-5" />
-                        </svg>
+                        <FirstPageIcon />
                       </span>
                       <span>First</span>
                     </button>
@@ -730,29 +832,28 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                     <button
                       type="button"
                       className="logs-pagination-button logs-pagination-button-with-icon logs-pagination-button-start"
-                      onClick={() => { setCurrentPage((p) => Math.max(1, p - 1)); setTableAnimKey((k) => k + 1) }}
-                      disabled={safePage === 1}
+                      onClick={() => handleLogsPageChange(safePage - 1)}
+                      disabled={safePage === 1 || isLogsLoading}
                       aria-label="Previous page"
                     >
                       <span className="logs-pagination-button-icon" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M15 18l-6-6 6-6" />
-                        </svg>
+                        <PreviousPageIcon />
                       </span>
-                      <span>Prev</span>
+                      <span>Back</span>
                     </button>
                   </div>
 
                   <div className="logs-pagination-group logs-pagination-group-center">
                     {paginationItems.map((item) =>
                       typeof item === 'string' ? (
-                        <span key={item} className="logs-pagination-ellipsis">…</span>
+                        <span key={item} className="logs-pagination-ellipsis">...</span>
                       ) : (
                         <button
                           key={item}
                           type="button"
                           className={`logs-pagination-button logs-pagination-number ${item === safePage ? 'active' : ''}`}
-                          onClick={() => { setCurrentPage(item); setTableAnimKey((k) => k + 1) }}
+                          onClick={() => handleLogsPageChange(item)}
+                          disabled={item === safePage || isLogsLoading}
                           aria-current={item === safePage ? 'page' : undefined}
                           aria-label={`Page ${item}`}
                         >
@@ -766,36 +867,28 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                     <button
                       type="button"
                       className="logs-pagination-button logs-pagination-button-with-icon logs-pagination-button-end"
-                      onClick={() => { setCurrentPage((p) => Math.min(totalPages, p + 1)); setTableAnimKey((k) => k + 1) }}
-                      disabled={safePage === totalPages}
+                      onClick={() => handleLogsPageChange(safePage + 1)}
+                      disabled={safePage === totalPages || isLogsLoading}
                       aria-label="Next page"
                     >
                       <span>Next</span>
                       <span className="logs-pagination-button-icon" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M9 18l6-6-6-6" />
-                        </svg>
+                        <NextPageIcon />
                       </span>
                     </button>
 
                     <button
                       type="button"
                       className="logs-pagination-button logs-pagination-button-with-icon logs-pagination-button-end"
-                      onClick={() => { setCurrentPage(totalPages); setTableAnimKey((k) => k + 1) }}
-                      disabled={safePage === totalPages}
+                      onClick={() => handleLogsPageChange(totalPages)}
+                      disabled={safePage === totalPages || isLogsLoading}
                       aria-label="Last page"
                     >
                       <span>Last</span>
                       <span className="logs-pagination-button-icon" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M13 17l5-5-5-5" /><path d="M6 17l5-5-5-5" />
-                        </svg>
+                        <LastPageIcon />
                       </span>
                     </button>
-
-                    <span className="logs-pagination-info">
-                      Rows: {totalCount}
-                    </span>
                   </div>
                 </div>
               </div>

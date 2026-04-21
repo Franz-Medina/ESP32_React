@@ -17,8 +17,10 @@
   --avatar-size: 44px;
   --avatar-icon-size: 20px;
   --sidebar-user-menu-button-size: 28px;
-  --page-title-nudge-top: 2px;
-  --page-title-nudge-left: 4px;
+  --sidebar-header-row-height: 40px;
+  --page-title-optical-lift: -2px;
+  --page-title-nudge-top: 0px;
+  --page-title-nudge-left: 0px;
 
   --dashboard-content-surface-top: #ffffff;
   --dashboard-content-surface-bottom: #fcfcfc;
@@ -95,6 +97,7 @@
 
 .dashboard-sidebar-header {
   width: 100%;
+  min-height: var(--sidebar-header-row-height);
   display: grid;
   grid-template-columns: minmax(0, 1fr) 35px;
   align-items: center;
@@ -110,6 +113,7 @@
 .dashboard-sidebar-top {
   width: 100%;
   min-width: 0;
+  min-height: var(--sidebar-header-row-height);
   display: flex;
   align-items: center;
   gap: 12px;
@@ -134,11 +138,14 @@
 
 .dashboard-sidebar-brand {
   max-width: 160px;
+  min-height: var(--sidebar-header-row-height);
   overflow: hidden;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
   font-size: var(--font-title);
   font-weight: 600;
-  line-height: 1.2;
+  line-height: 1;
   color: #1f1f1f;
   transition:
     max-width 0.38s var(--sidebar-ease),
@@ -1093,13 +1100,13 @@
   margin: 0;
   font-size: var(--font-title);
   font-weight: 600;
-  line-height: 1.2;
+  line-height: 1;
   color: #1f1f1f;
 }
 
 .dashboard-page-title-row {
   width: 100%;
-  min-height: 40px;
+  min-height: var(--sidebar-header-row-height);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1111,8 +1118,10 @@
 
 .dashboard-page-title-row .dashboard-content-title {
   margin: 0;
-  display: flex;
+  min-height: var(--sidebar-header-row-height);
+  display: inline-flex;
   align-items: center;
+  transform: translateY(var(--page-title-optical-lift));
 }
 
 .avinya-swal-popup {
