@@ -34,7 +34,6 @@ const ALL_LOG_TYPE_FILTER_OPTIONS = [
   { value: LOG_TYPES.DEVICE_REMOVED,    label: 'Device Removed' },
 ]
 
-// ==================== LOAD / SAVE LOGS ====================
 export const loadLogs = () => {
   try {
     const raw = localStorage.getItem(LOGS_STORAGE_KEY)
@@ -52,7 +51,6 @@ const saveLogs = (logs) => {
   } catch {}
 }
 
-// ==================== LOGGING FUNCTIONS ====================
 export const appendLog = (type, actorUser, detail = '', extra = {}) => {
   const existing = loadLogs()
 
@@ -64,13 +62,12 @@ export const appendLog = (type, actorUser, detail = '', extra = {}) => {
     actorRole:  actorUser?.roleLabel || '',
     detail:     detail || '',
     timestamp:  new Date().toISOString(),
-    ...extra,                    // For deviceId, etc.
+    ...extra,           
   }
 
   saveLogs([entry, ...existing])
 }
 
-// Helper functions to call from other components
 export const logLogin = (user) => {
   appendLog(LOG_TYPES.LOGIN, user, `User logged in successfully`)
 }
@@ -97,7 +94,6 @@ export const logDeviceRemoved = (user, deviceId) => {
   )
 }
 
-// ==================== HELPER FUNCTIONS ====================
 const getLogsPaginationItems = (currentPage, totalPages) => {
   if (totalPages <= 1) return [1]
 
@@ -140,7 +136,6 @@ const formatTimestamp = (iso) => {
   }
 }
 
-// ==================== MAIN LOGS COMPONENT ====================
 const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   const [isEntitiesOpen,    setIsEntitiesOpen]    = useState(false)
   const [isSidebarCollapsed,setIsSidebarCollapsed]= useState(false)
@@ -192,7 +187,6 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     setTableAnimKey((k) => k + 1)
   }, [])
 
-  // Filter logs
   const filteredLogs = allLogs.filter((log) => {
     const matchType = typeFilter === 'all' || log.type === typeFilter
     if (!matchType) return false
@@ -330,7 +324,6 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   return (
     <main className="dashboard-page logs-page">
       <aside className={`dashboard-sidebar ${isSidebarCollapsed ? 'collapsed' : ''}`}>
-        {/* Sidebar code remains exactly the same as your original */}
         <div className="dashboard-sidebar-panel">
           <div className="dashboard-sidebar-header">
             <div className="dashboard-sidebar-top">
@@ -716,7 +709,6 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                 )}
               </div>
 
-              {/* Pagination remains the same */}
               <div className="logs-pagination-shell">
                 <div className="logs-pagination">
                   <div className="logs-pagination-group logs-pagination-group-start">

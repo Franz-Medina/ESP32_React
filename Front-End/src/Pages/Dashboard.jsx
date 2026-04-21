@@ -68,7 +68,7 @@ const loadWidgets = () => {
       const parsed = JSON.parse(raw)
       if (Array.isArray(parsed) && parsed.length > 0) return parsed
     }
-  } catch { /* ignore */ }
+  } catch { }
   return [
     { id: 'control-1', type: 'ControlSwitch', col: 0, row: 0, w: 4, h: 2 },
     { id: 'led-1',     type: 'LEDIndicator',  col: 4, row: 0, w: 2, h: 2 },
@@ -91,7 +91,6 @@ const isOverlapping = (widgets, excludeId, col, row, w, h) => {
   return false
 }
 
-// ─── Dashboard ─────────────────────────────────────────────────────────────────
 const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   const [isEntitiesOpen,     setIsEntitiesOpen]     = useState(false)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
@@ -114,7 +113,7 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     .filter(Boolean).map(v => String(v).trim().charAt(0).toUpperCase()).join('').slice(0, 2) || 'A'
 
   useEffect(() => {
-    try { localStorage.setItem(WIDGETS_STORAGE_KEY, JSON.stringify(widgets)) } catch { /* ignore */ }
+    try { localStorage.setItem(WIDGETS_STORAGE_KEY, JSON.stringify(widgets)) } catch { }
   }, [widgets])
 
   useEffect(() => {
