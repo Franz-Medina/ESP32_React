@@ -14,7 +14,6 @@ import {
   LEDIndicator,
   CountWidgets,
   EntitiesTable,
-  AlarmList,
   BatteryGauge,
   ProgressWidget,
   TimeSeriesChart,
@@ -37,7 +36,6 @@ const WIDGET_DEFAULT_SIZE = {
   MarkdownCard:    [4, 3],
   CountWidgets:    [3, 2],
   EntitiesTable:   [6, 4],
-  AlarmList:       [4, 3],
 }
 
 const WIDGETS_STORAGE_KEY = 'avinya_dashboard_widgets_v2'
@@ -166,13 +164,12 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     { type: 'MarkdownCard',    name: 'Markdown Card',           icon: '📝',  description: 'Rich text content' },
     { type: 'CountWidgets',    name: 'Count Widgets',           icon: '🔢',  description: 'Numeric counter display' },
     { type: 'EntitiesTable',   name: 'Entities Table',          icon: '📋',  description: 'Tabular entity data' },
-    { type: 'AlarmList',       name: 'Alarm List',              icon: '🔔',  description: 'Active alarm monitor' },
     { type: 'UltraSonic',      name: 'UltraSonic Sensor',       icon: '�',  description: 'Distance measurement' },
   ]
 
   const WidgetMap = {
     ControlSwitch, ServoMotor, LEDIndicator, BatteryGauge, ProgressWidget,
-    TimeSeriesChart, MarkdownCard, CountWidgets, EntitiesTable, AlarmList, UltraSonic,
+    TimeSeriesChart, MarkdownCard, CountWidgets, EntitiesTable, UltraSonic,
   }
 
   const addWidget = (type) => {

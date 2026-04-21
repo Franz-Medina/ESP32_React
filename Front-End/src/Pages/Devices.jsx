@@ -169,6 +169,7 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     const updated = [...devices, newDevice]
     setDevices(updated)
     if (updated.length === 1) setDefaultId(trimmedId)
+    logDeviceAdded(user, trimmedId, trimmedDesc)
     closeModal()
   }
 
@@ -204,6 +205,7 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     const updated = devices.filter((d) => d.id !== id)
     setDevices(updated)
     if (defaultId === id) setDefaultId(updated.length > 0 ? updated[0].id : null)
+    logDeviceRemoved(user, id)
   }
 
   const atLimit = devices.length >= MAX_DEVICES

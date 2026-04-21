@@ -97,6 +97,49 @@ export const logDeviceRemoved = (user, deviceId) => {
   )
 }
 
+// ==================== HELPER FUNCTIONS ====================
+const getLogsPaginationItems = (currentPage, totalPages) => {
+  if (totalPages <= 1) return [1]
+
+  const pages = new Set([1, totalPages])
+
+  if (totalPages <= LOGS_VISIBLE_PAGE_BUTTONS + 2) {
+    for (let p = 1; p <= totalPages; p++) pages.add(p)
+  } else if (currentPage <= 3) {
+    for (let p = 1; p <= Math.min(totalPages, LOGS_VISIBLE_PAGE_BUTTONS); p++) pages.add(p)
+  } else if (currentPage >= totalPages - 2) {
+    for (let p = Math.max(1, totalPages - LOGS_VISIBLE_PAGE_BUTTONS + 1); p <= totalPages; p++) pages.add(p)
+  } else {
+    for (let p = currentPage - 1; p <= currentPage + 1; p++) pages.add(p)
+  }
+
+  const sorted = [...pages].sort((a, b) => a - b)
+  const items = []
+  sorted.forEach((page, idx) => {
+    const prev = sorted[idx - 1]
+    if (idx > 0 && page - prev > 1) items.push(`ellipsis-${prev}-${page}`)
+    items.push(page)
+  })
+  return items
+}
+
+const formatTimestamp = (iso) => {
+  try {
+    const date = new Date(iso)
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      day:   'numeric',
+      year:  'numeric',
+      hour:  'numeric',
+      minute:'2-digit',
+      second:'2-digit',
+      hour12: true,
+    }).format(date)
+  } catch {
+    return iso
+  }
+}
+
 // ==================== MAIN LOGS COMPONENT ====================
 const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   const [isEntitiesOpen,    setIsEntitiesOpen]    = useState(false)
@@ -144,6 +187,11 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     if (!isAdministrator) onNavigate('dashboard')
   }, [isAdministrator, onNavigate])
 
+  const resetToFirstPage = useCallback(() => {
+    setCurrentPage(1)
+    setTableAnimKey((k) => k + 1)
+  }, [])
+
   // Filter logs
   const filteredLogs = allLogs.filter((log) => {
     const matchType = typeFilter === 'all' || log.type === typeFilter
@@ -168,11 +216,6 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   const pageStart  = (safePage - 1) * LOGS_PER_PAGE
   const pageLogs   = filteredLogs.slice(pageStart, pageStart + LOGS_PER_PAGE)
   const paginationItems = getLogsPaginationItems(safePage, totalPages)
-
-  const resetToFirstPage = useCallback(() => {
-    setCurrentPage(1)
-    setTableAnimKey((k) => k + 1)
-  }, [])
 
   const handleTypeFilterChange = (value) => {
     setTypeFilter(value)
@@ -770,49 +813,6 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
       </section>
     </main>
   )
-}
-
-// Helper functions used in the component
-const getLogsPaginationItems = (currentPage, totalPages) => {
-  if (totalPages <= 1) return [1]
-
-  const pages = new Set([1, totalPages])
-
-  if (totalPages <= LOGS_VISIBLE_PAGE_BUTTONS + 2) {
-    for (let p = 1; p <= totalPages; p++) pages.add(p)
-  } else if (currentPage <= 3) {
-    for (let p = 1; p <= Math.min(totalPages, LOGS_VISIBLE_PAGE_BUTTONS); p++) pages.add(p)
-  } else if (currentPage >= totalPages - 2) {
-    for (let p = Math.max(1, totalPages - LOGS_VISIBLE_PAGE_BUTTONS + 1); p <= totalPages; p++) pages.add(p)
-  } else {
-    for (let p = currentPage - 1; p <= currentPage + 1; p++) pages.add(p)
-  }
-
-  const sorted = [...pages].sort((a, b) => a - b)
-  const items = []
-  sorted.forEach((page, idx) => {
-    const prev = sorted[idx - 1]
-    if (idx > 0 && page - prev > 1) items.push(`ellipsis-${prev}-${page}`)
-    items.push(page)
-  })
-  return items
-}
-
-const formatTimestamp = (iso) => {
-  try {
-    const date = new Date(iso)
-    return new Intl.DateTimeFormat('en-US', {
-      month: 'short',
-      day:   'numeric',
-      year:  'numeric',
-      hour:  'numeric',
-      minute:'2-digit',
-      second:'2-digit',
-      hour12: true,
-    }).format(date)
-  } catch {
-    return iso
-  }
 }
 
 export default Logs

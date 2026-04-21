@@ -731,9 +731,8 @@
   font-size: 13px;
   font-family: 'Courier New', Courier, monospace;
   color: #444444;
-  max-width: 260px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  word-break: break-word;
+  white-space: normal;
 }
 
 .logs-timestamp-text {
