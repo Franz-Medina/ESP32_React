@@ -60,12 +60,12 @@
   box-sizing: border-box;
   --logs-inline-control-height: 30px;
   --logs-toolbar-gap: 12px;
-  --logs-toolbar-button-width: clamp(160px, 18vw, 184px);
-  --logs-toolbar-button-min-width: 160px;
+  --logs-toolbar-button-width: clamp(156px, 16vw, 184px);
+  --logs-toolbar-button-min-width: 156px;
   --logs-filter-control-height: 48px;
-  --logs-filter-min-width: 220px;
-  --logs-search-button-width: clamp(150px, 18vw, 184px);
-  --logs-search-min-width: 260px;
+  --logs-filter-min-width: 200px;
+  --logs-search-button-width: clamp(150px, 16vw, 184px);
+  --logs-search-min-width: 240px;
 }
 
 .logs-page .dashboard-content-body {
@@ -162,7 +162,10 @@
 .logs-filters-group {
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(min(100%, var(--logs-filter-min-width)), 1fr);
+  grid-template-columns: repeat(
+    auto-fit,
+    minmax(min(100%, var(--logs-filter-min-width)), 1fr)
+  );
   align-items: stretch;
   gap: var(--logs-toolbar-gap);
 }
@@ -1468,6 +1471,12 @@
 
   .logs-toolbar-actions {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .logs-toolbar-actions {
+    grid-template-columns: 1fr;
   }
 }
 

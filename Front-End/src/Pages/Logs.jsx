@@ -10,12 +10,14 @@ import {
   ProfileMenuIcon,
   SearchIcon,
   FilterIcon,
+  SortIcon,
   TrashIcon,
   FirstPageIcon,
   PreviousPageIcon,
   NextPageIcon,
   LastPageIcon
 } from '../Components/Icons.jsx'
+import { fetchActivityLogs, clearActivityLogs } from '../Utils/activityLogsApi'
 
 const LOGS_STORAGE_KEY = 'avinya_activity_logs'
 const LOGS_PER_PAGE = 15
@@ -43,63 +45,79 @@ const ALL_LOG_TYPE_FILTER_OPTIONS = [
   { value: LOG_TYPES.DEVICE_REMOVED,    label: 'Device Removed' },
 ]
 
-export const loadLogs = () => {
-  try {
-    const raw = localStorage.getItem(LOGS_STORAGE_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
-  }
-}
+const ALL_ROLE_FILTER_OPTIONS = [
+  { value: 'all', label: 'All Roles' },
+  { value: 'Administrator', label: 'Administrator' },
+  { value: 'User', label: 'User' },
+]
 
-const saveLogs = (logs) => {
-  try {
-    localStorage.setItem(LOGS_STORAGE_KEY, JSON.stringify(logs))
-  } catch {}
-}
+const LOG_SORT_OPTIONS = [
+  { value: 'newest', label: 'Newest' },
+  { value: 'oldest', label: 'Oldest' }
+]
 
-export const appendLog = (type, actorUser, detail = '', extra = {}) => {
-  const existing = loadLogs()
+const LogsFilterDropdown = ({
+  id,
+  label,
+  icon,
+  value,
+  options,
+  isOpen,
+  onToggle,
+  onSelect,
+  disabled = false
+}) => {
+  const selectedOption =
+    options.find((option) => option.value === value) || options[0]
 
-  const entry = {
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    type,
-    actorName:  actorUser?.fullName  || actorUser?.email || 'System',
-    actorEmail: actorUser?.email     || '',
-    actorRole:  actorUser?.roleLabel || '',
-    detail:     detail || '',
-    timestamp:  new Date().toISOString(),
-    ...extra,           
-  }
+  return (
+    <div className={`logs-filter-dropdown ${isOpen ? 'open' : ''}`}>
+      <button
+        type="button"
+        id={id}
+        className={`logs-filter-field logs-filter-dropdown-trigger ${isOpen ? 'logs-filter-dropdown-trigger-open' : ''}`}
+        onClick={onToggle}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        disabled={disabled}
+      >
+        <span className="logs-filter-field-icon" aria-hidden="true">
+          {icon}
+        </span>
 
-  saveLogs([entry, ...existing])
-}
+        <div className="logs-filter-floating-control">
+          <span className="logs-filter-dropdown-value">
+            {selectedOption.label}
+          </span>
+          <span className="logs-filter-label logs-filter-label-static">{label}</span>
+        </div>
 
-export const logLogin = (user) => {
-  appendLog(LOG_TYPES.LOGIN, user, `User logged in successfully`)
-}
+        <span className="logs-filter-field-arrow" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d={isOpen ? 'M18 15l-6-6-6 6' : 'M6 9l6 6 6-6'} />
+          </svg>
+        </span>
+      </button>
 
-export const logLogout = (user) => {
-  appendLog(LOG_TYPES.LOGOUT, user, `User logged out`)
-}
-
-export const logDeviceAdded = (user, deviceId, description = '') => {
-  appendLog(
-    LOG_TYPES.DEVICE_ADDED,
-    user,
-    `Device ID "${deviceId}" was added`,
-    { deviceId, deviceDescription: description }
-  )
-}
-
-export const logDeviceRemoved = (user, deviceId) => {
-  appendLog(
-    LOG_TYPES.DEVICE_REMOVED,
-    user,
-    `Device ID "${deviceId}" was removed`,
-    { deviceId }
+      <div
+        className={`logs-filter-dropdown-menu ${isOpen ? 'open' : ''}`}
+        role="listbox"
+        aria-labelledby={id}
+      >
+        {options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            className={`logs-filter-dropdown-option ${value === option.value ? 'active' : ''}`}
+            onClick={() => onSelect(option.value)}
+            role="option"
+            aria-selected={value === option.value}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -164,13 +182,25 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   const [isSidebarCollapsed,setIsSidebarCollapsed]= useState(false)
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
 
-  const [allLogs,          setAllLogs]           = useState(() => loadLogs())
-  const [typeFilter,       setTypeFilter]        = useState('all')
-  const [searchInput,      setSearchInput]       = useState('')
-  const [appliedSearch,    setAppliedSearch]     = useState('')
-  const [currentPage,      setCurrentPage]       = useState(1)
-  const [isTypeDropOpen,   setIsTypeDropOpen]    = useState(false)
-  const [tableAnimKey,     setTableAnimKey]      = useState(0)
+  const [allLogs, setAllLogs] = useState([])
+  const [logsPagination, setLogsPagination] = useState({
+    page: 1,
+    limit: LOGS_PER_PAGE,
+    totalCount: 0,
+    totalPages: 1,
+    hasPreviousPage: false,
+    hasNextPage: false,
+  })
+  const [logsReloadKey, setLogsReloadKey] = useState(0)
+  const [logsRequestError, setLogsRequestError] = useState('')
+  const [typeFilter,              setTypeFilter]              = useState('all')
+  const [roleFilter,              setRoleFilter]              = useState('all')
+  const [sortBy,                  setSortBy]                  = useState('newest')
+  const [searchInput,             setSearchInput]             = useState('')
+  const [appliedSearch,           setAppliedSearch]           = useState('')
+  const [currentPage,             setCurrentPage]             = useState(1)
+  const [openLogsFilterDropdown,  setOpenLogsFilterDropdown]  = useState('')
+  const [tableAnimKey,            setTableAnimKey]            = useState(0)
   const [isLogsLoading,    setIsLogsLoading]     = useState(true)
   const [logsTableLoadingTitle, setLogsTableLoadingTitle] = useState('Loading Logs')
   const [isLogsTableTransitioning, setIsLogsTableTransitioning] = useState(true)
@@ -199,18 +229,12 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   }, [startLogsTableTransition])
 
   useEffect(() => {
-    const sync = () => setAllLogs(loadLogs())
-    window.addEventListener('focus', sync)
-    return () => window.removeEventListener('focus', sync)
-  }, [])
-
-  useEffect(() => {
     document.title = 'Avinya | Logs'
 
     const handleOutsideClick = (event) => {
       if (!(event.target instanceof Element)) return
       if (!event.target.closest('.dashboard-sidebar-user-group')) setIsProfileMenuOpen(false)
-      if (!event.target.closest('.logs-filter-dropdown')) setIsTypeDropOpen(false)
+      if (!event.target.closest('.logs-filter-dropdown')) setOpenLogsFilterDropdown('')
     }
 
     document.addEventListener('mousedown', handleOutsideClick)
@@ -222,45 +246,87 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   }, [isAdministrator, onNavigate])
 
   useEffect(() => {
-    startLogsTableTransition('Loading Logs')
-  }, [startLogsTableTransition])
+    let isMounted = true
+
+    const loadLogsFromServer = async () => {
+      try {
+        setLogsRequestError('')
+
+        const [data] = await Promise.all([
+          fetchActivityLogs({
+            page: currentPage,
+            limit: LOGS_PER_PAGE,
+            actionType: typeFilter,
+            role: roleFilter,
+            sortBy,
+            search: appliedSearch,
+          }),
+          new Promise((resolve) => window.setTimeout(resolve, 420)),
+        ])
+
+        if (!isMounted) return
+
+        setAllLogs(Array.isArray(data.logs) ? data.logs : [])
+        setLogsPagination(
+          data.pagination || {
+            page: 1,
+            limit: LOGS_PER_PAGE,
+            totalCount: 0,
+            totalPages: 1,
+            hasPreviousPage: false,
+            hasNextPage: false,
+          }
+        )
+      } catch (error) {
+        if (!isMounted) return
+
+        setAllLogs([])
+        setLogsPagination({
+          page: 1,
+          limit: LOGS_PER_PAGE,
+          totalCount: 0,
+          totalPages: 1,
+          hasPreviousPage: false,
+          hasNextPage: false,
+        })
+        setLogsRequestError(
+          error instanceof TypeError || error.message === 'Failed to fetch'
+            ? 'Unable to connect to the server. Please check your internet connection and try again.'
+            : error.message || 'Unable to load logs right now.'
+        )
+      } finally {
+        if (!isMounted) return
+
+        setIsLogsLoading(false)
+        setIsLogsTableTransitioning(false)
+        setHasLogsLoadedOnce(true)
+      }
+    }
+
+    void loadLogsFromServer()
+
+    return () => {
+      isMounted = false
+    }
+  }, [appliedSearch, currentPage, logsReloadKey, roleFilter, sortBy, typeFilter])
 
   useEffect(() => {
-    if (!isLogsLoading) {
-      return
+    const handleWindowFocus = () => {
+      startLogsTableTransition('Refreshing Logs')
+      setLogsReloadKey((prev) => prev + 1)
     }
 
-    const timeoutId = window.setTimeout(() => {
-      setIsLogsLoading(false)
-      setIsLogsTableTransitioning(false)
-      setHasLogsLoadedOnce(true)
-    }, 420)
+    window.addEventListener('focus', handleWindowFocus)
+    return () => window.removeEventListener('focus', handleWindowFocus)
+  }, [startLogsTableTransition])
 
-    return () => window.clearTimeout(timeoutId)
-  }, [isLogsLoading])
+  const roleFilterOptions = ALL_ROLE_FILTER_OPTIONS
 
-  const filteredLogs = allLogs.filter((log) => {
-    const matchType = typeFilter === 'all' || log.type === typeFilter
-    if (!matchType) return false
-
-    if (appliedSearch) {
-      const q = appliedSearch.toLowerCase()
-      return (
-        log.actorName.toLowerCase().includes(q)  ||
-        log.actorEmail.toLowerCase().includes(q) ||
-        log.detail.toLowerCase().includes(q)     ||
-        (log.deviceId || '').toLowerCase().includes(q) ||
-        (LOG_TYPE_META[log.type]?.label || '').toLowerCase().includes(q)
-      )
-    }
-    return true
-  })
-
-  const totalCount = filteredLogs.length
-  const totalPages = Math.max(1, Math.ceil(totalCount / LOGS_PER_PAGE))
-  const safePage   = Math.min(currentPage, totalPages)
-  const pageStart  = (safePage - 1) * LOGS_PER_PAGE
-  const pageLogs   = filteredLogs.slice(pageStart, pageStart + LOGS_PER_PAGE)
+  const totalCount = Number(logsPagination.totalCount || 0)
+  const totalPages = Math.max(1, Number(logsPagination.totalPages || 1))
+  const safePage = Math.max(1, Number(logsPagination.page || 1))
+  const pageStart = (safePage - 1) * Number(logsPagination.limit || LOGS_PER_PAGE)
+  const pageLogs = allLogs
   const paginationItems = getLogsPaginationItems(safePage, totalPages)
 
   const isLogsToolbarDisabled = isLogsLoading
@@ -281,15 +347,42 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     setCurrentPage(nextPage)
   }
 
+  const handleLogsFilterDropdownToggle = (dropdownName) => {
+    setIsProfileMenuOpen(false)
+    setOpenLogsFilterDropdown((prev) => (prev === dropdownName ? '' : dropdownName))
+  }
+
   const handleTypeFilterChange = (value) => {
     if (value === typeFilter) {
-      setIsTypeDropOpen(false)
+      setOpenLogsFilterDropdown('')
       return
     }
 
     setTypeFilter(value)
-    setIsTypeDropOpen(false)
+    setOpenLogsFilterDropdown('')
     resetToFirstPage('Filtering Logs')
+  }
+
+  const handleRoleFilterChange = (value) => {
+    if (value === roleFilter) {
+      setOpenLogsFilterDropdown('')
+      return
+    }
+
+    setRoleFilter(value)
+    setOpenLogsFilterDropdown('')
+    resetToFirstPage('Filtering Logs')
+  }
+
+  const handleSortByChange = (value) => {
+    if (value === sortBy) {
+      setOpenLogsFilterDropdown('')
+      return
+    }
+
+    setSortBy(value)
+    setOpenLogsFilterDropdown('')
+    resetToFirstPage('Sorting Logs')
   }
 
   const handleSearchSubmit = (e) => {
@@ -318,12 +411,14 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     const result = await Swal.fire({
       title: 'Clear All Logs?',
       text: 'This will permanently delete all activity logs. This cannot be undone.',
-      icon: 'warning',
+      icon: 'question',
       showCancelButton: true,
-      confirmButtonText: 'Clear All',
-      cancelButtonText: 'Cancel',
+      confirmButtonText: 'Yes',
+      cancelButtonText: 'No',
       reverseButtons: true,
       buttonsStyling: false,
+      allowOutsideClick: true,
+      allowEscapeKey: true,
       customClass: {
         popup: 'avinya-swal-popup',
         icon: 'avinya-swal-icon',
@@ -337,17 +432,58 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
 
     if (!result.isConfirmed) return
 
-    saveLogs([])
-    setAllLogs([])
-    resetToFirstPage('Loading Logs')
+    startLogsTableTransition('Clearing Logs')
+
+    try {
+      await Promise.all([
+        clearActivityLogs(),
+        new Promise((resolve) => window.setTimeout(resolve, 420)),
+      ])
+
+      setAllLogs([])
+      setLogsPagination({
+        page: 1,
+        limit: LOGS_PER_PAGE,
+        totalCount: 0,
+        totalPages: 1,
+        hasPreviousPage: false,
+        hasNextPage: false,
+      })
+      setTypeFilter('all')
+      setRoleFilter('all')
+      setSortBy('newest')
+      setSearchInput('')
+      setAppliedSearch('')
+      setCurrentPage(1)
+      setLogsRequestError('')
+      setTableAnimKey((k) => k + 1)
+    } catch (error) {
+      console.error('CLEAR LOGS ERROR:', error)
+
+      setLogsRequestError(
+        error instanceof TypeError || error.message === 'Failed to fetch'
+          ? 'Unable to connect to the server. Please check your internet connection and try again.'
+          : error.message || 'Unable to clear logs right now.'
+      )
+    } finally {
+      setIsLogsLoading(false)
+      setIsLogsTableTransitioning(false)
+      setHasLogsLoadedOnce(true)
+    }
   }
 
-  const areFiltersAtDefault = typeFilter === 'all' && !appliedSearch && !searchInput
+  const areFiltersAtDefault =
+    typeFilter === 'all' &&
+    roleFilter === 'all' &&
+    sortBy === 'newest' &&
+    !appliedSearch &&
+    !searchInput
 
   const logsEmptyStateMessage =
-    appliedSearch || typeFilter !== 'all'
+    logsRequestError ||
+    (appliedSearch || typeFilter !== 'all' || roleFilter !== 'all'
       ? 'No matching logs found.'
-      : 'No logs found.'
+      : 'No logs found.')
 
   const handleResetFilters = () => {
     if (areFiltersAtDefault) {
@@ -355,14 +491,18 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     }
 
     setTypeFilter('all')
+    setRoleFilter('all')
+    setSortBy('newest')
     setSearchInput('')
     setAppliedSearch('')
+    setOpenLogsFilterDropdown('')
     resetToFirstPage('Filtering Logs')
   }
 
   const closeDropdowns = () => {
     setIsEntitiesOpen(false)
     setIsProfileMenuOpen(false)
+    setOpenLogsFilterDropdown('')
   }
 
   const handleSidebarToggle = () => {
@@ -411,8 +551,6 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   }
 
   if (!isAdministrator) return null
-
-  const selectedTypeOption = ALL_LOG_TYPE_FILTER_OPTIONS.find((o) => o.value === typeFilter) || ALL_LOG_TYPE_FILTER_OPTIONS[0]
 
   return (
     <main className="dashboard-page logs-page">
@@ -609,51 +747,41 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
             <div className="logs-panel-toolbar">
               <div className="logs-toolbar-top">
                 <div className="logs-filters-group">
-                  <div className={`logs-filter-dropdown ${isTypeDropOpen ? 'open' : ''}`}>
-                    <button
-                      type="button"
-                      id="logs-type-filter"
-                      className={`logs-filter-field logs-filter-dropdown-trigger ${isTypeDropOpen ? 'logs-filter-dropdown-trigger-open' : ''}`}
-                      onClick={() => setIsTypeDropOpen((p) => !p)}
-                      aria-haspopup="listbox"
-                      aria-expanded={isTypeDropOpen}
-                      disabled={isLogsToolbarDisabled}
-                    >
-                      <span className="logs-filter-field-icon" aria-hidden="true">
-                        <FilterIcon />
-                      </span>
-                      <div className="logs-filter-floating-control">
-                        <span className="logs-filter-dropdown-value">
-                          {selectedTypeOption.label}
-                        </span>
-                        <span className="logs-filter-label logs-filter-label-static">Action Type</span>
-                      </div>
-                      <span className="logs-filter-field-arrow" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d={isTypeDropOpen ? 'M18 15l-6-6-6 6' : 'M6 9l6 6 6-6'} />
-                        </svg>
-                      </span>
-                    </button>
+                  <LogsFilterDropdown
+                    id="logs-type-filter"
+                    label="Action Type"
+                    icon={<FilterIcon />}
+                    value={typeFilter}
+                    options={ALL_LOG_TYPE_FILTER_OPTIONS}
+                    isOpen={openLogsFilterDropdown === 'type'}
+                    onToggle={() => handleLogsFilterDropdownToggle('type')}
+                    onSelect={handleTypeFilterChange}
+                    disabled={isLogsToolbarDisabled}
+                  />
 
-                    <div
-                      className={`logs-filter-dropdown-menu ${isTypeDropOpen ? 'open' : ''}`}
-                      role="listbox"
-                      aria-labelledby="logs-type-filter"
-                    >
-                      {ALL_LOG_TYPE_FILTER_OPTIONS.map((option) => (
-                        <button
-                          key={option.value}
-                          type="button"
-                          className={`logs-filter-dropdown-option ${typeFilter === option.value ? 'active' : ''}`}
-                          onClick={() => handleTypeFilterChange(option.value)}
-                          role="option"
-                          aria-selected={typeFilter === option.value}
-                        >
-                          {option.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                  <LogsFilterDropdown
+                    id="logs-role-filter"
+                    label="Role"
+                    icon={<FilterIcon />}
+                    value={roleFilter}
+                    options={roleFilterOptions}
+                    isOpen={openLogsFilterDropdown === 'role'}
+                    onToggle={() => handleLogsFilterDropdownToggle('role')}
+                    onSelect={handleRoleFilterChange}
+                    disabled={isLogsToolbarDisabled}
+                  />
+
+                  <LogsFilterDropdown
+                    id="logs-sort-filter"
+                    label="Sort By"
+                    icon={<SortIcon />}
+                    value={sortBy}
+                    options={LOG_SORT_OPTIONS}
+                    isOpen={openLogsFilterDropdown === 'sort'}
+                    onToggle={() => handleLogsFilterDropdownToggle('sort')}
+                    onSelect={handleSortByChange}
+                    disabled={isLogsToolbarDisabled}
+                  />
                 </div>
 
                 <div className="logs-toolbar-actions">
@@ -789,9 +917,6 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                             <td>
                               <span className="logs-cell-text logs-detail-text">
                                 {log.detail}
-                                {log.deviceId && (
-                                  <span className="logs-device-id"> ({log.deviceId})</span>
-                                )}
                               </span>
                             </td>
                             <td>

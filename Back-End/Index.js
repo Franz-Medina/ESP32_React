@@ -588,6 +588,192 @@ const getUsersPdfFontFamily = () => ({
 const getUsersPdfFileName = (date = new Date()) =>
   `Avinya Users - ${getUsersPdfReadableDate(date)}.pdf`;
 
+const LOG_ACTION_TYPES = {
+  LOGIN: "login",
+  LOGOUT: "logout",
+  DEVICE_ADDED: "device_added",
+  DEVICE_REMOVED: "device_removed",
+};
+
+const LOG_ACTION_TYPE_VALUES = Object.values(LOG_ACTION_TYPES);
+
+const LOGS_SORT_SQL = {
+  newest: "created_at DESC, id DESC",
+  oldest: "created_at ASC, id ASC",
+};
+
+const getSafeLogActorName = (userRow = {}) =>
+  [String(userRow.first_name || "").trim(), String(userRow.last_name || "").trim()]
+    .filter(Boolean)
+    .join(" ")
+    .trim() || String(userRow.email || "").trim() || "User";
+
+const buildLogDetails = ({ actionType, deviceId = "" }) => {
+  switch (actionType) {
+    case LOG_ACTION_TYPES.LOGIN:
+      return "User logged in successfully";
+    case LOG_ACTION_TYPES.LOGOUT:
+      return "User logged out";
+    case LOG_ACTION_TYPES.DEVICE_ADDED:
+      return `Device ID "${deviceId}" was added`;
+    case LOG_ACTION_TYPES.DEVICE_REMOVED:
+      return `Device ID "${deviceId}" was removed`;
+    default:
+      return "";
+  }
+};
+
+const toClientLogTimestamp = (value) => {
+  if (!value) {
+    return "";
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  const rawValue = String(value).trim();
+
+  if (!rawValue) {
+    return "";
+  }
+
+  const hasTimezone = /(?:Z|[+\-]\d{2}(?::?\d{2})?)$/i.test(rawValue);
+  const normalizedValue = hasTimezone
+    ? rawValue.replace(" ", "T")
+    : `${rawValue.replace(" ", "T")}Z`;
+
+  const parsedValue = new Date(normalizedValue);
+
+  return Number.isNaN(parsedValue.getTime())
+    ? rawValue
+    : parsedValue.toISOString();
+};
+
+const mapLogRowToClientLog = (logRow) => ({
+  id: logRow.id,
+  type: logRow.action_type,
+  actorName: logRow.actor_name,
+  actorEmail: logRow.actor_email || "",
+  actorRole: logRow.actor_role || "User",
+  detail: logRow.details || "",
+  deviceId: logRow.device_id || "",
+  timestamp: toClientLogTimestamp(logRow.created_at),
+});
+
+const getLogsRouteFilters = (source = {}) => {
+  const actionType =
+    typeof source.actionType === "string" ? source.actionType.trim().toLowerCase() : "all";
+  const role =
+    typeof source.role === "string" ? source.role.trim() : "all";
+  const sortBy =
+    typeof source.sortBy === "string" ? source.sortBy.trim().toLowerCase() : "newest";
+  const search =
+    typeof source.search === "string" ? source.search.trim() : "";
+  const escapedSearch = search.replace(/[\\%_]/g, "\\$&");
+
+  return {
+    actionType:
+      actionType === "all" || LOG_ACTION_TYPE_VALUES.includes(actionType)
+        ? actionType
+        : "all",
+    role: role === "all" || role === "Administrator" || role === "User" ? role : "all",
+    sortBy: LOGS_SORT_SQL[sortBy] ? sortBy : "newest",
+    search,
+    escapedSearch,
+  };
+};
+
+const buildLogsListWhereClause = (filters) => {
+  const params = [];
+  const whereParts = [];
+  let nextParamIndex = 1;
+
+  if (filters.actionType !== "all") {
+    params.push(filters.actionType);
+    whereParts.push(`action_type = $${nextParamIndex}`);
+    nextParamIndex += 1;
+  }
+
+  if (filters.role !== "all") {
+    params.push(filters.role);
+    whereParts.push(`actor_role = $${nextParamIndex}`);
+    nextParamIndex += 1;
+  }
+
+  if (filters.escapedSearch) {
+    params.push(`%${filters.escapedSearch}%`);
+    whereParts.push(`(
+      actor_name ILIKE $${nextParamIndex} ESCAPE '\\'
+      OR actor_email ILIKE $${nextParamIndex} ESCAPE '\\'
+      OR actor_role ILIKE $${nextParamIndex} ESCAPE '\\'
+      OR details ILIKE $${nextParamIndex} ESCAPE '\\'
+      OR COALESCE(device_id, '') ILIKE $${nextParamIndex} ESCAPE '\\'
+      OR COALESCE(device_description, '') ILIKE $${nextParamIndex} ESCAPE '\\'
+      OR CASE
+        WHEN action_type = 'login' THEN 'Login'
+        WHEN action_type = 'logout' THEN 'Logout'
+        WHEN action_type = 'device_added' THEN 'Device Added'
+        WHEN action_type = 'device_removed' THEN 'Device Removed'
+        ELSE action_type
+      END ILIKE $${nextParamIndex} ESCAPE '\\'
+    )`);
+    nextParamIndex += 1;
+  }
+
+  return {
+    params,
+    whereSql: whereParts.length > 0 ? `WHERE ${whereParts.join("\n        AND ")}` : "",
+  };
+};
+
+const insertActivityLog = async ({
+  actionType,
+  actorUserId = null,
+  actorName = "",
+  actorEmail = "",
+  actorRole = "User",
+  details = "",
+  deviceId = "",
+  deviceDescription = "",
+  client = pool,
+}) => {
+  const result = await client.query(
+    `INSERT INTO logs (
+      action_type,
+      actor_user_id,
+      actor_name,
+      actor_email,
+      actor_role,
+      details,
+      device_id,
+      device_description
+    )
+    VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7, ''), NULLIF($8, ''))
+    RETURNING
+      id,
+      action_type,
+      actor_name,
+      actor_email,
+      actor_role,
+      details,
+      device_id,
+      created_at`,
+    [
+      actionType,
+      actorUserId,
+      actorName,
+      actorEmail,
+      actorRole,
+      details,
+      deviceId,
+      deviceDescription,
+    ]
+  );
+
+  return result.rows[0];
+};
+
 const createUsersPdfBuffer = ({ rows, filters, generatedAt = new Date() }) =>
   new Promise((resolve, reject) => {
     const doc = new PDFDocument({
@@ -922,6 +1108,113 @@ const ensureUsersTableSchema = async () => {
     WHERE role_label IS NULL
        OR role_label NOT IN ('Administrator', 'User')
        OR role_label IN ('Tenant Administrator', 'Customer Administrator');
+  `);
+};
+
+const ensureLogsTableExists = async () => {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS logs (
+      id SERIAL PRIMARY KEY,
+      action_type VARCHAR(30) NOT NULL
+        CHECK (action_type IN ('login', 'logout', 'device_added', 'device_removed')),
+      actor_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      actor_name VARCHAR(201) NOT NULL,
+      actor_email VARCHAR(255) NOT NULL DEFAULT '',
+      actor_role VARCHAR(30) NOT NULL
+        CHECK (actor_role IN ('Administrator', 'User')),
+      details TEXT NOT NULL DEFAULT '',
+      device_id VARCHAR(64),
+      device_description VARCHAR(200),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+};
+
+const ensureLogsTableSchema = async () => {
+  await pool.query(`
+    ALTER TABLE logs
+    ADD COLUMN IF NOT EXISTS actor_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
+  `);
+
+  await pool.query(`
+    ALTER TABLE logs
+    ADD COLUMN IF NOT EXISTS actor_name VARCHAR(201) NOT NULL DEFAULT 'User';
+  `);
+
+  await pool.query(`
+    ALTER TABLE logs
+    ADD COLUMN IF NOT EXISTS actor_email VARCHAR(255) NOT NULL DEFAULT '';
+  `);
+
+  await pool.query(`
+    ALTER TABLE logs
+    ADD COLUMN IF NOT EXISTS actor_role VARCHAR(30) NOT NULL DEFAULT 'User';
+  `);
+
+  await pool.query(`
+    ALTER TABLE logs
+    ADD COLUMN IF NOT EXISTS details TEXT NOT NULL DEFAULT '';
+  `);
+
+  await pool.query(`
+    ALTER TABLE logs
+    ADD COLUMN IF NOT EXISTS device_id VARCHAR(64);
+  `);
+
+  await pool.query(`
+    ALTER TABLE logs
+    ADD COLUMN IF NOT EXISTS device_description VARCHAR(200);
+  `);
+
+  await pool.query(`
+    ALTER TABLE logs
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;
+  `);
+
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'logs'
+          AND column_name = 'created_at'
+          AND data_type = 'timestamp without time zone'
+      ) THEN
+        ALTER TABLE logs
+        ALTER COLUMN created_at TYPE TIMESTAMPTZ
+        USING created_at AT TIME ZONE 'UTC';
+      END IF;
+    END $$;
+  `);
+
+  await pool.query(`
+    UPDATE logs
+    SET created_at = CURRENT_TIMESTAMP
+    WHERE created_at IS NULL;
+  `);
+
+  await pool.query(`
+    ALTER TABLE logs
+    ALTER COLUMN created_at SET DEFAULT CURRENT_TIMESTAMP;
+  `);
+
+  await pool.query(`
+    ALTER TABLE logs
+    ALTER COLUMN created_at SET NOT NULL;
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_logs_created_at ON logs (created_at DESC);
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_logs_action_type ON logs (action_type);
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_logs_actor_role ON logs (actor_role);
   `);
 };
 
@@ -2224,6 +2517,212 @@ app.delete("/users/:userId", authenticateToken, async (req, res) => {
   }
 });
 
+app.get("/logs", authenticateToken, async (req, res) => {
+  try {
+    const requestingUserResult = await pool.query(
+      `SELECT id, role_label
+       FROM users
+       WHERE id = $1
+       LIMIT 1`,
+      [req.user.id]
+    );
+
+    if (requestingUserResult.rows.length === 0) {
+      return res.status(404).json({
+        message: "User account not found.",
+      });
+    }
+
+    if (requestingUserResult.rows[0].role_label !== "Administrator") {
+      return res.status(403).json({
+        message: "You are not authorized to view logs.",
+      });
+    }
+
+    const filters = getLogsRouteFilters(req.query);
+
+    const requestedPage = Number.parseInt(String(req.query.page || ""), 10);
+    const requestedLimit = Number.parseInt(String(req.query.limit || ""), 10);
+
+    const safeLimit = Number.isInteger(requestedLimit)
+      ? Math.min(Math.max(requestedLimit, 1), 15)
+      : 15;
+
+    const safeRequestedPage =
+      Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+
+    const { params: baseParams, whereSql } = buildLogsListWhereClause(filters);
+    const sortSql = LOGS_SORT_SQL[filters.sortBy] || LOGS_SORT_SQL.newest;
+
+    const totalCountResult = await pool.query(
+      `SELECT COUNT(*)::int AS total_count
+       FROM logs
+       ${whereSql}`,
+      baseParams
+    );
+
+    const totalCount = Number(totalCountResult.rows[0]?.total_count || 0);
+    const totalPages = Math.max(1, Math.ceil(totalCount / safeLimit));
+    const currentPage = Math.min(safeRequestedPage, totalPages);
+    const offset = (currentPage - 1) * safeLimit;
+
+    const listParams = [...baseParams, safeLimit, offset];
+
+    const result = await pool.query(
+      `SELECT
+         id,
+         action_type,
+         actor_name,
+         actor_email,
+         actor_role,
+         details,
+         device_id,
+         created_at
+       FROM logs
+       ${whereSql}
+       ORDER BY ${sortSql}
+       LIMIT $${baseParams.length + 1}
+       OFFSET $${baseParams.length + 2}`,
+      listParams
+    );
+
+    return res.status(200).json({
+      logs: result.rows.map(mapLogRowToClientLog),
+      pagination: {
+        page: currentPage,
+        limit: safeLimit,
+        totalCount,
+        totalPages,
+        actionType: filters.actionType,
+        role: filters.role,
+        sortBy: filters.sortBy,
+        search: filters.search,
+        hasPreviousPage: currentPage > 1,
+        hasNextPage: currentPage < totalPages,
+      },
+    });
+  } catch (error) {
+    console.error("LOGS LIST ERROR:", error);
+
+    return res.status(500).json({
+      message: "Unable to load logs right now.",
+    });
+  }
+});
+
+app.post("/logs", authenticateToken, async (req, res) => {
+  try {
+    const actionType =
+      typeof req.body.actionType === "string" ? req.body.actionType.trim().toLowerCase() : "";
+    const deviceId =
+      typeof req.body.deviceId === "string" ? req.body.deviceId.trim() : "";
+    const deviceDescription =
+      typeof req.body.deviceDescription === "string" ? req.body.deviceDescription.trim() : "";
+
+    if (!LOG_ACTION_TYPE_VALUES.includes(actionType)) {
+      return res.status(400).json({
+        message: "Invalid log action type.",
+      });
+    }
+
+    if (
+      (actionType === LOG_ACTION_TYPES.DEVICE_ADDED ||
+        actionType === LOG_ACTION_TYPES.DEVICE_REMOVED) &&
+      !deviceId
+    ) {
+      return res.status(400).json({
+        message: "Device ID is required for this log action.",
+      });
+    }
+
+    if (deviceId.length > 64) {
+      return res.status(400).json({
+        message: "Device ID must not exceed 64 characters.",
+      });
+    }
+
+    if (deviceDescription.length > 200) {
+      return res.status(400).json({
+        message: "Device description must not exceed 200 characters.",
+      });
+    }
+
+    const userResult = await pool.query(
+      `SELECT id, first_name, last_name, email, role_label
+       FROM users
+       WHERE id = $1
+       LIMIT 1`,
+      [req.user.id]
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({
+        message: "User account not found.",
+      });
+    }
+
+    const user = userResult.rows[0];
+
+    const insertedLog = await insertActivityLog({
+      actionType,
+      actorUserId: user.id,
+      actorName: getSafeLogActorName(user),
+      actorEmail: user.email,
+      actorRole: user.role_label || "User",
+      details: buildLogDetails({ actionType, deviceId }),
+      deviceId,
+      deviceDescription,
+    });
+
+    return res.status(201).json({
+      message: "Activity log saved successfully.",
+      log: mapLogRowToClientLog(insertedLog),
+    });
+  } catch (error) {
+    console.error("LOG CREATE ERROR:", error);
+
+    return res.status(500).json({
+      message: "Unable to save the activity log right now.",
+    });
+  }
+});
+
+app.delete("/logs", authenticateToken, async (req, res) => {
+  try {
+    const requestingUserResult = await pool.query(
+      `SELECT id, role_label
+       FROM users
+       WHERE id = $1
+       LIMIT 1`,
+      [req.user.id]
+    );
+
+    if (requestingUserResult.rows.length === 0) {
+      return res.status(404).json({
+        message: "User account not found.",
+      });
+    }
+
+    if (requestingUserResult.rows[0].role_label !== "Administrator") {
+      return res.status(403).json({
+        message: "You are not authorized to clear logs.",
+      });
+    }
+
+    await pool.query(`TRUNCATE TABLE logs RESTART IDENTITY`);
+
+    return res.status(200).json({
+      message: "All logs cleared successfully.",
+    });
+  } catch (error) {
+    console.error("LOGS CLEAR ERROR:", error);
+
+    return res.status(500).json({
+      message: "Unable to clear logs right now.",
+    });
+  }
+});
+
 app.post("/register", registrationLimiter, async (req, res) => {
   const client = await pool.connect();
 
@@ -2813,6 +3312,19 @@ app.post("/login", loginLimiter, async (req, res) => {
       }
     );
 
+    try {
+      await insertActivityLog({
+        actionType: LOG_ACTION_TYPES.LOGIN,
+        actorUserId: user.id,
+        actorName: getSafeLogActorName(user),
+        actorEmail: user.email,
+        actorRole: user.role_label || "User",
+        details: buildLogDetails({ actionType: LOG_ACTION_TYPES.LOGIN }),
+      });
+    } catch (logError) {
+      console.error("LOGIN ACTIVITY LOG ERROR:", logError);
+    }
+
     return res.status(200).json({
       message: "Login successful.",
       token,
@@ -2831,6 +3343,8 @@ const startServer = async () => {
     assertRequiredConfig();
     await ensureUsersTableExists();
     await ensureUsersTableSchema();
+    await ensureLogsTableExists();
+    await ensureLogsTableSchema();
 
     app.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);

@@ -8,7 +8,7 @@ import { performReliableLogout } from '../Utils/performReliableLogout'
 import { buildApiAssetUrl } from '../Config/API'
 import { ProfileMenuIcon } from '../Components/Icons.jsx'
 
-import { logDeviceAdded, logDeviceRemoved } from './Logs'
+import { createActivityLog, ACTIVITY_LOG_TYPES } from '../Utils/activityLogsApi'
 
 const MAX_DEVICES = 5
 const STORAGE_KEY = 'avinya_devices'
@@ -169,7 +169,14 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     const updated = [...devices, newDevice]
     setDevices(updated)
     if (updated.length === 1) setDefaultId(trimmedId)
-    logDeviceAdded(user, trimmedId, trimmedDesc)
+    void createActivityLog({
+      actionType: ACTIVITY_LOG_TYPES.DEVICE_ADDED,
+      deviceId: trimmedId,
+      deviceDescription: trimmedDesc,
+    }).catch((error) => {
+      console.error('DEVICE ADDED LOG ERROR:', error)
+    })
+
     closeModal()
   }
 
@@ -205,7 +212,12 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     const updated = devices.filter((d) => d.id !== id)
     setDevices(updated)
     if (defaultId === id) setDefaultId(updated.length > 0 ? updated[0].id : null)
-    logDeviceRemoved(user, id)
+    void createActivityLog({
+      actionType: ACTIVITY_LOG_TYPES.DEVICE_REMOVED,
+      deviceId: id,
+    }).catch((error) => {
+      console.error('DEVICE REMOVED LOG ERROR:', error)
+    })
   }
 
   const atLimit = devices.length >= MAX_DEVICES

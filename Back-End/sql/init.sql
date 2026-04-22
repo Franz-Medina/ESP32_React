@@ -17,6 +17,25 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS logs (
+  id SERIAL PRIMARY KEY,
+  action_type VARCHAR(30) NOT NULL
+    CHECK (action_type IN ('login', 'logout', 'device_added', 'device_removed')),
+  actor_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  actor_name VARCHAR(201) NOT NULL,
+  actor_email VARCHAR(255) NOT NULL DEFAULT '',
+  actor_role VARCHAR(30) NOT NULL
+    CHECK (actor_role IN ('Administrator', 'User')),
+  details TEXT NOT NULL DEFAULT '',
+  device_id VARCHAR(64),
+  device_description VARCHAR(200),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_logs_created_at ON logs (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_logs_action_type ON logs (action_type);
+CREATE INDEX IF NOT EXISTS idx_logs_actor_role ON logs (actor_role);
+
 INSERT INTO users (
   id,
   first_name,
