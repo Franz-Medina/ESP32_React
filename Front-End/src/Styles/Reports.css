@@ -1,0 +1,189 @@
+/* Layout */
+.srm-container {
+  font-family: Poppins, sans-serif;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Header */
+.srm-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.srm-title {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.srm-subtitle {
+  font-size: 12px;
+  color: #999;
+}
+
+/* Tabs */
+.srm-tabs {
+  display: flex;
+  background: #f4f4f4;
+  padding: 4px;
+  border-radius: 8px;
+}
+
+.srm-tab {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  color: #888;
+  border-radius: 6px;
+}
+
+.srm-tab.active {
+  background: #fff;
+  color: #980000;
+}
+
+/* Card */
+.srm-card {
+  border: 1px solid #ebebeb;
+  border-radius: 10px;
+  padding: 14px;
+  background: #fafafa;
+}
+
+.srm-card-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.srm-card-title {
+  font-weight: 600;
+}
+
+.srm-card-sub {
+  font-size: 12px;
+  color: #888;
+}
+
+.srm-card-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Buttons */
+.srm-btn-primary {
+  background: #980000;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+
+.srm-btn-ghost {
+  background: transparent;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+/* Inputs */
+.srm-input {
+  width: 100%;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+}
+
+.srm-select {
+  width: 100%;
+  padding: 8px;
+  border-radius: 8px;
+}
+
+/* Labels */
+.srm-label {
+  font-size: 12px;
+  font-weight: 600;
+  margin-top: 10px;
+  display: block;
+}
+
+/* Toggle */
+.srm-toggle {
+  width: 36px;
+  height: 20px;
+}
+
+/* Chips */
+.metric-chip,
+.freq-chip {
+  padding: 6px 10px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.metric-chip.active,
+.freq-chip.active {
+  background: rgba(152, 0, 0, 0.1);
+  color: #980000;
+}
+
+/* Groups */
+.srm-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.srm-chip-group {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* Modal */
+.srm-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.srm-modal {
+  background: #fff;
+  border-radius: 12px;
+  width: 400px;
+  display: flex;
+  flex-direction: column;
+}
+
+.srm-modal-header {
+  padding: 12px;
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 1px solid #eee;
+}
+
+.srm-modal-body {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+}
+
+.srm-modal-footer {
+  padding: 12px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
