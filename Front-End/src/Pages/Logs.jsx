@@ -5,23 +5,61 @@ import logo from '../Pictures/Avinya.png'
 import '../Styles/Logs.css'
 import { getCurrentUserProfile, isAdministratorRole } from '../Utils/getCurrentUserProfile'
 import { performReliableLogout } from '../Utils/performReliableLogout'
-import { buildApiAssetUrl } from '../Config/API'
+import { API_URL, buildApiAssetUrl } from '../Config/API'
 import {
   ProfileMenuIcon,
   SearchIcon,
   FilterIcon,
   SortIcon,
   TrashIcon,
+  DownloadIcon,
   FirstPageIcon,
   PreviousPageIcon,
   NextPageIcon,
   LastPageIcon
 } from '../Components/Icons.jsx'
+import { getStoredAuthToken } from '../Utils/authStorage'
 import { fetchActivityLogs, clearActivityLogs } from '../Utils/activityLogsApi'
 
-const LOGS_STORAGE_KEY = 'avinya_activity_logs'
+const ACCOUNT_MODAL_TRANSITION_MS = 280
 const LOGS_PER_PAGE = 15
 const LOGS_VISIBLE_PAGE_BUTTONS = 5
+
+const getLogsFilterOptionLabel = (options, value, fallback) =>
+  options.find((option) => option.value === value)?.label || fallback
+
+const getLogsExportQueryParams = ({
+  actionType,
+  role,
+  sortBy,
+  search
+}) => {
+  const params = new URLSearchParams()
+
+  if (actionType && actionType !== 'all') params.set('actionType', actionType)
+  if (role && role !== 'all') params.set('role', role)
+  if (sortBy) params.set('sortBy', sortBy)
+  if (search) params.set('search', String(search).trim())
+
+  return params
+}
+
+const getReadableLogsPdfDate = (date = new Date()) =>
+  new Intl.DateTimeFormat('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric'
+  }).format(date)
+
+const getDefaultLogsPdfFileName = (date = new Date()) =>
+  `Avinya Logs - ${getReadableLogsPdfDate(date)}.pdf`
+
+const getLogsPdfFileNameFromResponse = (response) => {
+  const contentDisposition = response.headers.get('content-disposition') || ''
+  const match = contentDisposition.match(/filename="?([^"]+)"?/i)
+
+  return match?.[1] || getDefaultLogsPdfFileName()
+}
 
 export const LOG_TYPES = {
   LOGIN:         'login',
@@ -201,10 +239,17 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   const [currentPage,             setCurrentPage]             = useState(1)
   const [openLogsFilterDropdown,  setOpenLogsFilterDropdown]  = useState('')
   const [tableAnimKey,            setTableAnimKey]            = useState(0)
-  const [isLogsLoading,    setIsLogsLoading]     = useState(true)
+  const [isLogsLoading, setIsLogsLoading] = useState(true)
   const [logsTableLoadingTitle, setLogsTableLoadingTitle] = useState('Loading Logs')
   const [isLogsTableTransitioning, setIsLogsTableTransitioning] = useState(true)
   const [hasLogsLoadedOnce, setHasLogsLoadedOnce] = useState(false)
+
+  const [isPreparingLogsPdfPreview, setIsPreparingLogsPdfPreview] = useState(false)
+  const [isLogsPdfPreviewModalOpen, setIsLogsPdfPreviewModalOpen] = useState(false)
+  const [isLogsPdfPreviewModalClosing, setIsLogsPdfPreviewModalClosing] = useState(false)
+  const [logsPdfPreviewUrl, setLogsPdfPreviewUrl] = useState('')
+  const [logsPdfFileName, setLogsPdfFileName] = useState('')
+  const [isDownloadingLogsPdf, setIsDownloadingLogsPdf] = useState(false)
 
   const user = getCurrentUserProfile()
   const isAdministrator = isAdministratorRole(user.roleLabel)
@@ -240,6 +285,14 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     document.addEventListener('mousedown', handleOutsideClick)
     return () => document.removeEventListener('mousedown', handleOutsideClick)
   }, [])
+
+  useEffect(() => {
+    return () => {
+      if (logsPdfPreviewUrl) {
+        URL.revokeObjectURL(logsPdfPreviewUrl)
+      }
+    }
+  }, [logsPdfPreviewUrl])
 
   useEffect(() => {
     if (!isAdministrator) onNavigate('dashboard')
@@ -310,16 +363,6 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     }
   }, [appliedSearch, currentPage, logsReloadKey, roleFilter, sortBy, typeFilter])
 
-  useEffect(() => {
-    const handleWindowFocus = () => {
-      startLogsTableTransition('Refreshing Logs')
-      setLogsReloadKey((prev) => prev + 1)
-    }
-
-    window.addEventListener('focus', handleWindowFocus)
-    return () => window.removeEventListener('focus', handleWindowFocus)
-  }, [startLogsTableTransition])
-
   const roleFilterOptions = ALL_ROLE_FILTER_OPTIONS
 
   const totalCount = Number(logsPagination.totalCount || 0)
@@ -329,10 +372,20 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   const pageLogs = allLogs
   const paginationItems = getLogsPaginationItems(safePage, totalPages)
 
-  const isLogsToolbarDisabled = isLogsLoading
+  const isLogsToolbarDisabled =
+    isLogsLoading || isPreparingLogsPdfPreview || isDownloadingLogsPdf
+
   const isLogsSearchDisabled =
-    isLogsLoading ||
+    isLogsToolbarDisabled ||
     (searchInput.trim().length === 0 && appliedSearch.length === 0)
+
+  const logsPdfPreviewTags = [
+    `Search: ${appliedSearch || 'All logs'}`,
+    `Action Type: ${getLogsFilterOptionLabel(ALL_LOG_TYPE_FILTER_OPTIONS, typeFilter, 'All Actions')}`,
+    `Role: ${getLogsFilterOptionLabel(roleFilterOptions, roleFilter, 'All Roles')}`,
+    `Sort: ${getLogsFilterOptionLabel(LOG_SORT_OPTIONS, sortBy, 'Newest')}`,
+    `Rows: ${totalCount}`
+  ]
 
   const handleLogsPageChange = (nextPage) => {
     if (isLogsLoading) {
@@ -405,6 +458,118 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
 
   const handleSearchInputChange = (e) => {
     setSearchInput(e.target.value)
+  }
+
+  const resetLogsPdfPreviewState = () => {
+    if (logsPdfPreviewUrl) {
+      URL.revokeObjectURL(logsPdfPreviewUrl)
+    }
+
+    setIsLogsPdfPreviewModalOpen(false)
+    setIsLogsPdfPreviewModalClosing(false)
+    setLogsPdfPreviewUrl('')
+    setLogsPdfFileName('')
+    setIsPreparingLogsPdfPreview(false)
+    setIsDownloadingLogsPdf(false)
+  }
+
+  const handleOpenLogsPdfPreview = async () => {
+    const authToken = getStoredAuthToken()
+
+    if (!authToken) {
+      closeDropdowns()
+      onLogout()
+      return
+    }
+
+    try {
+      closeDropdowns()
+      setIsPreparingLogsPdfPreview(true)
+
+      const logsExportQueryParams = getLogsExportQueryParams({
+        actionType: typeFilter,
+        role: roleFilter,
+        sortBy,
+        search: appliedSearch
+      })
+
+      const response = await fetch(`${API_URL}/logs/export/pdf?${logsExportQueryParams.toString()}`, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/pdf',
+          Authorization: `Bearer ${authToken}`
+        }
+      })
+
+      if (!response.ok) {
+        const errorData = response.headers.get('content-type')?.includes('application/json')
+          ? await response.json().catch(() => ({}))
+          : {}
+
+        throw new Error(errorData.message || 'Unable to generate the PDF file right now.')
+      }
+
+      const pdfBlob = await response.blob()
+      const nextPreviewUrl = URL.createObjectURL(pdfBlob)
+
+      if (logsPdfPreviewUrl) {
+        URL.revokeObjectURL(logsPdfPreviewUrl)
+      }
+
+      setLogsPdfPreviewUrl(nextPreviewUrl)
+      setLogsPdfFileName(getLogsPdfFileNameFromResponse(response))
+      setIsLogsPdfPreviewModalOpen(true)
+    } catch (error) {
+      await showLogsStatusAlert({
+        type: 'error',
+        title: 'PDF Preview Unavailable',
+        message: error.message || 'Unable to generate the PDF file right now.'
+      })
+    } finally {
+      setIsPreparingLogsPdfPreview(false)
+    }
+  }
+
+  const handleCloseLogsPdfPreviewModal = async () => {
+    if (isLogsPdfPreviewModalClosing || isDownloadingLogsPdf) {
+      return
+    }
+
+    setIsLogsPdfPreviewModalClosing(true)
+
+    await new Promise((resolve) => setTimeout(resolve, ACCOUNT_MODAL_TRANSITION_MS))
+
+    resetLogsPdfPreviewState()
+  }
+
+  const handleDownloadLogsPdf = async () => {
+    if (!logsPdfPreviewUrl) return
+
+    try {
+      setIsDownloadingLogsPdf(true)
+
+      await new Promise((resolve) => setTimeout(resolve, 620))
+
+      const downloadLink = document.createElement('a')
+      downloadLink.href = logsPdfPreviewUrl
+      downloadLink.download = logsPdfFileName || getDefaultLogsPdfFileName()
+      downloadLink.rel = 'noopener'
+
+      document.body.appendChild(downloadLink)
+      downloadLink.click()
+      downloadLink.remove()
+
+      setIsDownloadingLogsPdf(false)
+      await handleCloseLogsPdfPreviewModal()
+    } catch (error) {
+      setIsDownloadingLogsPdf(false)
+
+      await showLogsStatusAlert({
+        type: 'error',
+        title: 'Download Failed',
+        message: error.message || 'Unable to download the PDF file right now.'
+      })
+    }
   }
 
   const handleClearLogs = async () => {
@@ -519,6 +684,50 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     event.stopPropagation()
     setIsEntitiesOpen(false)
     setIsProfileMenuOpen((prev) => !prev)
+  }
+
+  const showLogsStatusAlert = async ({ type, title, message }) => {
+    const isSuccess = type === 'success'
+
+    await Swal.fire({
+      html: `
+        <div class="auth-swal-card">
+          <div class="auth-swal-symbol ${isSuccess ? 'auth-swal-symbol-success' : 'auth-swal-symbol-error'}" aria-hidden="true">
+            ${
+              isSuccess
+                ? `
+                  <svg viewBox="0 0 24 24">
+                    <path d="M20 6L9 17l-5-5" />
+                  </svg>
+                `
+                : `
+                  <svg viewBox="0 0 24 24">
+                    <path d="M15 9l-6 6" />
+                    <path d="m9 9 6 6" />
+                  </svg>
+                `
+            }
+          </div>
+
+          <h2 class="auth-swal-heading">${title}</h2>
+
+          <p class="auth-swal-message">
+            ${message}
+          </p>
+        </div>
+      `,
+      timer: 3500,
+      showConfirmButton: false,
+      showCancelButton: false,
+      showCloseButton: false,
+      buttonsStyling: false,
+      allowOutsideClick: true,
+      allowEscapeKey: true,
+      customClass: {
+        popup: 'auth-swal-popup',
+        htmlContainer: 'auth-swal-html'
+      }
+    })
   }
 
   const handleLogout = async (event) => {
@@ -805,6 +1014,18 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                     </span>
                     <span>Clear All</span>
                   </button>
+
+                  <button
+                    type="button"
+                    className="logs-export-button logs-export-button-toolbar"
+                    onClick={handleOpenLogsPdfPreview}
+                    disabled={isLogsToolbarDisabled}
+                  >
+                    <span className="logs-export-button-icon" aria-hidden="true">
+                      <DownloadIcon />
+                    </span>
+                    <span>Export PDF</span>
+                  </button>
                 </div>
               </div>
 
@@ -1021,6 +1242,120 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
           </section>
         </div>
       </section>
+      {isLogsPdfPreviewModalOpen && (
+        <div
+          className={`account-photo-modal-overlay ${isLogsPdfPreviewModalClosing ? 'account-modal-closing' : ''}`}
+          onClick={handleCloseLogsPdfPreviewModal}
+        >
+          <div
+            className={`account-photo-modal logs-pdf-preview-modal ${isLogsPdfPreviewModalClosing ? 'account-modal-closing' : ''}`}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="logs-pdf-preview-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="account-photo-modal-close"
+              onClick={handleCloseLogsPdfPreviewModal}
+              aria-label="Close PDF preview dialog"
+              disabled={isDownloadingLogsPdf}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M18 6L6 18" />
+                <path d="M6 6l12 12" />
+              </svg>
+            </button>
+
+            <div className="account-photo-modal-header logs-pdf-preview-modal-header">
+              <h2 id="logs-pdf-preview-title" className="account-photo-modal-title">
+                Logs PDF Preview
+              </h2>
+              <p className="account-photo-modal-text">
+                Review the file below before downloading.
+              </p>
+            </div>
+
+            <div className="logs-pdf-preview-meta">
+              <div className="logs-pdf-preview-meta-card">
+                <span className="logs-pdf-preview-meta-label">File Name</span>
+                <span className="logs-pdf-preview-meta-value" title={logsPdfFileName}>
+                  {logsPdfFileName}
+                </span>
+              </div>
+
+              <div className="logs-pdf-preview-tags">
+                {logsPdfPreviewTags.map((tag) => (
+                  <span key={tag} className="logs-pdf-preview-tag">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="logs-pdf-preview-frame-shell">
+              {logsPdfPreviewUrl ? (
+                <iframe
+                  title="Logs PDF Preview"
+                  src={logsPdfPreviewUrl}
+                  className="logs-pdf-preview-frame"
+                />
+              ) : (
+                <div className="logs-pdf-preview-empty">
+                  Preview unavailable.
+                </div>
+              )}
+            </div>
+
+            <div className="account-actions logs-pdf-preview-actions">
+              <button
+                type="button"
+                className="account-button account-button-secondary"
+                onClick={handleCloseLogsPdfPreviewModal}
+                disabled={isDownloadingLogsPdf}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                className="account-button account-button-primary"
+                onClick={handleDownloadLogsPdf}
+                disabled={isDownloadingLogsPdf || !logsPdfPreviewUrl}
+              >
+                <span className="account-button-icon" aria-hidden="true">
+                  <DownloadIcon />
+                </span>
+                <span>Download PDF</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isPreparingLogsPdfPreview && (
+        <div className="account-save-overlay" role="status" aria-live="polite" aria-busy="true">
+          <div className="account-save-card">
+            <img src={logo} alt="Avinya Logo" className="account-save-logo" />
+            <p className="account-save-title">Preparing PDF Preview</p>
+            <div className="account-save-loader" aria-hidden="true">
+              <span className="account-save-loader-bar"></span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isLogsPdfPreviewModalOpen && isDownloadingLogsPdf && (
+        <div className="account-save-overlay" role="status" aria-live="polite" aria-busy="true">
+          <div className="account-save-card">
+            <img src={logo} alt="Avinya Logo" className="account-save-logo" />
+            <p className="account-save-title">Downloading PDF</p>
+            <div className="account-save-loader" aria-hidden="true">
+              <span className="account-save-loader-bar"></span>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   )
 }

@@ -97,6 +97,55 @@ const AVINYA_EMAIL_LOGO_PATH =
 
 const PROFILE_PICTURES_DIR = path.join(__dirname, "Profile Pictures");
 
+const PDF_FONT_DIRECTORY_CANDIDATES = [
+  path.join(__dirname, "assets", "fonts"),
+  path.join(__dirname, "Assets", "Fonts"),
+];
+
+const PDF_SUPPORTED_FONT_SIGNATURES = new Set([
+  "00010000",
+  "4f54544f",
+  "74727565",
+]);
+
+const getExistingPdfFontPath = (fileName = "") =>
+  PDF_FONT_DIRECTORY_CANDIDATES
+    .map((directoryPath) => path.join(directoryPath, fileName))
+    .find((candidatePath) => fs.existsSync(candidatePath)) || "";
+
+const isSupportedPdfFontFile = (fontPath = "") => {
+  try {
+    if (!fontPath || !fs.existsSync(fontPath)) {
+      return false;
+    }
+
+    const fontSignature = fs
+      .readFileSync(fontPath)
+      .subarray(0, 4)
+      .toString("hex")
+      .toLowerCase();
+
+    return PDF_SUPPORTED_FONT_SIGNATURES.has(fontSignature);
+  } catch (error) {
+    console.warn("[PDF FONT CHECK ERROR]", error);
+    return false;
+  }
+};
+
+const getPdfFontFamily = () => {
+  const regularFontPath = getExistingPdfFontPath("Poppins-Regular.ttf");
+  const semiboldFontPath = getExistingPdfFontPath("Poppins-SemiBold.ttf");
+
+  return {
+    regular: isSupportedPdfFontFile(regularFontPath)
+      ? regularFontPath
+      : "Helvetica",
+    semibold: isSupportedPdfFontFile(semiboldFontPath)
+      ? semiboldFontPath
+      : "Helvetica-Bold",
+  };
+};
+
 fs.mkdirSync(PROFILE_PICTURES_DIR, { recursive: true });
 
 app.use("/profile-pictures", express.static(PROFILE_PICTURES_DIR));
@@ -580,13 +629,84 @@ const getUsersPdfReadableTime = (date = new Date()) =>
 const getUsersPdfGeneratedOnText = (date = new Date()) =>
   `Generated on ${getUsersPdfReadableDate(date)} at ${getUsersPdfReadableTime(date)}`;
 
-const getUsersPdfFontFamily = () => ({
-  regular: "Helvetica",
-  semibold: "Helvetica-Bold",
-});
+const getUsersPdfFontFamily = () => getPdfFontFamily();
 
 const getUsersPdfFileName = (date = new Date()) =>
   `Avinya Users - ${getUsersPdfReadableDate(date)}.pdf`;
+
+const LOG_ACTION_LABELS = {
+  login: "Login",
+  logout: "Logout",
+  device_added: "Device Added",
+  device_removed: "Device Removed",
+};
+
+const LOGS_EXPORT_MAX_ROWS = 1500;
+
+const getLogsPdfReadableDate = (date = new Date()) =>
+  new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(date);
+
+const getLogsPdfReadableTime = (date = new Date()) =>
+  new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  }).format(date);
+
+const getLogsPdfGeneratedOnText = (date = new Date()) =>
+  `Generated on ${getLogsPdfReadableDate(date)} at ${getLogsPdfReadableTime(date)}`;
+
+const getLogsPdfFileName = (date = new Date()) =>
+  `Avinya Logs - ${getLogsPdfReadableDate(date)}.pdf`;
+
+const getLogsPdfTimestampText = (value) => {
+  try {
+    const date = value instanceof Date ? value : new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+      return String(value || "");
+    }
+
+    const dateParts = new Intl.DateTimeFormat("en-US", {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    }).formatToParts(date);
+
+    const month = dateParts.find((part) => part.type === "month")?.value || "";
+    const day = dateParts.find((part) => part.type === "day")?.value || "";
+    const year = dateParts.find((part) => part.type === "year")?.value || "";
+
+    const timePart = new Intl.DateTimeFormat("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+    }).format(date);
+
+    return `${month}, ${day}, ${year} | ${timePart}`;
+  } catch {
+    return String(value || "");
+  }
+};
+
+const getLogsPdfFilterSummaryText = (filters, totalCount) =>
+  [
+    `Search: ${filters.search || "All logs"}`,
+    `Action Type: ${
+      filters.actionType === "all"
+        ? "All Actions"
+        : LOG_ACTION_LABELS[filters.actionType] || filters.actionType
+    }`,
+    `Role: ${filters.role === "all" ? "All Roles" : filters.role}`,
+    `Sort: ${filters.sortBy === "oldest" ? "Oldest" : "Newest"}`,
+    `Rows: ${totalCount}`,
+  ].join(" | ");
 
 const LOG_ACTION_TYPES = {
   LOGIN: "login",
@@ -925,6 +1045,157 @@ const createUsersPdfBuffer = ({ rows, filters, generatedAt = new Date() }) =>
         .fontSize(10)
         .fillColor("#6b6b6b")
         .text("No matching users found for the selected filters.", pageLeft, currentY + 16);
+    }
+
+    doc.end();
+  });
+
+const createLogsPdfBuffer = ({ rows, filters, generatedAt = new Date() }) =>
+  new Promise((resolve, reject) => {
+    const doc = new PDFDocument({
+      size: "A4",
+      layout: "landscape",
+      margin: 32,
+      info: {
+        Title: "Avinya Logs Report",
+        Author: "Avinya",
+      },
+    });
+
+    const chunks = [];
+    const pdfFonts = getPdfFontFamily();
+    const columns = [
+      { key: "no", label: "No.", width: 34, align: "center" },
+      { key: "action", label: "Action", width: 96, align: "center" },
+      { key: "actor", label: "Performed By", width: 210, align: "center" },
+      { key: "role", label: "Role", width: 110, align: "center" },
+      { key: "details", label: "Details", width: 270, align: "center" },
+      { key: "timestamp", label: "Timestamp", width: 176, align: "center" },
+    ];
+    const rowHeight = 24;
+    const pageLeft = doc.page.margins.left;
+    const pageTop = doc.page.margins.top;
+    const getPageBottom = () => doc.page.height - doc.page.margins.bottom;
+
+    const drawCellText = (
+      text,
+      x,
+      y,
+      width,
+      align = "center",
+      color = "#1f1f1f",
+      font = pdfFonts.regular
+    ) => {
+      doc
+        .font(font)
+        .fontSize(9)
+        .fillColor(color)
+        .text(String(text ?? "—"), x + 6, y + 7, {
+          width: width - 12,
+          align,
+          lineBreak: false,
+          ellipsis: true,
+        });
+    };
+
+    const drawTableHeader = (y) => {
+      let x = pageLeft;
+
+      columns.forEach((column) => {
+        doc.rect(x, y, column.width, rowHeight).fillAndStroke("#980000", "#dddddd");
+        drawCellText(column.label, x, y, column.width, "center", "#ffffff", pdfFonts.semibold);
+        x += column.width;
+      });
+    };
+
+    const drawTableRow = (row, y, rowIndex) => {
+      let x = pageLeft;
+
+      columns.forEach((column) => {
+        const backgroundColor = rowIndex % 2 === 0 ? "#ffffff" : "#faf7f7";
+
+        doc.rect(x, y, column.width, rowHeight).fillAndStroke(backgroundColor, "#ececec");
+
+        let cellValue = "—";
+        let cellColor = "#1f1f1f";
+        let cellFont = pdfFonts.regular;
+
+        if (column.key === "no") {
+          cellValue = rowIndex + 1;
+        } else if (column.key === "action") {
+          cellValue = LOG_ACTION_LABELS[row.action_type] || row.action_type || "—";
+        } else if (column.key === "actor") {
+          cellValue = row.actor_email
+            ? `${row.actor_name || "User"} (${row.actor_email})`
+            : row.actor_name || "User";
+          cellFont = pdfFonts.semibold;
+        } else if (column.key === "role") {
+          cellValue = row.actor_role || "User";
+          cellColor = "#6b6b6b";
+        } else if (column.key === "details") {
+          cellValue = row.details || "—";
+        } else if (column.key === "timestamp") {
+          cellValue = getLogsPdfTimestampText(row.created_at);
+          cellColor = "#6b6b6b";
+        }
+
+        drawCellText(cellValue, x, y, column.width, column.align, cellColor, cellFont);
+        x += column.width;
+      });
+    };
+
+    doc.on("data", (chunk) => chunks.push(chunk));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+
+    doc
+      .font(pdfFonts.semibold)
+      .fontSize(20)
+      .fillColor("#1f1f1f")
+      .text("Logs Report", pageLeft, pageTop);
+
+    doc
+      .font(pdfFonts.regular)
+      .fontSize(10)
+      .fillColor("#6b6b6b")
+      .text(getLogsPdfGeneratedOnText(generatedAt), pageLeft, pageTop + 28);
+
+    doc
+      .font(pdfFonts.regular)
+      .fontSize(9)
+      .fillColor("#6b6b6b")
+      .text(getLogsPdfFilterSummaryText(filters, rows.length), pageLeft, pageTop + 48, {
+        width: doc.page.width - doc.page.margins.left - doc.page.margins.right,
+        lineGap: 3,
+      });
+
+    let currentY = pageTop + 92;
+    drawTableHeader(currentY);
+    currentY += rowHeight;
+
+    rows.forEach((row, rowIndex) => {
+      if (currentY + rowHeight > getPageBottom()) {
+        doc.addPage({
+          size: "A4",
+          layout: "landscape",
+          margin: 32,
+        });
+
+        currentY = doc.page.margins.top;
+        drawTableHeader(currentY);
+        currentY += rowHeight;
+      }
+
+      drawTableRow(row, currentY, rowIndex);
+      currentY += rowHeight;
+    });
+
+    if (rows.length === 0) {
+      doc
+        .font(pdfFonts.regular)
+        .fontSize(10)
+        .fillColor("#6b6b6b")
+        .text("No matching logs found for the selected filters.", pageLeft, currentY + 16);
     }
 
     doc.end();
@@ -2606,6 +2877,73 @@ app.get("/logs", authenticateToken, async (req, res) => {
 
     return res.status(500).json({
       message: "Unable to load logs right now.",
+    });
+  }
+});
+
+app.get("/logs/export/pdf", authenticateToken, async (req, res) => {
+  try {
+    const requestingUserResult = await pool.query(
+      `SELECT role_label
+       FROM users
+       WHERE id = $1
+       LIMIT 1`,
+      [req.user.id]
+    );
+
+    if (requestingUserResult.rows.length === 0) {
+      return res.status(404).json({
+        message: "User account not found.",
+      });
+    }
+
+    if (requestingUserResult.rows[0].role_label !== "Administrator") {
+      return res.status(403).json({
+        message: "You are not authorized to export logs.",
+      });
+    }
+
+    const filters = getLogsRouteFilters(req.query);
+    const { params, whereSql } = buildLogsListWhereClause(filters);
+    const sortSql = LOGS_SORT_SQL[filters.sortBy] || LOGS_SORT_SQL.newest;
+
+    const result = await pool.query(
+      `SELECT
+         id,
+         action_type,
+         actor_name,
+         actor_email,
+         actor_role,
+         details,
+         device_id,
+         created_at
+       FROM logs
+       ${whereSql}
+       ORDER BY ${sortSql}
+       LIMIT ${LOGS_EXPORT_MAX_ROWS}`,
+      params
+    );
+
+    const exportGeneratedAt = new Date();
+
+    const pdfBuffer = await createLogsPdfBuffer({
+      rows: result.rows,
+      filters,
+      generatedAt: exportGeneratedAt,
+    });
+
+    const fileName = getLogsPdfFileName(exportGeneratedAt);
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Length", pdfBuffer.length);
+    res.setHeader("Content-Disposition", `inline; filename="${fileName}"`);
+
+    return res.status(200).send(pdfBuffer);
+  } catch (error) {
+    console.error("LOGS EXPORT PDF ERROR:", error);
+
+    return res.status(500).json({
+      message: "Unable to generate the PDF file right now.",
     });
   }
 });
