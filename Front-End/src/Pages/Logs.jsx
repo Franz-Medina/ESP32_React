@@ -372,6 +372,11 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   const pageLogs = allLogs
   const paginationItems = getLogsPaginationItems(safePage, totalPages)
 
+  const hasLogsResults =
+    !isLogsLoading &&
+    !logsRequestError &&
+    totalCount > 0
+
   const isLogsToolbarDisabled =
     isLogsLoading || isPreparingLogsPdfPreview || isDownloadingLogsPdf
 
@@ -1174,85 +1179,87 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                 )}
               </div>
 
-              <div className="logs-pagination-shell">
-                <div className="logs-pagination">
-                  <div className="logs-pagination-group logs-pagination-group-start">
-                    <button
-                      type="button"
-                      className="logs-pagination-button logs-pagination-button-with-icon logs-pagination-button-start"
-                      onClick={() => handleLogsPageChange(1)}
-                      disabled={safePage === 1 || isLogsLoading}
-                      aria-label="First page"
-                    >
-                      <span className="logs-pagination-button-icon" aria-hidden="true">
-                        <FirstPageIcon />
-                      </span>
-                      <span>First</span>
-                    </button>
+              {hasLogsResults && (
+                <div className="logs-pagination-shell">
+                  <nav className="logs-pagination" aria-label="Logs pagination">
+                    <div className="logs-pagination-group logs-pagination-group-start">
+                      <button
+                        type="button"
+                        className="logs-pagination-button logs-pagination-button-with-icon logs-pagination-button-start"
+                        onClick={() => handleLogsPageChange(1)}
+                        disabled={safePage === 1 || isLogsLoading}
+                        aria-label="First page"
+                      >
+                        <span className="logs-pagination-button-icon" aria-hidden="true">
+                          <FirstPageIcon />
+                        </span>
+                        <span>First</span>
+                      </button>
 
-                    <button
-                      type="button"
-                      className="logs-pagination-button logs-pagination-button-with-icon logs-pagination-button-start"
-                      onClick={() => handleLogsPageChange(safePage - 1)}
-                      disabled={safePage === 1 || isLogsLoading}
-                      aria-label="Previous page"
-                    >
-                      <span className="logs-pagination-button-icon" aria-hidden="true">
-                        <PreviousPageIcon />
-                      </span>
-                      <span>Back</span>
-                    </button>
-                  </div>
+                      <button
+                        type="button"
+                        className="logs-pagination-button logs-pagination-button-with-icon logs-pagination-button-start"
+                        onClick={() => handleLogsPageChange(safePage - 1)}
+                        disabled={safePage === 1 || isLogsLoading}
+                        aria-label="Previous page"
+                      >
+                        <span className="logs-pagination-button-icon" aria-hidden="true">
+                          <PreviousPageIcon />
+                        </span>
+                        <span>Back</span>
+                      </button>
+                    </div>
 
-                  <div className="logs-pagination-group logs-pagination-group-center">
-                    {paginationItems.map((item) =>
-                      typeof item === 'string' ? (
-                        <span key={item} className="logs-pagination-ellipsis">...</span>
-                      ) : (
-                        <button
-                          key={item}
-                          type="button"
-                          className={`logs-pagination-button logs-pagination-number ${item === safePage ? 'active' : ''}`}
-                          onClick={() => handleLogsPageChange(item)}
-                          disabled={item === safePage || isLogsLoading}
-                          aria-current={item === safePage ? 'page' : undefined}
-                          aria-label={`Page ${item}`}
-                        >
-                          {item}
-                        </button>
-                      )
-                    )}
-                  </div>
+                    <div className="logs-pagination-group logs-pagination-group-center">
+                      {paginationItems.map((item) =>
+                        typeof item === 'string' ? (
+                          <span key={item} className="logs-pagination-ellipsis">...</span>
+                        ) : (
+                          <button
+                            key={item}
+                            type="button"
+                            className={`logs-pagination-button logs-pagination-number ${item === safePage ? 'active' : ''}`}
+                            onClick={() => handleLogsPageChange(item)}
+                            disabled={item === safePage || isLogsLoading}
+                            aria-current={item === safePage ? 'page' : undefined}
+                            aria-label={`Page ${item}`}
+                          >
+                            {item}
+                          </button>
+                        )
+                      )}
+                    </div>
 
-                  <div className="logs-pagination-group logs-pagination-group-end">
-                    <button
-                      type="button"
-                      className="logs-pagination-button logs-pagination-button-with-icon logs-pagination-button-end"
-                      onClick={() => handleLogsPageChange(safePage + 1)}
-                      disabled={safePage === totalPages || isLogsLoading}
-                      aria-label="Next page"
-                    >
-                      <span>Next</span>
-                      <span className="logs-pagination-button-icon" aria-hidden="true">
-                        <NextPageIcon />
-                      </span>
-                    </button>
+                    <div className="logs-pagination-group logs-pagination-group-end">
+                      <button
+                        type="button"
+                        className="logs-pagination-button logs-pagination-button-with-icon logs-pagination-button-end"
+                        onClick={() => handleLogsPageChange(safePage + 1)}
+                        disabled={safePage === totalPages || isLogsLoading}
+                        aria-label="Next page"
+                      >
+                        <span>Next</span>
+                        <span className="logs-pagination-button-icon" aria-hidden="true">
+                          <NextPageIcon />
+                        </span>
+                      </button>
 
-                    <button
-                      type="button"
-                      className="logs-pagination-button logs-pagination-button-with-icon logs-pagination-button-end"
-                      onClick={() => handleLogsPageChange(totalPages)}
-                      disabled={safePage === totalPages || isLogsLoading}
-                      aria-label="Last page"
-                    >
-                      <span>Last</span>
-                      <span className="logs-pagination-button-icon" aria-hidden="true">
-                        <LastPageIcon />
-                      </span>
-                    </button>
-                  </div>
+                      <button
+                        type="button"
+                        className="logs-pagination-button logs-pagination-button-with-icon logs-pagination-button-end"
+                        onClick={() => handleLogsPageChange(totalPages)}
+                        disabled={safePage === totalPages || isLogsLoading}
+                        aria-label="Last page"
+                      >
+                        <span>Last</span>
+                        <span className="logs-pagination-button-icon" aria-hidden="true">
+                          <LastPageIcon />
+                        </span>
+                      </button>
+                    </div>
+                  </nav>
                 </div>
-              </div>
+              )}
             </div>
           </section>
         </div>
