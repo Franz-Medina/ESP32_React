@@ -10,6 +10,7 @@ import Users from './Pages/Users.jsx'
 import Logs from './Pages/Logs.jsx'
 import Account from './Pages/Account.jsx'
 import logo from './Pictures/Avinya.png'
+import Reports from './Pages/Reports.jsx'
 import './Styles/App.css'
 
 import {
@@ -224,6 +225,13 @@ function App() {
           />
         ) : currentPage === 'logs' ? (
           <Logs
+            onLogout={handleLogout}
+            onNavigate={handlePageChange}
+            isDarkMode={isDarkMode}
+            onThemeToggle={() => setIsDarkMode((prev) => !prev)}
+          />
+        ) : currentPage === 'reports' ? (
+          <Reports
             onLogout={handleLogout}
             onNavigate={handlePageChange}
             isDarkMode={isDarkMode}
