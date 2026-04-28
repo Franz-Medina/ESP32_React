@@ -8,16 +8,18 @@ function MarkdownCard({
 }) {
   const [content, setContent] = useState(defaultContent);
   const [isEditing, setIsEditing] = useState(false);
-  const [tempContent, setTempContent] = useState(content);
+  const [tempContent, setTempContent] = useState(defaultContent);
 
   const renderMarkdown = (text) => {
+    if (!text) return "";
+
     return text
-      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')       
-      .replace(/\*(.*?)\*/g, '<em>$1</em>')                      
-      .replace(/^\s*-\s+(.*$)/gm, '<li>$1</li>')                 
-      .replace(/(<li>.*<\/li>)/gs, '<ul>$1</ul>')                
-      .replace(/\n/g, '<br>')                                    
-      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.*?)\*/g, '<em>$1</em>')
+      .replace(/^\s*-\s+(.*$)/gm, '<li>$1</li>')
+      .replace(/(<li>.*<\/li>)/gs, '<ul>$1</ul>')
+      .replace(/\n/g, '<br>')
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
   };
 
   const handleSave = () => {
@@ -30,6 +32,11 @@ function MarkdownCard({
     setIsEditing(false);
   };
 
+  const handleEdit = () => {
+    setTempContent(content);
+    setIsEditing(true);
+  };
+
   return (
     <div className="widget">
       <div className="widget-title">{title}</div>
@@ -39,12 +46,13 @@ function MarkdownCard({
           <textarea
             value={tempContent}
             onChange={(e) => setTempContent(e.target.value)}
-            placeholder="Write markdown here..."
+            placeholder="Write your content here... (Supports basic markdown: **bold**, *italic*, - lists, [links](url))"
             className="widget-textarea"
+            rows={10}
           />
         ) : (
           <div 
-            className="widget-body"
+            className="widget-body markdown-body"
             dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }}
           />
         )}
@@ -53,16 +61,17 @@ function MarkdownCard({
       {allowEditing && (
         <div className="widget-edit-area">
           {!isEditing ? (
-            <button //Need to find an favicon to replace the pencil emoji
+            <button 
               className="widget-btn widget-btn-edit"
-              onClick={() => setIsEditing(true)}
+              onClick={handleEdit}
+              title="Edit content"
             >
               ✏️ Edit
             </button>
           ) : (
             <div className="widget-edit-actions">
               <button 
-                className="widget-btn"
+                className="widget-btn widget-btn-secondary"
                 onClick={handleCancel}
               >
                 Cancel

@@ -3,34 +3,35 @@ import "./Styles/WidgetStyle.css";
 
 function BatteryGauge({ 
   title = "BATTERY GAUGE", 
-  dataKey = "battery"
 }) {
   const STORAGE_KEY = 'avinya_devices';
 
-  const loadDefaultDeviceId = () => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      return parsed.defaultId ?? null;
-    } catch {
-      return null;
-    }
-  };
-
-  const [deviceId, setDeviceId] = useState(() => loadDefaultDeviceId());
+  const [deviceId, setDeviceId] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
   const [batteryLevel, setBatteryLevel] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [token, setToken] = useState(null);
 
-  const TB_BASE_URL = "";
+  const TB_BASE_URL = "https://thingsboard.cloud";
+
   const TB_EMAIL = import.meta.env.VITE_TB_EMAIL;
   const TB_PASSWORD = import.meta.env.VITE_TB_PASSWORD;
 
+  const loadDefaultDevice = () => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return parsed.defaultId ?? null;
+    } catch (e) {
+      console.error("Failed to load default device:", e);
+      return null;
+    }
+  };
+
   const login = async () => {
-    const res = await fetch(`/api/auth/login`, {
+    const res = await fetch(`${TB_BASE_URL}/api/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -39,50 +40,47 @@ function BatteryGauge({
       })
     });
 
-    if (!res.ok) throw new Error("Login failed");
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`Login failed (${res.status}): ${text}`);
+    }
+
     const data = await res.json();
     setToken(data.token);
     return data.token;
   };
 
-  const fetchBattery = async (devId) => {
+  const fetchBattery = async (devId, jwt) => {
     if (!devId) return;
 
-    try {
-      setIsLoading(true);
+    const res = await fetch(
+      `${TB_BASE_URL}/api/plugins/telemetry/DEVICE/${devId}/values/timeseries?keys=${dataKey}&useLatestTs=true`,
+      {
+        headers: { "X-Authorization": `Bearer ${jwt}` }
+      }
+    );
 
-      const jwt = token || await login();
-
-      const response = await fetch(
-        `${TB_BASE_URL}/api/plugins/telemetry/DEVICE/${devId}/values/timeseries?keys=${dataKey}&limit=1`,
-        {
-          headers: { "X-Authorization": `Bearer ${jwt}` }
-        }
-      );
-
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-      const data = await response.json();
-      const latest = data[dataKey]?.[0]?.value;
-
-      const level = latest !== undefined
-        ? Math.max(0, Math.min(100, parseFloat(latest)))
-        : 0;
-
-      setBatteryLevel(level);
-      setError(null);
-    } catch (err) {
-      console.error(err);
-      throw err;
-    } finally {
-      setIsLoading(false);
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`Telemetry fetch failed (${res.status})`);
     }
+
+    const data = await res.json();
+    const latest = data[dataKey]?.[0]?.value;
+
+    const level = latest !== undefined 
+      ? Math.max(0, Math.min(100, parseFloat(latest))) 
+      : 0;
+
+    setBatteryLevel(level);
   };
 
   const connectToDefault = async () => {
-    const defaultId = loadDefaultDeviceId();
+    const defaultId = loadDefaultDevice();
+
     if (!defaultId) {
       setError("No default device set. Go to Devices page to set one.");
+      setIsConnected(false);
       setIsLoading(false);
       return;
     }
@@ -92,16 +90,24 @@ function BatteryGauge({
     setError(null);
 
     try {
-      await login();
-      await fetchBattery(defaultId);
+      const jwt = await login();
+      await fetchBattery(defaultId, jwt);
       setIsConnected(true);
-      console.log("✅ Auto-connected to default device:", defaultId);
+      console.log("Battery Gauge connected to device: ", defaultId);
     } catch (err) {
-      console.error(err);
-      let msg = err.message;
-      if (msg.includes("404")) msg = "Device not found";
-      else if (msg.includes("401") || msg.includes("403")) msg = "Login failed";
-      else msg = "Failed to connect";
+      console.error("Connection error:", err);
+
+      let msg = "Failed to connect";
+      if (err.message.includes("401") || err.message.includes("403")) {
+        msg = "Invalid ThingsBoard credentials. Check your .env file.";
+      } else if (err.message.includes("404")) {
+        msg = "Device not found. Please verify the Device ID.";
+      } else if (err.message.includes("Failed to fetch")) {
+        msg = "Cannot reach ThingsBoard Cloud. Check your internet connection.";
+      } else {
+        msg = err.message;
+      }
+
       setError(msg);
       setIsConnected(false);
     } finally {
@@ -109,12 +115,11 @@ function BatteryGauge({
     }
   };
 
-  const handleDisconnect = () => {
+  const handleReconnect = () => {
     setIsConnected(false);
-    setIsLoading(true);
-    setError(null);
     setToken(null);
-    setTimeout(connectToDefault, 100);
+    setError(null);
+    connectToDefault();
   };
 
   useEffect(() => {
@@ -124,25 +129,33 @@ function BatteryGauge({
   useEffect(() => {
     if (!isConnected || !deviceId) return;
 
-    const interval = setInterval(() => {
-      fetchBattery(deviceId).catch(() => {});
+    const interval = setInterval(async () => {
+      try {
+        const jwt = token || await login();
+        await fetchBattery(deviceId, jwt);
+      } catch (err) {
+        console.error("Battery polling error:", err);
+      }
     }, 10000);
 
     return () => clearInterval(interval);
-  }, [isConnected, deviceId]);
+  }, [isConnected, deviceId, token]);
 
   useEffect(() => {
-    const handleStorage = (e) => {
+    const handleStorageChange = (e) => {
       if (e.key === STORAGE_KEY) {
-        const newDefault = loadDefaultDeviceId();
+        const newDefault = loadDefaultDevice();
         if (newDefault && newDefault !== deviceId) {
           setDeviceId(newDefault);
-          handleDisconnect();
+          setIsConnected(false);
+          setToken(null);
+          setTimeout(connectToDefault, 300);
         }
       }
     };
-    window.addEventListener('storage', handleStorage);
-    return () => window.removeEventListener('storage', handleStorage);
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
   }, [deviceId]);
 
   const getBatteryColor = (level) => {
@@ -158,7 +171,7 @@ function BatteryGauge({
       <div className="widget-title">{title}</div>
 
       {isLoading ? (
-        <div className="widget-loading">Connecting to default device...</div>
+        <div className="widget-loading">Connecting to ThingsBoard Cloud...</div>
       ) : !deviceId ? (
         <div className="widget-no-default">
           <p>No default device set.</p>
@@ -167,7 +180,8 @@ function BatteryGauge({
       ) : (
         <div className="widget-control">
           <div className="widget-status">
-            Connected to <strong>{deviceId}</strong>
+            {isConnected ? "Connected to " : "Disconnected from "} 
+            <strong style={{ wordBreak: "break-all", fontSize: "0.9em" }}>{deviceId}</strong>
           </div>
 
           {error && <div className="widget-error">⚠️ {error}</div>}
@@ -185,6 +199,12 @@ function BatteryGauge({
             </div>
             <div className="widget-cap" />
           </div>
+
+          {!isConnected && (
+            <button className="widget-reconnect-btn" onClick={handleReconnect}>
+              Reconnect
+            </button>
+          )}
         </div>
       )}
     </div>

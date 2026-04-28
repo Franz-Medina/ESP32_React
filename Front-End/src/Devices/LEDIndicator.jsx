@@ -4,29 +4,32 @@ import "./Styles/WidgetStyle.css";
 function LEDIndicator({ instanceId = "widget-default" }) {
   const STORAGE_KEY = 'avinya_devices';
 
-  const loadDefaultDeviceId = () => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      return parsed.defaultId ?? null;
-    } catch {
-      return null;
-    }
-  };
-
-  const [deviceId, setDeviceId] = useState(() => loadDefaultDeviceId());
+  const [deviceId, setDeviceId] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
   const [ledState, setLedState] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [token, setToken] = useState(null);
 
+  const TB_BASE_URL = "https://thingsboard.cloud";
+
   const TB_EMAIL = import.meta.env.VITE_TB_EMAIL;
   const TB_PASSWORD = import.meta.env.VITE_TB_PASSWORD;
 
+  const loadDefaultDevice = () => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return parsed.defaultId ?? null;
+    } catch (e) {
+      console.error("Failed to load default device:", e);
+      return null;
+    }
+  };
+
   const login = async () => {
-    const res = await fetch(`/api/auth/login`, {
+    const res = await fetch(`${TB_BASE_URL}/api/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -35,39 +38,49 @@ function LEDIndicator({ instanceId = "widget-default" }) {
       })
     });
 
-    if (!res.ok) throw new Error("Login failed");
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`Login failed (${res.status}): ${text}`);
+    }
+
     const data = await res.json();
     setToken(data.token);
     return data.token;
   };
 
-  const fetchLedState = async (devId) => {
+  const fetchLedState = async (devId, jwt) => {
     if (!devId) return;
-    try {
-      const jwt = token || await login();
-      const res = await fetch(
-        `/api/plugins/telemetry/DEVICE/${devId}/values/timeseries?keys=led&limit=1`,
-        { headers: { "X-Authorization": `Bearer ${jwt}` } }
-      );
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-      if (data.led && data.led.length > 0) {
-        const latest = data.led[0].value;
-        setLedState(latest === "true" || latest === true);
+
+    const res = await fetch(
+      `${TB_BASE_URL}/api/plugins/telemetry/DEVICE/${devId}/values/timeseries?keys=led&useLatestTs=true`,
+      {
+        headers: { "X-Authorization": `Bearer ${jwt}` }
       }
-      setError(null);
-    } catch (err) {
-      console.error("FETCH LED ERROR:", err);
-      throw err;
+    );
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`Telemetry fetch failed (${res.status})`);
+    }
+
+    const data = await res.json();
+
+    if (data.led && data.led.length > 0) {
+      const latest = data.led[0].value;
+      setLedState(latest === true || latest === "true" || latest === 1);
     }
   };
 
   const handleToggle = async () => {
     if (!deviceId || !isConnected) return;
+
+    const newState = !ledState;
+    setLedState(newState);
+
     try {
       const jwt = token || await login();
-      const newState = !ledState;
-      await fetch(`/api/plugins/rpc/twoway/${deviceId}`, {
+
+      const res = await fetch(`${TB_BASE_URL}/api/plugins/rpc/oneway/${deviceId}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -78,31 +91,52 @@ function LEDIndicator({ instanceId = "widget-default" }) {
           params: newState
         })
       });
-      setLedState(newState);
+
+      if (!res.ok) {
+        throw new Error(`RPC failed (${res.status})`);
+      }
+
+      console.log(`LED toggled to: ${newState ? "ON" : "OFF"}`);
     } catch (err) {
       console.error("RPC ERROR:", err);
+      setLedState(!newState);
+      setError("Failed to send command");
     }
   };
 
   const connectToDefault = async () => {
-    const defaultId = loadDefaultDeviceId();
+    const defaultId = loadDefaultDevice();
+
     if (!defaultId) {
       setError("No default device set. Go to Devices page to set one.");
+      setIsConnected(false);
       setIsLoading(false);
       return;
     }
+
     setDeviceId(defaultId);
     setIsLoading(true);
     setError(null);
+
     try {
-      await login();
-      await fetchLedState(defaultId);
+      const jwt = await login();
+      await fetchLedState(defaultId, jwt);
       setIsConnected(true);
+      console.log("LED Indicator connected to device:", defaultId);
     } catch (err) {
-      let msg = err.message;
-      if (msg.includes("404")) msg = "Device not found";
-      else if (msg.includes("401") || msg.includes("403")) msg = "Login failed";
-      else msg = "Failed to connect";
+      console.error("Connection error:", err);
+
+      let msg = "Failed to connect";
+      if (err.message.includes("401") || err.message.includes("403")) {
+        msg = "Invalid ThingsBoard credentials. Check your .env file.";
+      } else if (err.message.includes("404")) {
+        msg = "Device not found. Please verify the Device ID.";
+      } else if (err.message.includes("Failed to fetch")) {
+        msg = "Cannot reach ThingsBoard Cloud. Check your internet connection.";
+      } else {
+        msg = err.message;
+      }
+
       setError(msg);
       setIsConnected(false);
     } finally {
@@ -110,12 +144,11 @@ function LEDIndicator({ instanceId = "widget-default" }) {
     }
   };
 
-  const handleDisconnect = () => {
+  const handleReconnect = () => {
     setIsConnected(false);
-    setIsLoading(true);
-    setError(null);
     setToken(null);
-    setTimeout(connectToDefault, 100);
+    setError(null);
+    connectToDefault();
   };
 
   useEffect(() => {
@@ -124,24 +157,34 @@ function LEDIndicator({ instanceId = "widget-default" }) {
 
   useEffect(() => {
     if (!isConnected || !deviceId) return;
-    const interval = setInterval(() => {
-      fetchLedState(deviceId).catch(() => {});
+
+    const interval = setInterval(async () => {
+      try {
+        const jwt = token || await login();
+        await fetchLedState(deviceId, jwt);
+      } catch (err) {
+        console.error("Polling error:", err);
+      }
     }, 5000);
+
     return () => clearInterval(interval);
-  }, [isConnected, deviceId]);
+  }, [isConnected, deviceId, token]);
 
   useEffect(() => {
-    const handleStorage = (e) => {
+    const handleStorageChange = (e) => {
       if (e.key === STORAGE_KEY) {
-        const newDefault = loadDefaultDeviceId();
+        const newDefault = loadDefaultDevice();
         if (newDefault && newDefault !== deviceId) {
           setDeviceId(newDefault);
-          handleDisconnect();
+          setIsConnected(false);
+          setToken(null);
+          setTimeout(connectToDefault, 300);
         }
       }
     };
-    window.addEventListener('storage', handleStorage);
-    return () => window.removeEventListener('storage', handleStorage);
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
   }, [deviceId]);
 
   return (
@@ -149,7 +192,7 @@ function LEDIndicator({ instanceId = "widget-default" }) {
       <div className="widget-title">LED INDICATOR</div>
 
       {isLoading ? (
-        <div className="widget-loading">Connecting to default device...</div>
+        <div className="widget-loading">Connecting to ThingsBoard Cloud...</div>
       ) : !deviceId ? (
         <div className="widget-no-default">
           <p>No default device set.</p>
@@ -158,16 +201,30 @@ function LEDIndicator({ instanceId = "widget-default" }) {
       ) : (
         <div className="widget-control">
           <div className="widget-status">
-            Connected to <strong>{deviceId}</strong>
+            {isConnected ? "Connected to " : "Disconnected from "} 
+            <strong style={{ wordBreak: "break-all", fontSize: "0.9em" }}>{deviceId}</strong>
           </div>
 
           {error && <div className="widget-error">⚠️ {error}</div>}
 
-          <div className="widget-container" onClick={handleToggle}>
+          <div 
+            className="widget-container" 
+            onClick={handleToggle}
+            style={{ cursor: isConnected ? "pointer" : "not-allowed" }}
+          >
             <div className={`widget-bulb ${ledState ? "on" : "off"}`}>
               <div className="widget-glow" />
             </div>
+            <div style={{ marginTop: "12px", fontWeight: "bold" }}>
+              {ledState ? "LED ON" : "LED OFF"}
+            </div>
           </div>
+
+          {!isConnected && (
+            <button className="widget-reconnect-btn" onClick={handleReconnect}>
+              Reconnect
+            </button>
+          )}
         </div>
       )}
     </div>

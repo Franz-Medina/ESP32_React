@@ -4,29 +4,32 @@ import "./Styles/WidgetStyle.css";
 export default function ServoMotor() {
   const STORAGE_KEY = 'avinya_devices';
 
-  const loadDefaultDeviceId = () => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      return parsed.defaultId ?? null;
-    } catch {
-      return null;
-    }
-  };
-
-  const [deviceId, setDeviceId] = useState(() => loadDefaultDeviceId());
+  const [deviceId, setDeviceId] = useState(null);
   const [connected, setConnected] = useState(false);
   const [angle, setAngle] = useState(90);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [token, setToken] = useState(null);
 
+  const TB_BASE_URL = "https://thingsboard.cloud";
+
   const TB_EMAIL = import.meta.env.VITE_TB_EMAIL;
   const TB_PASSWORD = import.meta.env.VITE_TB_PASSWORD;
 
+  const loadDefaultDevice = () => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return parsed.defaultId ?? null;
+    } catch (e) {
+      console.error("Failed to load default device from storage:", e);
+      return null;
+    }
+  };
+
   const login = async () => {
-    const res = await fetch(`/api/auth/login`, {
+    const res = await fetch(`${TB_BASE_URL}/api/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -35,30 +38,48 @@ export default function ServoMotor() {
       })
     });
 
-    if (!res.ok) throw new Error("Login failed");
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`Login failed (${res.status}): ${text}`);
+    }
+
     const data = await res.json();
     setToken(data.token);
     return data.token;
   };
 
   const connectToDefault = async () => {
-    const defaultId = loadDefaultDeviceId();
+    const defaultId = loadDefaultDevice();
+
     if (!defaultId) {
       setError("No default device set. Go to Devices page to set one.");
+      setConnected(false);
       setIsLoading(false);
       return;
     }
+
     setDeviceId(defaultId);
     setIsLoading(true);
     setError(null);
+
     try {
       await login();
       setConnected(true);
+      console.log("Servo connected to device:", defaultId);
     } catch (err) {
-      let msg = err.message;
-      if (msg.includes("404")) msg = "Device not found";
-      else if (msg.includes("401") || msg.includes("403")) msg = "Login failed";
-      else msg = "Failed to connect";
+      console.error("Connection error:", err);
+      
+      let msg = "Failed to connect";
+      if (err.message.includes("401") || err.message.includes("403")) {
+        msg = "Invalid ThingsBoard credentials. Check your .env file.";
+      } else if (err.message.includes("404")) {
+        msg = "Device not found. Please check the Device ID.";
+      } else if (err.message.includes("Failed to fetch")) {
+        msg = "Cannot reach ThingsBoard Cloud. Check your internet connection.";
+      } else {
+        msg = err.message;
+      }
+
       setError(msg);
       setConnected(false);
     } finally {
@@ -66,37 +87,45 @@ export default function ServoMotor() {
     }
   };
 
-  const handleDisconnect = () => {
-    setConnected(false);
-    setIsLoading(true);
-    setError(null);
-    setToken(null);
-    setTimeout(connectToDefault, 100);
-  };
-
   const sendAngle = async (value) => {
     const numericValue = Number(value);
+    if (isNaN(numericValue) || numericValue < 0 || numericValue > 180) return;
+
     setAngle(numericValue);
+
+    if (!deviceId || !connected) return;
+
     try {
       const jwt = token || await login();
-      const res = await fetch(
-        `/api/plugins/rpc/oneway/${deviceId}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Authorization": `Bearer ${jwt}`
-          },
-          body: JSON.stringify({
-            method: "setServo", 
-            params: numericValue
-          })
-        }
-      );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const res = await fetch(`${TB_BASE_URL}/api/plugins/rpc/oneway/${deviceId}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Authorization": `Bearer ${jwt}`
+        },
+        body: JSON.stringify({
+          method: "setServo",
+          params: numericValue
+        })
+      });
+
+      if (!res.ok) {
+        throw new Error(`RPC failed (${res.status})`);
+      }
+
+      console.log(`Servo angle sent: ${numericValue}°`);
     } catch (err) {
-      console.error("RPC ERROR:", err);
+      console.error("Failed to send servo angle:", err);
+      setError("Failed to send command to servo");
     }
+  };
+
+  const handleReconnect = () => {
+    setConnected(false);
+    setToken(null);
+    setError(null);
+    connectToDefault();
   };
 
   useEffect(() => {
@@ -104,17 +133,20 @@ export default function ServoMotor() {
   }, []);
 
   useEffect(() => {
-    const handleStorage = (e) => {
+    const handleStorageChange = (e) => {
       if (e.key === STORAGE_KEY) {
-        const newDefault = loadDefaultDeviceId();
+        const newDefault = loadDefaultDevice();
         if (newDefault && newDefault !== deviceId) {
           setDeviceId(newDefault);
-          handleDisconnect();
+          setConnected(false);
+          setToken(null);
+          setTimeout(connectToDefault, 300);
         }
       }
     };
-    window.addEventListener('storage', handleStorage);
-    return () => window.removeEventListener('storage', handleStorage);
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
   }, [deviceId]);
 
   return (
@@ -122,7 +154,7 @@ export default function ServoMotor() {
       <div className="widget-title">SERVO MOTOR</div>
 
       {isLoading ? (
-        <div className="widget-loading">Connecting to default device...</div>
+        <div className="widget-loading">Connecting to ThingsBoard Cloud...</div>
       ) : !deviceId ? (
         <div className="widget-no-default">
           <p>No default device set.</p>
@@ -131,7 +163,8 @@ export default function ServoMotor() {
       ) : (
         <div className="widget-control">
           <div className="widget-status">
-            Connected to <strong>{deviceId}</strong>
+            {connected ? "Connected to " : "Disconnected from "} 
+            <strong style={{ wordBreak: "break-all", fontSize: "0.9em" }}>{deviceId}</strong>
           </div>
 
           {error && <div className="widget-error">⚠️ {error}</div>}
@@ -148,15 +181,20 @@ export default function ServoMotor() {
             value={angle}
             onChange={(e) => sendAngle(e.target.value)}
             className="widget-slider"
-            style={{
-              "--progress": `${(angle / 180) * 100}%`,
-            }}
+            style={{ "--progress": `${(angle / 180) * 100}%` }}
+            disabled={!connected}
           />
 
           <div className="widget-labels">
             <span>0°</span>
             <span>180°</span>
           </div>
+
+          {!connected && (
+            <button className="widget-reconnect-btn" onClick={handleReconnect}>
+              Reconnect
+            </button>
+          )}
         </div>
       )}
     </div>

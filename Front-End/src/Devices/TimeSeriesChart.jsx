@@ -32,29 +32,20 @@ function TimeSeriesChart({
 }) {
   const STORAGE_KEY = 'avinya_devices';
 
-  const loadDefaultDeviceId = () => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      return parsed.defaultId ?? null;
-    } catch {
-      return null;
-    }
-  };
-
-  const [deviceId, setDeviceId] = useState(() => loadDefaultDeviceId());
+  const [deviceId, setDeviceId] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
   const [chartData, setChartData] = useState({ labels: [], datasets: [] });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [token, setToken] = useState(null);
 
+  const TB_BASE_URL = "https://thingsboard.cloud";
+
   const TB_EMAIL = import.meta.env.VITE_TB_EMAIL;
   const TB_PASSWORD = import.meta.env.VITE_TB_PASSWORD;
-  
+
   const login = async () => {
-    const res = await fetch(`/api/auth/login`, {
+    const res = await fetch(`${TB_BASE_URL}/api/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -63,75 +54,102 @@ function TimeSeriesChart({
       }),
     });
 
-    if (!res.ok) throw new Error("Login failed");
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`Login failed (${res.status}): ${text}`);
+    }
+
     const data = await res.json();
     setToken(data.token);
     return data.token;
   };
 
-  const fetchTimeSeries = async (devId) => {
+  const fetchTimeSeries = async (devId, jwt) => {
     if (!devId) return;
-    try {
-      const jwt = token || (await login());
-      const endTs = Date.now();
-      const startTs = endTs - 60 * 60 * 1000;
-      const res = await fetch(
-        `/api/plugins/telemetry/DEVICE/${devId}/values/timeseries?keys=${dataKey}&startTs=${startTs}&endTs=${endTs}&limit=50`,
-        { headers: { "X-Authorization": `Bearer ${jwt}` } }
-      );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      if (!data[dataKey]) return;
-      const sorted = data[dataKey].sort((a, b) => a.ts - b.ts);
-      const labels = sorted.map((point) =>
-        new Date(point.ts).toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        })
-      );
-      const values = sorted.map((point) => parseFloat(point.value));
-      setChartData({
-        labels,
-        datasets: [
-          {
-            label: `${title} (${unit})`,
-            data: values,
-            borderColor: "#980000",
-            backgroundColor: "rgba(152, 0, 0, 0.12)",
-            tension: 0.4,
-            fill: true,
-            pointRadius: 2,
-            pointHoverRadius: 5,
-            borderWidth: 3,
-          },
-        ],
-      });
-      setError(null);
-    } catch (err) {
-      console.error("FETCH ERROR:", err);
-      throw err;
+
+    const endTs = Date.now();
+    const startTs = endTs - 60 * 60 * 1000;
+
+    const res = await fetch(
+      `${TB_BASE_URL}/api/plugins/telemetry/DEVICE/${devId}/values/timeseries?keys=${dataKey}&startTs=${startTs}&endTs=${endTs}&limit=50`,
+      {
+        headers: { "X-Authorization": `Bearer ${jwt}` }
+      }
+    );
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`Telemetry fetch failed (${res.status})`);
     }
+
+    const data = await res.json();
+    if (!data[dataKey] || data[dataKey].length === 0) {
+      setChartData({ labels: [], datasets: [] });
+      return;
+    }
+
+    const sorted = data[dataKey].sort((a, b) => a.ts - b.ts);
+
+    const labels = sorted.map((point) =>
+      new Date(point.ts).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    );
+
+    const values = sorted.map((point) => parseFloat(point.value));
+
+    setChartData({
+      labels,
+      datasets: [
+        {
+          label: `${title} (${unit})`,
+          data: values,
+          borderColor: "#980000",
+          backgroundColor: "rgba(152, 0, 0, 0.12)",
+          tension: 0.4,
+          fill: true,
+          pointRadius: 2,
+          pointHoverRadius: 5,
+          borderWidth: 3,
+        },
+      ],
+    });
   };
 
   const connectToDefault = async () => {
-    const defaultId = loadDefaultDeviceId();
+    const defaultId = loadDefaultDevice();
+
     if (!defaultId) {
       setError("No default device set. Go to Devices page to set one.");
+      setIsConnected(false);
       setIsLoading(false);
       return;
     }
+
     setDeviceId(defaultId);
     setIsLoading(true);
     setError(null);
+
     try {
-      await login();
-      await fetchTimeSeries(defaultId);
+      const jwt = await login();
+      await fetchTimeSeries(defaultId, jwt);
       setIsConnected(true);
+      console.log("Time Series Chart connected to device: ", defaultId);
     } catch (err) {
-      let msg = err.message;
-      if (msg.includes("404")) msg = "Device not found";
-      else if (msg.includes("401") || msg.includes("403")) msg = "Login failed";
-      else msg = "Failed to connect";
+      console.error("Connection error:", err);
+
+      let msg = "Failed to connect";
+      if (err.message.includes("401") || err.message.includes("403")) {
+        msg = "Invalid ThingsBoard credentials. Check your .env file.";
+      } else if (err.message.includes("404")) {
+        msg = "Device not found. Please verify the Device ID.";
+      } else if (err.message.includes("Failed to fetch")) {
+        msg = "Cannot reach ThingsBoard Cloud. Check your internet connection.";
+      } else {
+        msg = err.message;
+      }
+
       setError(msg);
       setIsConnected(false);
     } finally {
@@ -139,13 +157,24 @@ function TimeSeriesChart({
     }
   };
 
-  const handleDisconnect = () => {
+  const loadDefaultDevice = () => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return parsed.defaultId ?? null;
+    } catch (e) {
+      console.error("Failed to load default device:", e);
+      return null;
+    }
+  };
+
+  const handleReconnect = () => {
     setIsConnected(false);
-    setIsLoading(true);
-    setError(null);
     setToken(null);
+    setError(null);
     setChartData({ labels: [], datasets: [] });
-    setTimeout(connectToDefault, 100);
+    connectToDefault();
   };
 
   useEffect(() => {
@@ -154,24 +183,35 @@ function TimeSeriesChart({
 
   useEffect(() => {
     if (!isConnected || !deviceId) return;
-    const interval = setInterval(() => {
-      fetchTimeSeries(deviceId).catch(() => {});
+
+    const interval = setInterval(async () => {
+      try {
+        const jwt = token || await login();
+        await fetchTimeSeries(deviceId, jwt);
+      } catch (err) {
+        console.error("Chart polling error:", err);
+      }
     }, 10000);
+
     return () => clearInterval(interval);
-  }, [isConnected, deviceId]);
+  }, [isConnected, deviceId, token]);
 
   useEffect(() => {
-    const handleStorage = (e) => {
+    const handleStorageChange = (e) => {
       if (e.key === STORAGE_KEY) {
-        const newDefault = loadDefaultDeviceId();
+        const newDefault = loadDefaultDevice();
         if (newDefault && newDefault !== deviceId) {
           setDeviceId(newDefault);
-          handleDisconnect();
+          setIsConnected(false);
+          setToken(null);
+          setChartData({ labels: [], datasets: [] });
+          setTimeout(connectToDefault, 300);
         }
       }
     };
-    window.addEventListener('storage', handleStorage);
-    return () => window.removeEventListener('storage', handleStorage);
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
   }, [deviceId]);
 
   const chartOptions = {
@@ -210,7 +250,7 @@ function TimeSeriesChart({
       <div className="widget-title">{title}</div>
 
       {isLoading ? (
-        <div className="widget-loading">Connecting to default device...</div>
+        <div className="widget-loading">Connecting to ThingsBoard Cloud...</div>
       ) : !deviceId ? (
         <div className="widget-no-default">
           <p>No default device set.</p>
@@ -219,14 +259,21 @@ function TimeSeriesChart({
       ) : (
         <div className="widget-control">
           <div className="widget-status">
-            Connected to <strong>{deviceId}</strong>
+            {isConnected ? "Connected to " : "Disconnected from "} 
+            <strong style={{ wordBreak: "break-all", fontSize: "0.9em" }}>{deviceId}</strong>
           </div>
 
           {error && <div className="widget-error">⚠️ {error}</div>}
 
-          <div className="chart-container">
+          <div className="chart-container" style={{ height: "320px" }}>
             <Line data={chartData} options={chartOptions} />
           </div>
+
+          {!isConnected && (
+            <button className="widget-reconnect-btn" onClick={handleReconnect}>
+              Reconnect
+            </button>
+          )}
         </div>
       )}
     </div>
