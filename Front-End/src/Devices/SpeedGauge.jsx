@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { arc } from "d3-shape";
 import { scaleLinear } from "d3-scale";
 import "./Styles/WidgetStyle.css";
+import { fetchLatestTelemetry } from "../Utils/thingsboardApi";
 
 const Gauge = ({
   value = 0,
@@ -73,12 +74,6 @@ export default function SpeedGauge() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [token, setToken] = useState(null);
-  const [isConnected, setIsConnected] = useState(false);
-
-  const TB_BASE_URL = "https://thingsboard.cloud";
-
-  const TB_EMAIL = import.meta.env.VITE_TB_EMAIL;
-  const TB_PASSWORD = import.meta.env.VITE_TB_PASSWORD;
 
   const loadDefaultDevice = () => {
     try {
@@ -112,22 +107,20 @@ export default function SpeedGauge() {
     return data.token;
   };
 
-  const fetchSpeed = async (devId, jwt) => {
+  const fetchSpeed = async (devId) => {
     if (!devId) return;
 
-    const res = await fetch(
-      `${TB_BASE_URL}/api/plugins/telemetry/DEVICE/${devId}/values/timeseries?keys=speed&useLatestTs=true`,
-      {
-        headers: { "X-Authorization": `Bearer ${jwt}` }
-      }
-    );
+    const { data } = await fetchLatestTelemetry({
+      deviceId: devId,
+      keys: ["speed"],
+    });
 
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(`Telemetry fetch failed (${res.status})`);
+    if (data.speed && data.speed.length > 0) {
+      const latestSpeed = parseFloat(data.speed[0].value);
+      setSpeed(isNaN(latestSpeed) ? 0 : latestSpeed);
+    } else {
+      setSpeed(0);
     }
-
-    const data = await res.json();
 
     if (data.speed && data.speed.length > 0) {
       const latestSpeed = parseFloat(data.speed[0].value);
@@ -152,8 +145,7 @@ export default function SpeedGauge() {
     setError(null);
 
     try {
-      const jwt = await login();
-      await fetchSpeed(defaultId, jwt);
+      await fetchSpeed(defaultId);
       setIsConnected(true);
       console.log("Speed Gauge connected to device:", defaultId);
     } catch (err) {
@@ -193,8 +185,7 @@ export default function SpeedGauge() {
 
     const interval = setInterval(async () => {
       try {
-        const jwt = token || await login();
-        await fetchSpeed(deviceId, jwt);
+        await fetchSpeed(deviceId);
       } catch (err) {
         console.error("Speed polling error:", err);
       }

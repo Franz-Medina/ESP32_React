@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Swal from 'sweetalert2'
 import 'sweetalert2/dist/sweetalert2.min.css'
 import logo from '../Pictures/Avinya.png'
@@ -6,46 +6,42 @@ import '../Styles/Devices.css'
 import { getCurrentUserProfile, isAdministratorRole } from '../Utils/getCurrentUserProfile'
 import { performReliableLogout } from '../Utils/performReliableLogout'
 import { buildApiAssetUrl } from '../Config/API'
-import { ProfileMenuIcon } from '../Components/Icons.jsx'
-
-import { createActivityLog, ACTIVITY_LOG_TYPES } from '../Utils/activityLogsApi'
+import {
+  ProfileMenuIcon,
+  EditIcon,
+  TrashIcon,
+  SaveIcon
+} from '../Components/Icons.jsx'
+import {
+  fetchDevices,
+  createDevice,
+  updateDevice,
+  deleteDeviceById
+} from '../Utils/devicesApi'
+import { syncDevicesForDashboardWidgets } from '../Utils/deviceStorage'
 
 const MAX_DEVICES = 5
-const STORAGE_KEY = 'avinya_devices'
-
-const loadDevicesState = () => {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return { devices: [], defaultId: null }
-    const parsed = JSON.parse(raw)
-    return {
-      devices: Array.isArray(parsed.devices) ? parsed.devices : [],
-      defaultId: parsed.defaultId ?? null,
-    }
-  } catch {
-    return { devices: [], defaultId: null }
-  }
-}
-
-const saveDevicesState = (devices, defaultId) => {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ devices, defaultId }))
-  } catch {
-  }
-}
+const DEVICE_MODAL_TRANSITION_MS = 280
 
 const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   const [isEntitiesOpen, setIsEntitiesOpen] = useState(true)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
 
-  const [devices, setDevices] = useState(() => loadDevicesState().devices)
-  const [defaultId, setDefaultId] = useState(() => loadDevicesState().defaultId)
+  const [devices, setDevices] = useState([])
+  const [isDevicesLoading, setIsDevicesLoading] = useState(true)
+  const [devicesRequestError, setDevicesRequestError] = useState('')
 
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isModalClosing, setIsModalClosing] = useState(false)
+  const [modalMode, setModalMode] = useState('add')
+  const [editingDevice, setEditingDevice] = useState(null)
   const [formId, setFormId] = useState('')
   const [formDesc, setFormDesc] = useState('')
   const [formIdError, setFormIdError] = useState('')
+
+  const [isDeviceActionLoading, setIsDeviceActionLoading] = useState(false)
+  const [deviceActionLoadingTitle, setDeviceActionLoadingTitle] = useState('Loading Devices')
 
   const user = getCurrentUserProfile()
   const isAdministrator = isAdministratorRole(user.roleLabel)
@@ -56,10 +52,6 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
       .map((v) => String(v).trim().charAt(0).toUpperCase())
       .join('')
       .slice(0, 2) || 'A'
-
-  useEffect(() => {
-    saveDevicesState(devices, defaultId)
-  }, [devices, defaultId])
 
   useEffect(() => {
     document.title = 'Avinya | Devices'
@@ -75,9 +67,45 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     return () => document.removeEventListener('mousedown', handleOutsideClick)
   }, [])
 
+  const loadDevicesFromServer = useCallback(async () => {
+    try {
+      setIsDevicesLoading(true)
+      setDevicesRequestError('')
+
+      const [data] = await Promise.all([
+        fetchDevices(),
+        new Promise((resolve) => window.setTimeout(resolve, 420)),
+      ])
+
+      const nextDevices = Array.isArray(data.devices) ? data.devices : []
+
+      setDevices(nextDevices)
+      syncDevicesForDashboardWidgets(nextDevices)
+    } catch (error) {
+      console.error('DEVICES LOAD ERROR:', error)
+
+      setDevices([])
+      setDevicesRequestError(
+        error instanceof TypeError || error.message === 'Failed to fetch'
+          ? 'Unable to connect to the server. Please check your connection and try again.'
+          : error.message || 'Unable to load devices right now.'
+      )
+    } finally {
+      setIsDevicesLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadDevicesFromServer()
+  }, [loadDevicesFromServer])
+
   useEffect(() => {
     if (!isModalOpen) return
-    const handleKey = (e) => { if (e.key === 'Escape') closeModal() }
+
+    const handleKey = (e) => {
+      if (e.key === 'Escape') void closeModal()
+    }
+
     document.addEventListener('keydown', handleKey)
     return () => document.removeEventListener('keydown', handleKey)
   }, [isModalOpen])
@@ -134,64 +162,92 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     performReliableLogout(onLogout)
   }
 
-  const openModal = () => {
+  const openAddModal = () => {
+    setModalMode('add')
+    setEditingDevice(null)
     setFormId('')
     setFormDesc('')
     setFormIdError('')
+    setIsModalClosing(false)
     setIsModalOpen(true)
   }
 
-  const closeModal = () => {
+  const openEditModal = (device) => {
+    setModalMode('edit')
+    setEditingDevice(device)
+    setFormId(device.deviceUid || '')
+    setFormDesc(device.description || '')
+    setFormIdError('')
+    setIsModalClosing(false)
+    setIsModalOpen(true)
+  }
+
+  const closeModal = async () => {
+    if (isModalClosing) return
+
+    setIsModalClosing(true)
+
+    await new Promise((resolve) => setTimeout(resolve, DEVICE_MODAL_TRANSITION_MS))
+
     setIsModalOpen(false)
+    setIsModalClosing(false)
+    setModalMode('add')
+    setEditingDevice(null)
     setFormId('')
     setFormDesc('')
     setFormIdError('')
   }
 
-  const handleAddDevice = () => {
-    const trimmedId = formId.trim()
-    const trimmedDesc = formDesc.trim()
+  const showDevicesStatusAlert = async ({ type, title, message }) => {
+    const isSuccess = type === 'success'
 
-    if (!trimmedId) {
-      setFormIdError('Device ID cannot be empty.')
-      return
-    }
-    if (devices.some((d) => d.id === trimmedId)) {
-      setFormIdError('This Device ID already exists.')
-      return
-    }
-    if (devices.length >= MAX_DEVICES) {
-      setFormIdError(`You can only add up to ${MAX_DEVICES} Device IDs.`)
-      return
-    }
+    await Swal.fire({
+      html: `
+        <div class="auth-swal-card">
+          <div class="auth-swal-symbol ${isSuccess ? 'auth-swal-symbol-success' : 'auth-swal-symbol-error'}" aria-hidden="true">
+            ${
+              isSuccess
+                ? `
+                  <svg viewBox="0 0 24 24">
+                    <path d="M20 6L9 17l-5-5" />
+                  </svg>
+                `
+                : `
+                  <svg viewBox="0 0 24 24">
+                    <path d="M15 9l-6 6" />
+                    <path d="m9 9 6 6" />
+                  </svg>
+                `
+            }
+          </div>
 
-    const newDevice = { id: trimmedId, description: trimmedDesc }
-    const updated = [...devices, newDevice]
-    setDevices(updated)
-    if (updated.length === 1) setDefaultId(trimmedId)
-    void createActivityLog({
-      actionType: ACTIVITY_LOG_TYPES.DEVICE_ADDED,
-      deviceId: trimmedId,
-      deviceDescription: trimmedDesc,
-    }).catch((error) => {
-      console.error('DEVICE ADDED LOG ERROR:', error)
+          <h2 class="auth-swal-heading">${title}</h2>
+
+          <p class="auth-swal-message">${message}</p>
+        </div>
+      `,
+      timer: 2600,
+      showConfirmButton: false,
+      showCancelButton: false,
+      showCloseButton: false,
+      buttonsStyling: false,
+      allowOutsideClick: true,
+      allowEscapeKey: true,
+      customClass: {
+        popup: 'auth-swal-popup',
+        htmlContainer: 'auth-swal-html'
+      }
     })
-
-    closeModal()
   }
 
-  const handleSetDefault = (id) => {
-    setDefaultId(id)
-  }
-
-  const handleRemoveDevice = async (id) => {
-    const result = await Swal.fire({
-      title: 'Remove Device?',
-      text: `Are you sure you want to remove "${id}"?`,
-      icon: 'warning',
+  const confirmDeviceAction = async ({ title, text, confirmButtonText }) =>
+    Swal.fire({
+      title,
+      text,
+      icon: 'question',
       showCancelButton: true,
-      confirmButtonText: 'Remove',
-      cancelButtonText: 'Cancel',
+      confirmButtonText,
+      cancelButtonText: 'No',
       reverseButtons: true,
       buttonsStyling: false,
       allowOutsideClick: true,
@@ -207,29 +263,156 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
       },
     })
 
-    if (!result.isConfirmed) return
+  const validateDeviceForm = ({ currentDeviceId = null } = {}) => {
+    if (!normalizedFormId) {
+      setFormIdError('Device ID cannot be empty.')
+      return false
+    }
 
-    const updated = devices.filter((d) => d.id !== id)
-    setDevices(updated)
-    if (defaultId === id) setDefaultId(updated.length > 0 ? updated[0].id : null)
-    void createActivityLog({
-      actionType: ACTIVITY_LOG_TYPES.DEVICE_REMOVED,
-      deviceId: id,
-    }).catch((error) => {
-      console.error('DEVICE REMOVED LOG ERROR:', error)
+    if (normalizedFormId.length > 64) {
+      setFormIdError('Device ID must not exceed 64 characters.')
+      return false
+    }
+
+    if (!/^[A-Za-z0-9._:-]+$/.test(normalizedFormId)) {
+      setFormIdError('Device ID may only contain letters, numbers, dots, underscores, colons, and hyphens.')
+      return false
+    }
+
+    const hasDuplicate = devices.some((device) => {
+      if (currentDeviceId && device.id === currentDeviceId) return false
+      return String(device.deviceUid || '').trim().toLowerCase() === normalizedFormId.toLowerCase()
     })
+
+    if (hasDuplicate) {
+      setFormIdError('This Device ID already exists.')
+      return false
+    }
+
+    return true
   }
 
-  const atLimit = devices.length >= MAX_DEVICES
+  const handleSubmitDevice = async () => {
+    if (isModalClosing || isDeviceActionLoading) return
 
-  const slots = [
-    ...devices,
-    ...Array.from({ length: MAX_DEVICES - devices.length }, (_, i) => ({
-      id: null,
-      description: null,
-      _emptyIndex: devices.length + i,
-    })),
-  ]
+    const currentDeviceId = editingDevice?.id || null
+
+    if (!validateDeviceForm({ currentDeviceId })) return
+
+    if (modalMode === 'edit' && !hasDeviceFormChanges) return
+
+    const payload = {
+      deviceUid: normalizedFormId,
+      description: normalizedFormDesc,
+    }
+
+    const targetDevice = editingDevice
+    const isEditMode = modalMode === 'edit'
+
+    await closeModal()
+
+    const confirmation = await confirmDeviceAction({
+      title: isEditMode ? 'Edit Device?' : 'Add Device?',
+      text: isEditMode
+        ? `Are you sure you want to save changes to "${targetDevice?.deviceUid}"?`
+        : `Are you sure you want to add "${payload.deviceUid}"?`,
+      confirmButtonText: 'Yes',
+    })
+
+    if (!confirmation.isConfirmed) return
+
+    setDeviceActionLoadingTitle(isEditMode ? 'Updating Device' : 'Adding Device')
+    setIsDeviceActionLoading(true)
+
+    try {
+      const [data] = await Promise.all([
+        isEditMode
+          ? updateDevice(targetDevice.id, payload)
+          : createDevice(payload),
+        new Promise((resolve) => window.setTimeout(resolve, 620)),
+      ])
+
+      const nextDevices = isEditMode
+        ? devices.map((device) => device.id === targetDevice.id ? data.device : device)
+        : [...devices, data.device]
+
+      setDevices(nextDevices)
+      syncDevicesForDashboardWidgets(nextDevices)
+
+      await showDevicesStatusAlert({
+        type: 'success',
+        title: isEditMode ? 'Device Updated' : 'Device Added',
+        message: isEditMode
+          ? 'The device has been updated successfully.'
+          : 'The device has been added successfully.',
+      })
+    } catch (error) {
+      await showDevicesStatusAlert({
+        type: 'error',
+        title: isEditMode ? 'Update Failed' : 'Add Failed',
+        message: error.message || 'Something went wrong. Please try again.',
+      })
+    } finally {
+      setIsDeviceActionLoading(false)
+    }
+  }
+
+  const handleDeleteDevice = async (device) => {
+    if (isDeviceActionLoading) return
+
+    const confirmation = await confirmDeviceAction({
+      title: 'Delete Device?',
+      text: `Are you sure you want to delete "${device.deviceUid}"?`,
+      confirmButtonText: 'Yes',
+    })
+
+    if (!confirmation.isConfirmed) return
+
+    setDeviceActionLoadingTitle('Deleting Device')
+    setIsDeviceActionLoading(true)
+
+    try {
+      await Promise.all([
+        deleteDeviceById(device.id),
+        new Promise((resolve) => window.setTimeout(resolve, 620)),
+      ])
+
+      const nextDevices = devices.filter((item) => item.id !== device.id)
+
+      setDevices(nextDevices)
+      syncDevicesForDashboardWidgets(nextDevices)
+
+      await showDevicesStatusAlert({
+        type: 'success',
+        title: 'Device Deleted',
+        message: 'The device has been deleted successfully.',
+      })
+    } catch (error) {
+      await showDevicesStatusAlert({
+        type: 'error',
+        title: 'Delete Failed',
+        message: error.message || 'Something went wrong while deleting the device.',
+      })
+    } finally {
+      setIsDeviceActionLoading(false)
+    }
+  }
+
+  const normalizedFormId = formId.trim()
+  const normalizedFormDesc = formDesc.trim()
+
+  const isEditingDevice = modalMode === 'edit' && editingDevice
+
+  const hasDeviceFormChanges = useMemo(() => {
+    if (!isEditingDevice) return true
+
+    return (
+      normalizedFormId !== String(editingDevice.deviceUid || '').trim() ||
+      normalizedFormDesc !== String(editingDevice.description || '').trim()
+    )
+  }, [editingDevice, isEditingDevice, normalizedFormDesc, normalizedFormId])
+
+  const atLimit = devices.length >= MAX_DEVICES
 
   return (
     <main className="dashboard-page devices-page">
@@ -472,29 +655,28 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
         <div className="dashboard-content-body dashboard-content-body-frame">
           <div className="dashboard-header dashboard-page-title-row devices-page-topbar">
             <h1 id="devices-page-title" className="dashboard-content-title">Devices</h1>
-            <span className="devices-topbar-count">
-              {devices.length} of {MAX_DEVICES} Device IDs Used
-            </span>
           </div>
 
           <section className="devices-panel" aria-labelledby="devices-page-title">
 
             <div className="devices-panel-toolbar">
-              <div className="devices-toolbar-left">
-              </div>
+              <span className="devices-topbar-count">
+                {devices.length} of {MAX_DEVICES} Devices Used
+              </span>
 
               {!atLimit ? (
                 <button
                   type="button"
                   className="devices-add-btn"
-                  onClick={openModal}
+                  onClick={openAddModal}
+                  disabled={isDevicesLoading || isDeviceActionLoading}
                 >
                   <span className="devices-add-btn-icon" aria-hidden="true">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                       <path d="M12 5v14M5 12h14" />
                     </svg>
                   </span>
-                  <span>Add Device ID</span>
+                  <span>Add Device</span>
                 </button>
               ) : (
                 <span className="devices-limit-badge">
@@ -503,107 +685,82 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
               )}
             </div>
 
-            <div className="devices-slots" role="list" aria-label="Device IDs">
-              {slots.map((slot, index) => {
-                const isFilled = slot.id !== null
-                const isDefault = slot.id === defaultId
-
-                return (
+            <div className="devices-slots" role="list" aria-label="Devices">
+              {isDevicesLoading ? (
+                <div className="devices-empty-state" role="status" aria-live="polite">
+                  Loading devices...
+                </div>
+              ) : devicesRequestError ? (
+                <div className="devices-empty-state devices-empty-state-error" role="alert">
+                  {devicesRequestError}
+                </div>
+              ) : devices.length === 0 ? (
+                <div className="devices-empty-state" aria-live="polite">
+                  No devices found.
+                </div>
+              ) : (
+                devices.map((device, index) => (
                   <div
-                    key={isFilled ? slot.id : `empty-${slot._emptyIndex}`}
-                    className={[
-                      'devices-slot',
-                      isFilled ? 'devices-slot-filled' : 'devices-slot-empty',
-                      isDefault ? 'devices-slot-default' : '',
-                    ].filter(Boolean).join(' ')}
+                    key={device.id}
+                    className="devices-slot devices-slot-filled"
+                    style={{ '--devices-slot-delay': `${index * 48}ms` }}
                     role="listitem"
                   >
                     <span className="devices-slot-number" aria-hidden="true">
                       {index + 1}
                     </span>
 
-                    {isFilled ? (
-                      <>
-                        <span className="devices-slot-icon" aria-hidden="true">
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <rect x="3" y="7" width="7" height="10" rx="1.5" />
-                            <rect x="14" y="7" width="7" height="10" rx="1.5" />
-                            <path d="M6.5 10.5h.01" /><path d="M17.5 10.5h.01" />
-                          </svg>
+                    <span className="devices-slot-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <rect x="3" y="7" width="7" height="10" rx="1.5" />
+                        <rect x="14" y="7" width="7" height="10" rx="1.5" />
+                        <path d="M6.5 10.5h.01" />
+                        <path d="M17.5 10.5h.01" />
+                      </svg>
+                    </span>
+
+                    <div className="devices-slot-info">
+                      <span className="devices-slot-id" title={device.deviceUid}>
+                        {device.deviceUid}
+                      </span>
+
+                      {device.description && (
+                        <span className="devices-slot-desc" title={device.description}>
+                          {device.description}
                         </span>
+                      )}
+                    </div>
 
-                        <div className="devices-slot-info">
-                          <span className="devices-slot-id">{slot.id}</span>
-                          {slot.description && (
-                            <span className="devices-slot-desc">{slot.description}</span>
-                          )}
-                        </div>
+                    <div className="devices-slot-right">
+                      <div className="devices-slot-actions">
+                        <button
+                          type="button"
+                          className="devices-slot-action-btn devices-slot-edit"
+                          onClick={() => openEditModal(device)}
+                          disabled={isDeviceActionLoading}
+                        >
+                          <span className="devices-slot-action-icon" aria-hidden="true">
+                            <EditIcon />
+                          </span>
+                          <span>Edit</span>
+                        </button>
 
-                        <div className="devices-slot-right">
-                          {isDefault && (
-                            <span className="devices-slot-default-badge">
-                              <svg viewBox="0 0 24 24" fill="currentColor" width="10" height="10" aria-hidden="true">
-                                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14l-5-4.87 6.91-1.01L12 2z" />
-                              </svg>
-                              Default
-                            </span>
-                          )}
-
-                          <div className="devices-slot-actions">
-                            {!isDefault && (
-                              <button
-                                type="button"
-                                className="devices-slot-action-btn devices-slot-set-default"
-                                onClick={() => handleSetDefault(slot.id)}
-                                title="Set as default"
-                              >
-                                Set Default
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              className="devices-slot-action-btn devices-slot-remove"
-                              onClick={() => handleRemoveDevice(slot.id)}
-                              aria-label={`Remove ${slot.id}`}
-                              title="Remove"
-                            >
-                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" />
-                              </svg>
-                            </button>
-                          </div>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <span className="devices-slot-icon devices-slot-empty-icon" aria-hidden="true">
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                            <rect x="3" y="7" width="7" height="10" rx="1.5" />
-                            <rect x="14" y="7" width="7" height="10" rx="1.5" />
-                            <path d="M6.5 10.5h.01" /><path d="M17.5 10.5h.01" />
-                          </svg>
-                        </span>
-
-                        <span className="devices-slot-empty-label">Empty Slot</span>
-
-                        <div className="devices-slot-right">
-                          <button
-                            type="button"
-                            className="devices-slot-action-btn devices-slot-add-here"
-                            onClick={openModal}
-                            aria-label={`Add device to slot ${index + 1}`}
-                          >
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="12" height="12">
-                              <path d="M12 5v14M5 12h14" />
-                            </svg>
-                            Add
-                          </button>
-                        </div>
-                      </>
-                    )}
+                        <button
+                          type="button"
+                          className="devices-slot-action-btn devices-slot-delete"
+                          onClick={() => handleDeleteDevice(device)}
+                          disabled={isDeviceActionLoading}
+                        >
+                          <span className="devices-slot-action-icon" aria-hidden="true">
+                            <TrashIcon />
+                          </span>
+                          <span>Delete</span>
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                )
-              })}
+                ))
+              )}
             </div>
           </section>
         </div>
@@ -611,20 +768,25 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
 
       {isModalOpen && (
         <div
-          className="devices-modal-backdrop"
-          onClick={(e) => { if (e.target === e.currentTarget) closeModal() }}
+          className={`devices-modal-backdrop ${isModalClosing ? 'devices-modal-closing' : ''}`}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) void closeModal()
+          }}
           role="dialog"
           aria-modal="true"
           aria-labelledby="devices-modal-title"
         >
-          <div className="devices-modal">
+          <div className={`devices-modal ${isModalClosing ? 'devices-modal-closing' : ''}`}>
             <div className="devices-modal-header">
-              <h2 className="devices-modal-title" id="devices-modal-title">Add Device ID</h2>
+              <h2 className="devices-modal-title" id="devices-modal-title">
+                {modalMode === 'edit' ? 'Edit Device' : 'Add Device'}
+              </h2>
               <button
                 type="button"
                 className="devices-modal-close"
-                onClick={closeModal}
+                onClick={() => void closeModal()}
                 aria-label="Close"
+                disabled={isModalClosing}
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
                   <path d="M18 6 6 18M6 6l12 12" />
@@ -647,10 +809,10 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                     id="device-id-input"
                     type="text"
                     className={`devices-input ${formIdError ? 'devices-input-has-error' : ''}`}
-                    placeholder="e.g. DEV-001"
+                    placeholder=""
                     value={formId}
                     onChange={(e) => { setFormId(e.target.value); setFormIdError('') }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleAddDevice() }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') void handleSubmitDevice() }}
                     autoFocus
                     maxLength={64}
                   />
@@ -669,7 +831,7 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
               <div className="devices-field">
                 <label className="devices-field-label" htmlFor="device-desc-input">
                   Description
-                  <span className="devices-field-optional">optional</span>
+                  <span className="devices-field-optional">Optional</span>
                 </label>
                 <textarea
                   id="device-desc-input"
@@ -685,15 +847,47 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
             </div>
 
             <div className="devices-modal-footer">
-              <button type="button" className="devices-modal-cancel-btn" onClick={closeModal}>
+              <button
+                type="button"
+                className="devices-modal-cancel-btn"
+                onClick={() => void closeModal()}
+                disabled={isModalClosing}
+              >
                 Cancel
               </button>
-              <button type="button" className="devices-modal-confirm-btn" onClick={handleAddDevice}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="14" height="14">
-                  <path d="M12 5v14M5 12h14" />
-                </svg>
-                Add Device
+
+              <button
+                type="button"
+                className="devices-modal-confirm-btn"
+                onClick={() => void handleSubmitDevice()}
+                disabled={
+                  isModalClosing ||
+                  isDeviceActionLoading ||
+                  (modalMode === 'edit' && !hasDeviceFormChanges)
+                }
+              >
+                {modalMode === 'edit' ? (
+                  <span className="devices-modal-confirm-icon" aria-hidden="true">
+                    <SaveIcon />
+                  </span>
+                ) : (
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="14" height="14">
+                    <path d="M12 5v14M5 12h14" />
+                  </svg>
+                )}
+                {modalMode === 'edit' ? 'Edit Device' : 'Add Device'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {isDeviceActionLoading && (
+        <div className="devices-action-overlay" role="status" aria-live="polite" aria-busy="true">
+          <div className="devices-action-card">
+            <img src={logo} alt="Avinya Logo" className="devices-action-logo" />
+            <p className="devices-action-title">{deviceActionLoadingTitle}</p>
+            <div className="devices-action-loader" aria-hidden="true">
+              <span className="devices-action-loader-bar"></span>
             </div>
           </div>
         </div>

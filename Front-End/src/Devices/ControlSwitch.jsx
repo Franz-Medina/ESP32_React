@@ -1,31 +1,29 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import "./Styles/WidgetStyle.css";
+import { fetchLatestTelemetry, sendOneWayRpc } from "../Utils/thingsboardApi";
 import { createActivityLog, ACTIVITY_LOG_TYPES } from "../Utils/activityLogsApi";
 
-function ControlSwitch({ 
-  title = "SWITCH", 
+function ControlSwitch({
+  title = "SWITCH",
   rpcMethod = "setPump",
-  telemetryKey = "pump" 
+  telemetryKey = "pump",
 }) {
-  const STORAGE_KEY = 'avinya_devices';
+  const STORAGE_KEY = "avinya_devices";
 
   const [deviceId, setDeviceId] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isOn, setIsOn] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [token, setToken] = useState(null);
-
-  const TB_BASE_URL = "https://thingsboard.cloud";
-
-  const TB_EMAIL = import.meta.env.VITE_TB_EMAIL;
-  const TB_PASSWORD = import.meta.env.VITE_TB_PASSWORD;
 
   const loadDefaultDevice = () => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
+
       if (!raw) return null;
+
       const parsed = JSON.parse(raw);
+
       return parsed.defaultId ?? null;
     } catch (e) {
       console.error("Failed to load default device:", e);
@@ -33,142 +31,150 @@ function ControlSwitch({
     }
   };
 
-  const login = async () => {
-    const res = await fetch(`${TB_BASE_URL}/api/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        username: TB_EMAIL,
-        password: TB_PASSWORD
-      })
+  const fetchCurrentState = async (targetDeviceId) => {
+    if (!targetDeviceId) return;
+
+    const { data } = await fetchLatestTelemetry({
+      deviceId: targetDeviceId,
+      keys: [telemetryKey],
     });
-
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(`Login failed (${res.status}): ${text}`);
-    }
-
-    const data = await res.json();
-    setToken(data.token);
-    return data.token;
-  };
-
-  const fetchCurrentState = async (devId, jwt) => {
-    const url = `${TB_BASE_URL}/api/plugins/telemetry/DEVICE/${devId}/values/timeseries?keys=${telemetryKey}&useLatestTs=true`;
-
-    const res = await fetch(url, {
-      headers: { "X-Authorization": `Bearer ${jwt}` }
-    });
-
-    if (!res.ok) throw new Error(`Telemetry failed (${res.status})`);
-
-    const data = await res.json();
 
     if (data[telemetryKey]?.length > 0) {
       const value = data[telemetryKey][0].value;
-      const boolValue = value === true || value === "true" || value === 1 || value === "1";
+
+      const boolValue =
+        value === true ||
+        value === "true" ||
+        value === 1 ||
+        value === "1";
+
       setIsOn(boolValue);
     }
   };
 
-  const connectToDevice = async () => {
-    const defaultId = loadDefaultDevice();
-    if (!defaultId) {
+  const getConnectionErrorMessage = (err) => {
+    const message = err?.message || "";
+
+    if (message.includes("401") || message.includes("403")) {
+      return "Invalid or expired session. Please log in again.";
+    }
+
+    if (message.includes("404")) {
+      return "Device not found. Please verify the Device ID in ThingsBoard.";
+    }
+
+    if (message.includes("Failed to fetch")) {
+      return "Unable to connect to the server. Please check your connection.";
+    }
+
+    return message || "Failed to connect.";
+  };
+
+  const connectToDevice = async (targetDeviceId = loadDefaultDevice()) => {
+    if (!targetDeviceId) {
       setError("No default device set. Go to Devices page to set one.");
       setIsConnected(false);
       setIsLoading(false);
       return;
     }
 
-    setDeviceId(defaultId);
+    setDeviceId(targetDeviceId);
     setIsLoading(true);
     setError(null);
 
     try {
-      const jwt = await login();
-      await fetchCurrentState(defaultId, jwt);
-      setIsConnected(true);
-      console.log("✅ Connected to device:", defaultId);
-    } catch (err) {
-      console.error(err);
-      let msg = "Failed to connect";
-      if (err.message.includes("401") || err.message.includes("403")) msg = "Invalid ThingsBoard credentials.";
-      else if (err.message.includes("404")) msg = "Device not found.";
-      else if (err.message.includes("Failed to fetch")) msg = "Cannot reach ThingsBoard Cloud.";
-      else msg = err.message;
+      await fetchCurrentState(targetDeviceId);
 
-      setError(msg);
+      setIsConnected(true);
+      console.log("Connected to device:", targetDeviceId);
+    } catch (err) {
+      console.error("Connection error:", err);
+
+      setError(getConnectionErrorMessage(err));
       setIsConnected(false);
     } finally {
       setIsLoading(false);
     }
   };
 
+  const saveSwitchActivityLog = async (nextState) => {
+    try {
+      await createActivityLog({
+        actionType: ACTIVITY_LOG_TYPES.DEVICE_UPDATED,
+        deviceId,
+        deviceDescription: `${title} was turned ${nextState ? "ON" : "OFF"}`,
+      });
+    } catch (logError) {
+      console.error("CONTROL SWITCH ACTIVITY LOG ERROR:", logError);
+    }
+  };
+
   const handleToggle = async () => {
     if (!deviceId || !isConnected) return;
 
-    const newState = !isOn;
-    setIsOn(newState);
+    const nextState = !isOn;
+
+    setIsOn(nextState);
+    setError(null);
 
     try {
-      const jwt = token ?? await login();
-
-      const res = await fetch(`${TB_BASE_URL}/api/plugins/rpc/oneway/${deviceId}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Authorization": `Bearer ${jwt}`
-        },
-        body: JSON.stringify({
-          method: rpcMethod,
-          params: newState
-        })
+      await sendOneWayRpc({
+        deviceId,
+        method: rpcMethod,
+        params: nextState,
       });
 
-      if (!res.ok) throw new Error(`RPC failed (${res.status})`);
+      await saveSwitchActivityLog(nextState);
 
-      console.log(`Command sent: ${rpcMethod}(${newState})`);
-
-      createActivityLog({
-        actionType: newState ? ACTIVITY_LOG_TYPES.PUMP_ON : ACTIVITY_LOG_TYPES.PUMP_OFF,
-        deviceId: deviceId,
-        description: `Pump was turned ${newState ? 'ON' : 'OFF'}`,
-        value: newState,
-      });
-
+      console.log(`Command sent: ${rpcMethod}(${nextState})`);
     } catch (err) {
-      console.error(err);
-      setIsOn(!newState);
-      setError("Failed to send command");
+      console.error("RPC error:", err);
+
+      setIsOn(!nextState);
+      setError("Failed to send command.");
     }
   };
 
   const handleReconnect = () => {
     setIsConnected(false);
-    setToken(null);
     setError(null);
-    connectToDevice();
+
+    const defaultId = loadDefaultDevice();
+
+    if (defaultId) {
+      void connectToDevice(defaultId);
+    } else {
+      setError("No default device set. Go to Devices page.");
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => {
-    connectToDevice();
+    const defaultId = loadDefaultDevice();
+
+    setDeviceId(defaultId);
+    void connectToDevice(defaultId);
   }, []);
 
   useEffect(() => {
     const handleStorageChange = (e) => {
-      if (e.key === STORAGE_KEY) {
-        const newDefault = loadDefaultDevice();
-        if (newDefault && newDefault !== deviceId) {
-          setDeviceId(newDefault);
-          setIsConnected(false);
-          setToken(null);
-          setTimeout(connectToDevice, 300);
-        }
+      if (e.key !== STORAGE_KEY) return;
+
+      const newDefault = loadDefaultDevice();
+
+      if (newDefault && newDefault !== deviceId) {
+        setDeviceId(newDefault);
+        setIsConnected(false);
+
+        window.setTimeout(() => {
+          void connectToDevice(newDefault);
+        }, 300);
       }
     };
 
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
+    window.addEventListener("storage", handleStorageChange);
+
+    return () => window.removeEventListener("storage", handleStorageChange);
   }, [deviceId]);
 
   return (
@@ -180,25 +186,33 @@ function ControlSwitch({
       ) : !deviceId ? (
         <div className="widget-no-default">
           <p>No default device set.</p>
-          <small>Go to <strong>Devices</strong> page and set a default Device ID.</small>
+          <small>
+            Go to <strong>Devices</strong> page and set a default device.
+          </small>
         </div>
       ) : (
         <div className="widget-control">
           <div className="widget-status">
-            {isConnected ? "Connected to " : "Disconnected from "} 
-            <strong style={{ wordBreak: "break-all", fontSize: "0.9em" }}>{deviceId}</strong>
+            {isConnected ? "Connected to " : "Disconnected from "}
+            <strong style={{ wordBreak: "break-all", fontSize: "0.9em" }}>
+              {deviceId}
+            </strong>
           </div>
 
           {error && <div className="widget-error">⚠️ {error}</div>}
 
-          <div 
-            className="toggle-area" 
+          <div
+            className="toggle-area"
             onClick={handleToggle}
-            style={{ cursor: isConnected ? "pointer" : "not-allowed", opacity: isConnected ? 1 : 0.6 }}
+            style={{
+              cursor: isConnected ? "pointer" : "not-allowed",
+              opacity: isConnected ? 1 : 0.6,
+            }}
           >
             <div className={`widget-toggle ${isOn ? "on" : ""}`}>
               <div className="toggle-knob"></div>
             </div>
+
             <div style={{ marginTop: "8px", fontWeight: "bold" }}>
               {isOn ? "ON" : "OFF"}
             </div>

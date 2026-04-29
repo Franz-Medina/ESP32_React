@@ -1,12 +1,15 @@
-import { API_URL } from '../Config/API';
-import { getStoredAuthToken } from './authStorage';
-import { getCurrentUserProfile } from './getCurrentUserProfile';
+import { API_URL } from '../Config/API'
+import { getStoredAuthToken } from './authStorage'
 
 export const ACTIVITY_LOG_TYPES = {
   LOGIN: 'login',
   LOGOUT: 'logout',
   DEVICE_ADDED: 'device_added',
+  DEVICE_UPDATED: 'device_updated',
   DEVICE_REMOVED: 'device_removed',
+
+  // Widget-level activity types.
+  // These are for frontend readability, then mapped to backend-safe types before saving.
   PUMP_ON: 'pump_on',
   PUMP_OFF: 'pump_off',
   LED_ON: 'led_on',
@@ -14,26 +17,91 @@ export const ACTIVITY_LOG_TYPES = {
   SERVO_MOVE: 'servo_move',
   TELEMETRY_UPDATE: 'telemetry_update',
   SYSTEM_EVENT: 'system_event',
-};
+}
+
+const BACKEND_ACTIVITY_LOG_TYPES = new Set([
+  ACTIVITY_LOG_TYPES.LOGIN,
+  ACTIVITY_LOG_TYPES.LOGOUT,
+  ACTIVITY_LOG_TYPES.DEVICE_ADDED,
+  ACTIVITY_LOG_TYPES.DEVICE_UPDATED,
+  ACTIVITY_LOG_TYPES.DEVICE_REMOVED,
+])
+
+const WIDGET_ACTION_TYPE_MAP = {
+  [ACTIVITY_LOG_TYPES.PUMP_ON]: ACTIVITY_LOG_TYPES.DEVICE_UPDATED,
+  [ACTIVITY_LOG_TYPES.PUMP_OFF]: ACTIVITY_LOG_TYPES.DEVICE_UPDATED,
+  [ACTIVITY_LOG_TYPES.LED_ON]: ACTIVITY_LOG_TYPES.DEVICE_UPDATED,
+  [ACTIVITY_LOG_TYPES.LED_OFF]: ACTIVITY_LOG_TYPES.DEVICE_UPDATED,
+  [ACTIVITY_LOG_TYPES.SERVO_MOVE]: ACTIVITY_LOG_TYPES.DEVICE_UPDATED,
+  [ACTIVITY_LOG_TYPES.TELEMETRY_UPDATE]: ACTIVITY_LOG_TYPES.DEVICE_UPDATED,
+  [ACTIVITY_LOG_TYPES.SYSTEM_EVENT]: ACTIVITY_LOG_TYPES.DEVICE_UPDATED,
+}
+
+const normalizeActionTypeForBackend = (actionType = '') => {
+  const normalizedActionType = String(actionType || '').trim().toLowerCase()
+
+  if (BACKEND_ACTIVITY_LOG_TYPES.has(normalizedActionType)) {
+    return normalizedActionType
+  }
+
+  return WIDGET_ACTION_TYPE_MAP[normalizedActionType] || ACTIVITY_LOG_TYPES.DEVICE_UPDATED
+}
+
+const getWidgetActivityDescription = ({
+  actionType = '',
+  deviceDescription = '',
+  description = '',
+  value = null,
+} = {}) => {
+  const cleanDescription = String(description || '').trim()
+  const cleanDeviceDescription = String(deviceDescription || '').trim()
+
+  if (cleanDescription) {
+    return cleanDescription
+  }
+
+  if (cleanDeviceDescription) {
+    return cleanDeviceDescription
+  }
+
+  switch (actionType) {
+    case ACTIVITY_LOG_TYPES.PUMP_ON:
+      return 'Pump was turned ON'
+    case ACTIVITY_LOG_TYPES.PUMP_OFF:
+      return 'Pump was turned OFF'
+    case ACTIVITY_LOG_TYPES.LED_ON:
+      return 'LED was turned ON'
+    case ACTIVITY_LOG_TYPES.LED_OFF:
+      return 'LED was turned OFF'
+    case ACTIVITY_LOG_TYPES.SERVO_MOVE:
+      return `Servo motor was moved${value !== null ? ` to ${value}°` : ''}`
+    case ACTIVITY_LOG_TYPES.TELEMETRY_UPDATE:
+      return 'Telemetry data was updated'
+    case ACTIVITY_LOG_TYPES.SYSTEM_EVENT:
+      return 'System event was recorded'
+    default:
+      return ''
+  }
+}
 
 const buildAuthHeaders = () => {
-  const token = getStoredAuthToken();
+  const token = getStoredAuthToken()
 
   return {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-};
+  }
+}
 
 const parseApiResponse = async (response, fallbackMessage) => {
-  const data = await response.json().catch(() => ({}));
+  const data = await response.json().catch(() => ({}))
 
   if (!response.ok) {
-    throw new Error(data.message || fallbackMessage);
+    throw new Error(data.message || fallbackMessage)
   }
 
-  return data;
-};
+  return data
+}
 
 export const fetchActivityLogs = async ({
   page = 1,
@@ -50,111 +118,66 @@ export const fetchActivityLogs = async ({
     role,
     sortBy,
     search,
-  });
+  })
 
   const response = await fetch(`${API_URL}/logs?${params.toString()}`, {
     method: 'GET',
     headers: buildAuthHeaders(),
-  });
+  })
 
-  return parseApiResponse(response, 'Unable to load logs right now.');
-};
-
-export const clearActivityLogs = async () => {
-  const response = await fetch(`${API_URL}/logs`, {
-    method: 'DELETE',
-    headers: buildAuthHeaders(),
-  });
-
-  return parseApiResponse(response, 'Unable to clear logs right now.');
-};
+  return parseApiResponse(response, 'Unable to load logs right now.')
+}
 
 export const createActivityLog = async ({
   actionType,
   deviceId = '',
   deviceDescription = '',
-  value = null,
   description = '',
+  value = null,
   metadata = {},
 } = {}) => {
-  const token = getStoredAuthToken();
-  const user = getCurrentUserProfile();
+  const token = getStoredAuthToken()
 
-  const logPayload = {
+  if (!token) {
+    return null
+  }
+
+  const backendActionType = normalizeActionTypeForBackend(actionType)
+
+  const finalDeviceDescription = getWidgetActivityDescription({
     actionType,
-    deviceId,
     deviceDescription,
+    description,
     value,
-    description: description || `${actionType.replace('_', ' ')}`,
-    userName: user?.fullName || 'Unknown User',
-    userRole: user?.roleLabel || '',
-    timestamp: new Date().toISOString(),
-    metadata,
-  };
+  })
 
-  try {
-    if (token && API_URL) {
-      const response = await fetch(`${API_URL}/logs`, {
-        method: 'POST',
-        headers: buildAuthHeaders(),
-        body: JSON.stringify(logPayload),
-      });
+  const response = await fetch(`${API_URL}/logs`, {
+    method: 'POST',
+    headers: buildAuthHeaders(),
+    body: JSON.stringify({
+      actionType: backendActionType,
+      deviceId,
+      deviceDescription: finalDeviceDescription,
+      value,
+      metadata,
+    }),
+  })
 
-      if (response.ok) {
-        console.log(`Activity logged to backend: ${actionType}`);
-        return await parseApiResponse(response, 'Log saved');
-      }
-    }
-  } catch (backendError) {
-    console.warn('Backend logging failed, falling back to localStorage:', backendError);
-  }
+  return parseApiResponse(response, 'Unable to save the activity log.')
+}
 
-  try {
-    const existingLogs = JSON.parse(localStorage.getItem('avinya_activity_logs') || '[]');
-    
-    const localLog = {
-      id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5),
-      timestamp: new Date().toISOString(),
-      ...logPayload,
-    };
+export const clearActivityLogs = async () => {
+  const response = await fetch(`${API_URL}/logs`, {
+    method: 'DELETE',
+    headers: buildAuthHeaders(),
+  })
 
-    const updatedLogs = [localLog, ...existingLogs].slice(0, 1000);
-    localStorage.setItem('avinya_activity_logs', JSON.stringify(updatedLogs));
-
-    console.log(`📝 Activity logged locally: ${actionType}`);
-    return localLog;
-  } catch (localError) {
-    console.error('Failed to save activity log locally:', localError);
-    return null;
-  }
-};
-
-export const getLocalActivityLogs = () => {
-  try {
-    const logs = localStorage.getItem('avinya_activity_logs');
-    return logs ? JSON.parse(logs) : [];
-  } catch (e) {
-    console.error('Failed to load local logs:', e);
-    return [];
-  }
-};
-
-export const clearLocalActivityLogs = () => {
-  try {
-    localStorage.removeItem('avinya_activity_logs');
-    console.log('🗑️ Local activity logs cleared');
-    return true;
-  } catch (e) {
-    console.error('Failed to clear local logs:', e);
-    return false;
-  }
-};
+  return parseApiResponse(response, 'Unable to clear logs right now.')
+}
 
 export default {
   ACTIVITY_LOG_TYPES,
-  createActivityLog,
   fetchActivityLogs,
+  createActivityLog,
   clearActivityLogs,
-  getLocalActivityLogs,
-  clearLocalActivityLogs,
-};
+}

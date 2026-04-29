@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from "react";
 import "./Styles/WidgetStyle.css";
+import { fetchLatestTelemetry } from "../Utils/thingsboardApi";
 
 function BatteryGauge({ 
-  title = "BATTERY GAUGE", 
+  title = "BATTERY GAUGE",
+  dataKey = "battery",
 }) {
   const STORAGE_KEY = 'avinya_devices';
 
@@ -11,12 +13,6 @@ function BatteryGauge({
   const [batteryLevel, setBatteryLevel] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [token, setToken] = useState(null);
-
-  const TB_BASE_URL = "https://thingsboard.cloud";
-
-  const TB_EMAIL = import.meta.env.VITE_TB_EMAIL;
-  const TB_PASSWORD = import.meta.env.VITE_TB_PASSWORD;
 
   const loadDefaultDevice = () => {
     try {
@@ -50,26 +46,18 @@ function BatteryGauge({
     return data.token;
   };
 
-  const fetchBattery = async (devId, jwt) => {
+  const fetchBattery = async (devId) => {
     if (!devId) return;
 
-    const res = await fetch(
-      `${TB_BASE_URL}/api/plugins/telemetry/DEVICE/${devId}/values/timeseries?keys=${dataKey}&useLatestTs=true`,
-      {
-        headers: { "X-Authorization": `Bearer ${jwt}` }
-      }
-    );
+    const { data } = await fetchLatestTelemetry({
+      deviceId: devId,
+      keys: [dataKey],
+    });
 
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(`Telemetry fetch failed (${res.status})`);
-    }
-
-    const data = await res.json();
     const latest = data[dataKey]?.[0]?.value;
 
-    const level = latest !== undefined 
-      ? Math.max(0, Math.min(100, parseFloat(latest))) 
+    const level = latest !== undefined
+      ? Math.max(0, Math.min(100, parseFloat(latest)))
       : 0;
 
     setBatteryLevel(level);
@@ -90,8 +78,7 @@ function BatteryGauge({
     setError(null);
 
     try {
-      const jwt = await login();
-      await fetchBattery(defaultId, jwt);
+      await fetchBattery(defaultId);
       setIsConnected(true);
       console.log("Battery Gauge connected to device: ", defaultId);
     } catch (err) {
@@ -117,7 +104,6 @@ function BatteryGauge({
 
   const handleReconnect = () => {
     setIsConnected(false);
-    setToken(null);
     setError(null);
     connectToDefault();
   };
@@ -131,15 +117,14 @@ function BatteryGauge({
 
     const interval = setInterval(async () => {
       try {
-        const jwt = token || await login();
-        await fetchBattery(deviceId, jwt);
+        await fetchBattery(deviceId);
       } catch (err) {
         console.error("Battery polling error:", err);
       }
     }, 10000);
 
     return () => clearInterval(interval);
-  }, [isConnected, deviceId, token]);
+  }, [isConnected, deviceId]);
 
   useEffect(() => {
     const handleStorageChange = (e) => {
@@ -148,7 +133,6 @@ function BatteryGauge({
         if (newDefault && newDefault !== deviceId) {
           setDeviceId(newDefault);
           setIsConnected(false);
-          setToken(null);
           setTimeout(connectToDefault, 300);
         }
       }

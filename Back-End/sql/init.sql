@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS logs (
   id SERIAL PRIMARY KEY,
   action_type VARCHAR(30) NOT NULL
-    CHECK (action_type IN ('login', 'logout', 'device_added', 'device_removed')),
+    CHECK (action_type IN ('login', 'logout', 'device_added', 'device_updated', 'device_removed')),
   actor_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
   actor_name VARCHAR(201) NOT NULL,
   actor_email VARCHAR(255) NOT NULL DEFAULT '',
@@ -35,6 +35,25 @@ CREATE TABLE IF NOT EXISTS logs (
 CREATE INDEX IF NOT EXISTS idx_logs_created_at ON logs (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_logs_action_type ON logs (action_type);
 CREATE INDEX IF NOT EXISTS idx_logs_actor_role ON logs (actor_role);
+
+CREATE TABLE IF NOT EXISTS devices (
+  id SERIAL PRIMARY KEY,
+  owner_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  device_uid VARCHAR(64) NOT NULL,
+  thingsboard_device_id VARCHAR(64),
+  description VARCHAR(200) NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_devices_owner_device_uid_unique
+ON devices (owner_user_id, LOWER(device_uid));
+
+CREATE INDEX IF NOT EXISTS idx_devices_owner_user_id
+ON devices (owner_user_id);
+
+CREATE INDEX IF NOT EXISTS idx_devices_created_at
+ON devices (created_at DESC);
 
 INSERT INTO users (
   id,

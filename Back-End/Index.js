@@ -16,6 +16,13 @@ const app = express();
 const PORT = Number(process.env.PORT || 5000);
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 
+const TB_BASE_URL = String(
+  process.env.TB_BASE_URL || "https://thingsboard.cloud"
+).replace(/\/+$/, "");
+
+const TB_TENANT_USERNAME = process.env.TB_TENANT_USERNAME || "";
+const TB_TENANT_PASSWORD = process.env.TB_TENANT_PASSWORD || "";
+
 app.use(
   cors({
     origin: (origin, callback) => {
@@ -307,6 +314,152 @@ const getDeleteAccountConfirmPasswordValidationError = (password, confirmPasswor
 };
 
 const PHONE_COUNTRY_CODE_REGEX = /^\+[1-9]\d{0,3}$/;
+
+const MAX_DEVICES_PER_USER = 5;
+const DEVICE_UID_REGEX = /^[A-Za-z0-9._:-]+$/;
+
+const THINGSBOARD_DEVICE_ID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const TB_TELEMETRY_KEYS_REGEX = /^[A-Za-z0-9_.,:-]+$/;
+const TB_RPC_METHOD_REGEX = /^[A-Za-z0-9_:-]+$/;
+
+let thingsBoardAuthCache = {
+  token: "",
+  expiresAt: 0,
+};
+
+const getThingsBoardAuthToken = async () => {
+  if (
+    thingsBoardAuthCache.token &&
+    thingsBoardAuthCache.expiresAt > Date.now()
+  ) {
+    return thingsBoardAuthCache.token;
+  }
+
+  if (!TB_TENANT_USERNAME || !TB_TENANT_PASSWORD) {
+    throw new Error("ThingsBoard tenant credentials are not configured.");
+  }
+
+  const response = await fetch(`${TB_BASE_URL}/api/auth/login`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      username: TB_TENANT_USERNAME,
+      password: TB_TENANT_PASSWORD,
+    }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok || !data.token) {
+    throw new Error(data.message || "Unable to log in to ThingsBoard Cloud.");
+  }
+
+  thingsBoardAuthCache = {
+    token: data.token,
+    expiresAt: Date.now() + 10 * 60 * 1000,
+  };
+
+  return data.token;
+};
+
+const thingsBoardFetchJson = async (path, options = {}) => {
+  const token = await getThingsBoardAuthToken();
+
+  const response = await fetch(`${TB_BASE_URL}${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      "X-Authorization": `Bearer ${token}`,
+      ...(options.headers || {}),
+    },
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(data.message || `ThingsBoard request failed with status ${response.status}.`);
+  }
+
+  return data;
+};
+
+const resolveThingsBoardDevice = async (deviceUid) => {
+  const normalizedDeviceUid = String(deviceUid || "").trim();
+
+  if (!normalizedDeviceUid) {
+    throw new Error("Device ID cannot be empty.");
+  }
+
+  if (THINGSBOARD_DEVICE_ID_REGEX.test(normalizedDeviceUid)) {
+    return {
+      inputDeviceUid: normalizedDeviceUid,
+      thingsboardDeviceId: normalizedDeviceUid,
+    };
+  }
+
+  const device = await thingsBoardFetchJson(
+    `/api/tenant/devices?deviceName=${encodeURIComponent(normalizedDeviceUid)}`
+  );
+
+  const resolvedDeviceId =
+    typeof device?.id === "object" ? device.id.id : device?.id;
+
+  if (!resolvedDeviceId) {
+    throw new Error(
+      `Device "${normalizedDeviceUid}" was not found in ThingsBoard Cloud.`
+    );
+  }
+
+  return {
+    inputDeviceUid: normalizedDeviceUid,
+    thingsboardDeviceId: resolvedDeviceId,
+  };
+};
+
+const getSafeThingsBoardQueryValue = (value = "") =>
+  String(value || "").trim();
+
+const getDeviceUidValidationError = (value) => {
+  const normalizedValue = String(value || "").trim();
+
+  if (!normalizedValue) {
+    return "Device ID cannot be empty.";
+  }
+
+  if (normalizedValue.length > 64) {
+    return "Device ID must not exceed 64 characters.";
+  }
+
+  if (!DEVICE_UID_REGEX.test(normalizedValue)) {
+    return "Device ID may only contain letters, numbers, dots, underscores, colons, and hyphens.";
+  }
+
+  return "";
+};
+
+const getDeviceDescriptionValidationError = (value) => {
+  const normalizedValue = String(value || "").trim();
+
+  if (normalizedValue.length > 200) {
+    return "Description must not exceed 200 characters.";
+  }
+
+  return "";
+};
+
+const mapDeviceRowToClientDevice = (deviceRow) => ({
+  id: deviceRow.id,
+  deviceUid: deviceRow.device_uid,
+  thingsboardDeviceId: deviceRow.thingsboard_device_id || deviceRow.device_uid,
+  description: deviceRow.description || "",
+  createdAt: deviceRow.created_at,
+  updatedAt: deviceRow.updated_at,
+});
+
 const ALLOWED_PROFILE_IMAGE_MIME_TYPES = new Set([
   "image/jpeg",
   "image/png",
@@ -638,6 +791,7 @@ const LOG_ACTION_LABELS = {
   login: "Login",
   logout: "Logout",
   device_added: "Device Added",
+  device_updated: "Device Updated",
   device_removed: "Device Removed",
 };
 
@@ -712,6 +866,7 @@ const LOG_ACTION_TYPES = {
   LOGIN: "login",
   LOGOUT: "logout",
   DEVICE_ADDED: "device_added",
+  DEVICE_UPDATED: "device_updated",
   DEVICE_REMOVED: "device_removed",
 };
 
@@ -736,6 +891,8 @@ const buildLogDetails = ({ actionType, deviceId = "" }) => {
       return "User logged out";
     case LOG_ACTION_TYPES.DEVICE_ADDED:
       return `Device ID "${deviceId}" was added`;
+    case LOG_ACTION_TYPES.DEVICE_UPDATED:
+      return `Device ID "${deviceId}" was updated`;
     case LOG_ACTION_TYPES.DEVICE_REMOVED:
       return `Device ID "${deviceId}" was removed`;
     default:
@@ -1387,7 +1544,7 @@ const ensureLogsTableExists = async () => {
     CREATE TABLE IF NOT EXISTS logs (
       id SERIAL PRIMARY KEY,
       action_type VARCHAR(30) NOT NULL
-        CHECK (action_type IN ('login', 'logout', 'device_added', 'device_removed')),
+        CHECK (action_type IN ('login', 'logout', 'device_added', 'device_updated', 'device_removed')),
       actor_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
       actor_name VARCHAR(201) NOT NULL,
       actor_email VARCHAR(255) NOT NULL DEFAULT '',
@@ -1477,6 +1634,17 @@ const ensureLogsTableSchema = async () => {
   `);
 
   await pool.query(`
+    ALTER TABLE logs
+    DROP CONSTRAINT IF EXISTS logs_action_type_check;
+  `);
+
+  await pool.query(`
+    ALTER TABLE logs
+    ADD CONSTRAINT logs_action_type_check
+    CHECK (action_type IN ('login', 'logout', 'device_added', 'device_updated', 'device_removed'));
+  `);
+
+  await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_logs_created_at ON logs (created_at DESC);
   `);
 
@@ -1486,6 +1654,106 @@ const ensureLogsTableSchema = async () => {
 
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_logs_actor_role ON logs (actor_role);
+  `);
+};
+
+const ensureDevicesTableExists = async () => {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS devices (
+      id SERIAL PRIMARY KEY,
+      owner_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      device_uid VARCHAR(64) NOT NULL,
+      thingsboard_device_id VARCHAR(64),
+      description VARCHAR(200) NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+};
+
+const ensureDevicesTableSchema = async () => {
+  await pool.query(`
+    ALTER TABLE devices
+    ADD COLUMN IF NOT EXISTS owner_user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
+  `);
+
+  await pool.query(`
+    ALTER TABLE devices
+    ADD COLUMN IF NOT EXISTS device_uid VARCHAR(64);
+  `);
+
+  await pool.query(`
+    ALTER TABLE devices
+    ADD COLUMN IF NOT EXISTS thingsboard_device_id VARCHAR(64);
+  `);
+
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'devices'
+          AND column_name = 'device_id'
+      ) THEN
+        EXECUTE '
+          UPDATE devices
+          SET device_uid = COALESCE(NULLIF(device_uid, ''''), NULLIF(device_id, ''''))
+          WHERE device_uid IS NULL OR TRIM(device_uid) = ''''
+        ';
+
+        EXECUTE 'ALTER TABLE devices ALTER COLUMN device_id DROP NOT NULL';
+        EXECUTE 'ALTER TABLE devices DROP COLUMN device_id';
+      END IF;
+    END $$;
+  `);
+
+  await pool.query(`
+    UPDATE devices
+    SET device_uid = CONCAT('legacy-device-', id)
+    WHERE device_uid IS NULL OR TRIM(device_uid) = '';
+  `);
+
+  await pool.query(`
+    UPDATE devices
+    SET thingsboard_device_id = device_uid
+    WHERE thingsboard_device_id IS NULL OR TRIM(thingsboard_device_id) = '';
+  `);
+
+  await pool.query(`
+    ALTER TABLE devices
+    ALTER COLUMN device_uid SET NOT NULL;
+  `);
+
+  await pool.query(`
+    ALTER TABLE devices
+    ADD COLUMN IF NOT EXISTS description VARCHAR(200) NOT NULL DEFAULT '';
+  `);
+
+  await pool.query(`
+    ALTER TABLE devices
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;
+  `);
+
+  await pool.query(`
+    ALTER TABLE devices
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;
+  `);
+
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_devices_owner_device_uid_unique
+    ON devices (owner_user_id, LOWER(device_uid));
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_devices_owner_user_id
+    ON devices (owner_user_id);
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_devices_created_at
+    ON devices (created_at DESC);
   `);
 };
 
@@ -2788,6 +3056,594 @@ app.delete("/users/:userId", authenticateToken, async (req, res) => {
   }
 });
 
+app.get("/devices", authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT
+        id,
+        device_uid,
+        thingsboard_device_id,
+        description,
+        created_at,
+        updated_at
+      FROM devices
+       WHERE owner_user_id = $1
+       ORDER BY created_at ASC, id ASC`,
+      [req.user.id]
+    );
+
+    return res.status(200).json({
+      devices: result.rows.map(mapDeviceRowToClientDevice),
+      limit: MAX_DEVICES_PER_USER,
+    });
+  } catch (error) {
+    console.error("DEVICES LIST ERROR:", error);
+
+    return res.status(500).json({
+      message: "Unable to load devices right now.",
+    });
+  }
+});
+
+app.post("/devices", authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+
+  try {
+    const deviceUid =
+      typeof req.body.deviceUid === "string" ? req.body.deviceUid.trim() : "";
+    const description =
+      typeof req.body.description === "string" ? req.body.description.trim() : "";
+
+    const deviceUidValidationError = getDeviceUidValidationError(deviceUid);
+    const descriptionValidationError = getDeviceDescriptionValidationError(description);
+
+    if (deviceUidValidationError) {
+      return res.status(400).json({ message: deviceUidValidationError });
+    }
+
+    if (descriptionValidationError) {
+      return res.status(400).json({ message: descriptionValidationError });
+    }
+
+    let resolvedDevice;
+
+    try {
+      resolvedDevice = await resolveThingsBoardDevice(deviceUid);
+    } catch (thingsBoardError) {
+      return res.status(400).json({
+        message:
+          thingsBoardError.message ||
+          "Unable to verify this device in ThingsBoard Cloud.",
+      });
+    }
+
+    await client.query("BEGIN");
+
+    const actorResult = await client.query(
+      `SELECT id, first_name, last_name, email, role_label
+       FROM users
+       WHERE id = $1
+       LIMIT 1`,
+      [req.user.id]
+    );
+
+    if (actorResult.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({
+        message: "User account not found.",
+      });
+    }
+
+    const countResult = await client.query(
+      `SELECT COUNT(*)::int AS total_count
+       FROM devices
+       WHERE owner_user_id = $1`,
+      [req.user.id]
+    );
+
+    const totalDevices = Number(countResult.rows[0]?.total_count || 0);
+
+    if (totalDevices >= MAX_DEVICES_PER_USER) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({
+        message: `You can only add up to ${MAX_DEVICES_PER_USER} devices.`,
+      });
+    }
+
+    const duplicateResult = await client.query(
+      `SELECT id
+      FROM devices
+      WHERE owner_user_id = $1
+        AND (
+          LOWER(device_uid) = LOWER($2)
+          OR LOWER(COALESCE(thingsboard_device_id, '')) = LOWER($3)
+        )
+      LIMIT 1`,
+      [req.user.id, deviceUid, resolvedDevice.thingsboardDeviceId]
+    );
+
+    if (duplicateResult.rows.length > 0) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({
+        message: "This Device ID already exists.",
+      });
+    }
+
+    const insertedDeviceResult = await client.query(
+      `INSERT INTO devices (
+        owner_user_id,
+        device_uid,
+        thingsboard_device_id,
+        description
+      )
+      VALUES ($1, $2, $3, $4)
+      RETURNING
+        id,
+        device_uid,
+        thingsboard_device_id,
+        description,
+        created_at,
+        updated_at`,
+      [
+        req.user.id,
+        deviceUid,
+        resolvedDevice.thingsboardDeviceId,
+        description,
+      ]
+    );
+
+    const actor = actorResult.rows[0];
+
+    await insertActivityLog({
+      actionType: LOG_ACTION_TYPES.DEVICE_ADDED,
+      actorUserId: actor.id,
+      actorName: getSafeLogActorName(actor),
+      actorEmail: actor.email,
+      actorRole: actor.role_label || "User",
+      details: buildLogDetails({
+        actionType: LOG_ACTION_TYPES.DEVICE_ADDED,
+        deviceId: deviceUid,
+      }),
+      deviceId: deviceUid,
+      deviceDescription: description,
+      client,
+    });
+
+    await client.query("COMMIT");
+
+    return res.status(201).json({
+      message: "Device added successfully.",
+      device: mapDeviceRowToClientDevice(insertedDeviceResult.rows[0]),
+    });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error("DEVICE CREATE ERROR:", error);
+
+    if (error.code === "23505") {
+      return res.status(409).json({
+        message: "This Device ID already exists.",
+      });
+    }
+
+    return res.status(500).json({
+      message: error.message || "Unable to add device right now.",
+    });
+  } finally {
+    client.release();
+  }
+});
+
+app.put("/devices/:deviceId", authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+
+  try {
+    const targetDeviceId = Number.parseInt(req.params.deviceId, 10);
+    const deviceUid =
+      typeof req.body.deviceUid === "string" ? req.body.deviceUid.trim() : "";
+    const description =
+      typeof req.body.description === "string" ? req.body.description.trim() : "";
+
+    if (!Number.isInteger(targetDeviceId) || targetDeviceId < 1) {
+      return res.status(400).json({
+        message: "Invalid device.",
+      });
+    }
+
+    const deviceUidValidationError = getDeviceUidValidationError(deviceUid);
+    const descriptionValidationError = getDeviceDescriptionValidationError(description);
+
+    if (deviceUidValidationError) {
+      return res.status(400).json({ message: deviceUidValidationError });
+    }
+
+    if (descriptionValidationError) {
+      return res.status(400).json({ message: descriptionValidationError });
+    }
+
+    let resolvedDevice;
+
+    try {
+      resolvedDevice = await resolveThingsBoardDevice(deviceUid);
+    } catch (thingsBoardError) {
+      return res.status(400).json({
+        message:
+          thingsBoardError.message ||
+          "Unable to verify this device in ThingsBoard Cloud.",
+      });
+    }
+
+    await client.query("BEGIN");
+
+    const actorResult = await client.query(
+      `SELECT id, first_name, last_name, email, role_label
+       FROM users
+       WHERE id = $1
+       LIMIT 1`,
+      [req.user.id]
+    );
+
+    if (actorResult.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({
+        message: "User account not found.",
+      });
+    }
+
+    const currentDeviceResult = await client.query(
+      `SELECT
+         id,
+         device_uid,
+         description
+       FROM devices
+       WHERE id = $1
+         AND owner_user_id = $2
+       FOR UPDATE`,
+      [targetDeviceId, req.user.id]
+    );
+
+    if (currentDeviceResult.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({
+        message: "Device not found.",
+      });
+    }
+
+    const duplicateResult = await client.query(
+      `SELECT id
+      FROM devices
+      WHERE owner_user_id = $1
+        AND (
+          LOWER(device_uid) = LOWER($2)
+          OR LOWER(COALESCE(thingsboard_device_id, '')) = LOWER($3)
+        )
+        AND id <> $4
+      LIMIT 1`,
+      [
+        req.user.id,
+        deviceUid,
+        resolvedDevice.thingsboardDeviceId,
+        targetDeviceId,
+      ]
+    );
+
+    if (duplicateResult.rows.length > 0) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({
+        message: "This Device ID already exists.",
+      });
+    }
+
+    const currentDevice = currentDeviceResult.rows[0];
+
+    const updatedDeviceResult = await client.query(
+      `UPDATE devices
+      SET device_uid = $1,
+          thingsboard_device_id = $2,
+          description = $3,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = $4
+        AND owner_user_id = $5
+      RETURNING
+        id,
+        device_uid,
+        thingsboard_device_id,
+        description,
+        created_at,
+        updated_at`,
+      [
+        deviceUid,
+        resolvedDevice.thingsboardDeviceId,
+        description,
+        targetDeviceId,
+        req.user.id,
+      ]
+    );
+
+    const actor = actorResult.rows[0];
+    const updateDetails =
+      currentDevice.device_uid === deviceUid
+        ? `Device ID "${deviceUid}" was updated`
+        : `Device ID "${currentDevice.device_uid}" was updated to "${deviceUid}"`;
+
+    await insertActivityLog({
+      actionType: LOG_ACTION_TYPES.DEVICE_UPDATED,
+      actorUserId: actor.id,
+      actorName: getSafeLogActorName(actor),
+      actorEmail: actor.email,
+      actorRole: actor.role_label || "User",
+      details: updateDetails,
+      deviceId: deviceUid,
+      deviceDescription: description,
+      client,
+    });
+
+    await client.query("COMMIT");
+
+    return res.status(200).json({
+      message: "Device updated successfully.",
+      device: mapDeviceRowToClientDevice(updatedDeviceResult.rows[0]),
+    });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error("DEVICE UPDATE ERROR:", error);
+
+    if (error.code === "23505") {
+      return res.status(409).json({
+        message: "This Device ID already exists.",
+      });
+    }
+
+    return res.status(500).json({
+      message: error.message || "Unable to update device right now.",
+    });
+  } finally {
+    client.release();
+  }
+});
+
+app.delete("/devices/:deviceId", authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+
+  try {
+    const targetDeviceId = Number.parseInt(req.params.deviceId, 10);
+
+    if (!Number.isInteger(targetDeviceId) || targetDeviceId < 1) {
+      return res.status(400).json({
+        message: "Invalid device.",
+      });
+    }
+
+    await client.query("BEGIN");
+
+    const actorResult = await client.query(
+      `SELECT id, first_name, last_name, email, role_label
+       FROM users
+       WHERE id = $1
+       LIMIT 1`,
+      [req.user.id]
+    );
+
+    if (actorResult.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({
+        message: "User account not found.",
+      });
+    }
+
+    const currentDeviceResult = await client.query(
+      `SELECT
+         id,
+         device_uid,
+         description
+       FROM devices
+       WHERE id = $1
+         AND owner_user_id = $2
+       FOR UPDATE`,
+      [targetDeviceId, req.user.id]
+    );
+
+    if (currentDeviceResult.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({
+        message: "Device not found.",
+      });
+    }
+
+    const currentDevice = currentDeviceResult.rows[0];
+
+    await client.query(
+      `DELETE FROM devices
+       WHERE id = $1
+         AND owner_user_id = $2`,
+      [targetDeviceId, req.user.id]
+    );
+
+    const actor = actorResult.rows[0];
+
+    await insertActivityLog({
+      actionType: LOG_ACTION_TYPES.DEVICE_REMOVED,
+      actorUserId: actor.id,
+      actorName: getSafeLogActorName(actor),
+      actorEmail: actor.email,
+      actorRole: actor.role_label || "User",
+      details: buildLogDetails({
+        actionType: LOG_ACTION_TYPES.DEVICE_REMOVED,
+        deviceId: currentDevice.device_uid,
+      }),
+      deviceId: currentDevice.device_uid,
+      deviceDescription: currentDevice.description,
+      client,
+    });
+
+    await client.query("COMMIT");
+
+    return res.status(200).json({
+      message: "Device deleted successfully.",
+      deletedDeviceId: targetDeviceId,
+    });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error("DEVICE DELETE ERROR:", error);
+
+    return res.status(500).json({
+      message: error.message || "Unable to delete device right now.",
+    });
+  } finally {
+    client.release();
+  }
+});
+
+app.get("/thingsboard/telemetry/latest", authenticateToken, async (req, res) => {
+  try {
+    const deviceId = getSafeThingsBoardQueryValue(req.query.deviceId);
+    const keys = getSafeThingsBoardQueryValue(req.query.keys);
+
+    if (!THINGSBOARD_DEVICE_ID_REGEX.test(deviceId)) {
+      return res.status(400).json({
+        message: "Invalid ThingsBoard device ID.",
+      });
+    }
+
+    if (!keys || !TB_TELEMETRY_KEYS_REGEX.test(keys)) {
+      return res.status(400).json({
+        message: "Invalid telemetry keys.",
+      });
+    }
+
+    const data = await thingsBoardFetchJson(
+      `/api/plugins/telemetry/DEVICE/${encodeURIComponent(deviceId)}/values/timeseries?keys=${encodeURIComponent(keys)}&useLatestTs=true`
+    );
+
+    return res.status(200).json({ data });
+  } catch (error) {
+    console.error("THINGSBOARD LATEST TELEMETRY ERROR:", error);
+
+    return res.status(500).json({
+      message: error.message || "Unable to load ThingsBoard telemetry.",
+    });
+  }
+});
+
+app.get("/thingsboard/telemetry/history", authenticateToken, async (req, res) => {
+  try {
+    const deviceId = getSafeThingsBoardQueryValue(req.query.deviceId);
+    const keys = getSafeThingsBoardQueryValue(req.query.keys);
+    const startTs = Number(req.query.startTs);
+    const endTs = Number(req.query.endTs);
+    const limit = Number(req.query.limit || 50);
+
+    if (!THINGSBOARD_DEVICE_ID_REGEX.test(deviceId)) {
+      return res.status(400).json({
+        message: "Invalid ThingsBoard device ID.",
+      });
+    }
+
+    if (!keys || !TB_TELEMETRY_KEYS_REGEX.test(keys)) {
+      return res.status(400).json({
+        message: "Invalid telemetry keys.",
+      });
+    }
+
+    if (!Number.isFinite(startTs) || !Number.isFinite(endTs)) {
+      return res.status(400).json({
+        message: "Invalid telemetry date range.",
+      });
+    }
+
+    const safeLimit = Math.min(Math.max(Number.isFinite(limit) ? limit : 50, 1), 500);
+
+    const data = await thingsBoardFetchJson(
+      `/api/plugins/telemetry/DEVICE/${encodeURIComponent(deviceId)}/values/timeseries?keys=${encodeURIComponent(keys)}&startTs=${startTs}&endTs=${endTs}&limit=${safeLimit}`
+    );
+
+    return res.status(200).json({ data });
+  } catch (error) {
+    console.error("THINGSBOARD HISTORY TELEMETRY ERROR:", error);
+
+    return res.status(500).json({
+      message: error.message || "Unable to load ThingsBoard telemetry history.",
+    });
+  }
+});
+
+app.post("/thingsboard/rpc", authenticateToken, async (req, res) => {
+  try {
+    const deviceId = String(req.body.deviceId || "").trim();
+    const method = String(req.body.method || "").trim();
+
+    if (!THINGSBOARD_DEVICE_ID_REGEX.test(deviceId)) {
+      return res.status(400).json({
+        message: "Invalid ThingsBoard device ID.",
+      });
+    }
+
+    if (!method || !TB_RPC_METHOD_REGEX.test(method)) {
+      return res.status(400).json({
+        message: "Invalid RPC method.",
+      });
+    }
+
+    await thingsBoardFetchJson(
+      `/api/plugins/rpc/oneway/${encodeURIComponent(deviceId)}`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          method,
+          params: req.body.params,
+        }),
+      }
+    );
+
+    return res.status(200).json({
+      message: "RPC command sent successfully.",
+    });
+  } catch (error) {
+    console.error("THINGSBOARD RPC ERROR:", error);
+
+    return res.status(500).json({
+      message: error.message || "Unable to send ThingsBoard RPC command.",
+    });
+  }
+});
+
+app.get("/thingsboard/counts", authenticateToken, async (req, res) => {
+  try {
+    const [alarmData, entityData] = await Promise.all([
+      thingsBoardFetchJson("/api/alarm/count?status=ACTIVE"),
+      thingsBoardFetchJson("/api/tenant/entities?pageSize=1&page=0&textSearch="),
+    ]);
+
+    return res.status(200).json({
+      alarmCount: Number(alarmData.count || 0),
+      entityCount: Number(entityData.totalElements || 0),
+    });
+  } catch (error) {
+    console.error("THINGSBOARD COUNTS ERROR:", error);
+
+    return res.status(500).json({
+      message: error.message || "Unable to load ThingsBoard counts.",
+    });
+  }
+});
+
+app.get("/thingsboard/entities", authenticateToken, async (req, res) => {
+  try {
+    const data = await thingsBoardFetchJson(
+      "/api/tenant/entities?pageSize=50&page=0&sortProperty=createdTime&sortOrder=DESC"
+    );
+
+    return res.status(200).json({
+      entities: Array.isArray(data.data) ? data.data : [],
+    });
+  } catch (error) {
+    console.error("THINGSBOARD ENTITIES ERROR:", error);
+
+    return res.status(500).json({
+      message: error.message || "Unable to load ThingsBoard entities.",
+    });
+  }
+});
+
 app.get("/logs", authenticateToken, async (req, res) => {
   try {
     const requestingUserResult = await pool.query(
@@ -2965,6 +3821,7 @@ app.post("/logs", authenticateToken, async (req, res) => {
 
     if (
       (actionType === LOG_ACTION_TYPES.DEVICE_ADDED ||
+        actionType === LOG_ACTION_TYPES.DEVICE_UPDATED ||
         actionType === LOG_ACTION_TYPES.DEVICE_REMOVED) &&
       !deviceId
     ) {
@@ -3681,6 +4538,8 @@ const startServer = async () => {
     assertRequiredConfig();
     await ensureUsersTableExists();
     await ensureUsersTableSchema();
+    await ensureDevicesTableExists();
+    await ensureDevicesTableSchema();
     await ensureLogsTableExists();
     await ensureLogsTableSchema();
 

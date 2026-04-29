@@ -13,6 +13,7 @@ import {
 } from "chart.js";
 
 import "./Styles/WidgetStyle.css";
+import { fetchTelemetryHistory } from "../Utils/thingsboardApi";
 
 ChartJS.register(
   CategoryScale,
@@ -37,12 +38,6 @@ function TimeSeriesChart({
   const [chartData, setChartData] = useState({ labels: [], datasets: [] });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [token, setToken] = useState(null);
-
-  const TB_BASE_URL = "https://thingsboard.cloud";
-
-  const TB_EMAIL = import.meta.env.VITE_TB_EMAIL;
-  const TB_PASSWORD = import.meta.env.VITE_TB_PASSWORD;
 
   const login = async () => {
     const res = await fetch(`${TB_BASE_URL}/api/auth/login`, {
@@ -64,25 +59,19 @@ function TimeSeriesChart({
     return data.token;
   };
 
-  const fetchTimeSeries = async (devId, jwt) => {
+  const fetchTimeSeries = async (devId) => {
     if (!devId) return;
 
     const endTs = Date.now();
     const startTs = endTs - 60 * 60 * 1000;
 
-    const res = await fetch(
-      `${TB_BASE_URL}/api/plugins/telemetry/DEVICE/${devId}/values/timeseries?keys=${dataKey}&startTs=${startTs}&endTs=${endTs}&limit=50`,
-      {
-        headers: { "X-Authorization": `Bearer ${jwt}` }
-      }
-    );
-
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(`Telemetry fetch failed (${res.status})`);
-    }
-
-    const data = await res.json();
+    const { data } = await fetchTelemetryHistory({
+      deviceId: devId,
+      keys: [dataKey],
+      startTs,
+      endTs,
+      limit: 50,
+    });
     if (!data[dataKey] || data[dataKey].length === 0) {
       setChartData({ labels: [], datasets: [] });
       return;
@@ -132,8 +121,7 @@ function TimeSeriesChart({
     setError(null);
 
     try {
-      const jwt = await login();
-      await fetchTimeSeries(defaultId, jwt);
+      await fetchTimeSeries(defaultId);
       setIsConnected(true);
       console.log("Time Series Chart connected to device: ", defaultId);
     } catch (err) {
@@ -186,8 +174,7 @@ function TimeSeriesChart({
 
     const interval = setInterval(async () => {
       try {
-        const jwt = token || await login();
-        await fetchTimeSeries(deviceId, jwt);
+        await fetchTimeSeries(deviceId);
       } catch (err) {
         console.error("Chart polling error:", err);
       }

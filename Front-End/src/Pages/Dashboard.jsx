@@ -7,6 +7,8 @@ import { getCurrentUserProfile, isAdministratorRole } from '../Utils/getCurrentU
 import { performReliableLogout } from '../Utils/performReliableLogout'
 import { buildApiAssetUrl } from '../Config/API'
 import { ProfileMenuIcon } from '../Components/Icons.jsx'
+import { fetchDevices } from '../Utils/devicesApi'
+import { syncDevicesForDashboardWidgets } from '../Utils/deviceStorage'
 
 import {
   PumpControl,
@@ -99,6 +101,7 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   const [searchQuery,        setSearchQuery]         = useState('')
   const [isEditMode,         setIsEditMode]          = useState(false)
   const [widgets,            setWidgets]             = useState(loadWidgets)
+  const [isDeviceStorageReady, setIsDeviceStorageReady] = useState(false)
   const [dragPreview,        setDragPreview]         = useState(null)
   const [resizePreview,      setResizePreview]       = useState(null)
 
@@ -124,6 +127,30 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     }
     document.addEventListener('mousedown', handleOutsideClick)
     return () => document.removeEventListener('mousedown', handleOutsideClick)
+  }, [])
+
+  useEffect(() => {
+    let isMounted = true
+
+    const syncDashboardDevices = async () => {
+      try {
+        const data = await fetchDevices()
+        const nextDevices = Array.isArray(data.devices) ? data.devices : []
+        syncDevicesForDashboardWidgets(nextDevices)
+      } catch (error) {
+        console.error('DASHBOARD DEVICE SYNC ERROR:', error)
+      } finally {
+        if (isMounted) {
+          setIsDeviceStorageReady(true)
+        }
+      }
+    }
+
+    void syncDashboardDevices()
+
+    return () => {
+      isMounted = false
+    }
   }, [])
 
   const closeDropdowns = () => {
@@ -163,7 +190,7 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     { type: 'MarkdownCard',    name: 'Markdown Card',           icon: '📝',  description: 'Rich text content' },
     { type: 'CountWidgets',    name: 'Count Widgets',           icon: '🔢',  description: 'Numeric counter display' },
     { type: 'EntitiesTable',   name: 'Entities Table',          icon: '📋',  description: 'Tabular entity data' },
-    { type: 'UltraSonic',      name: 'UltraSonic Sensor',       icon: '�',  description: 'Distance measurement' },
+    { type: 'UltraSonic',      name: 'UltraSonic Sensor',       icon: '📡',  description: 'Distance measurement' },
   ]
 
   const WidgetMap = {
@@ -515,7 +542,7 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                 }} />
               )}
 
-              {widgets.map((widget) => {
+              {isDeviceStorageReady && widgets.map((widget) => {
                 const Component = WidgetMap[widget.type]
                 if (!Component) return null
                 const isResizing = resizePreview?.id === widget.id

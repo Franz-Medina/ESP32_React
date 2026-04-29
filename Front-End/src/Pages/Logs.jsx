@@ -62,25 +62,28 @@ const getLogsPdfFileNameFromResponse = (response) => {
 }
 
 export const LOG_TYPES = {
-  LOGIN:         'login',
-  LOGOUT:        'logout',
-  DEVICE_ADDED:  'device_added',
-  DEVICE_REMOVED:'device_removed',
+  LOGIN:          'login',
+  LOGOUT:         'logout',
+  DEVICE_ADDED:   'device_added',
+  DEVICE_UPDATED: 'device_updated',
+  DEVICE_REMOVED: 'device_removed',
 }
 
 const LOG_TYPE_META = {
   [LOG_TYPES.LOGIN]:          { label: 'Login',          color: 'success' },
   [LOG_TYPES.LOGOUT]:         { label: 'Logout',         color: 'neutral' },
   [LOG_TYPES.DEVICE_ADDED]:   { label: 'Device Added',   color: 'info'    },
+  [LOG_TYPES.DEVICE_UPDATED]: { label: 'Device Updated', color: 'warning' },
   [LOG_TYPES.DEVICE_REMOVED]: { label: 'Device Removed', color: 'danger'  },
 }
 
 const ALL_LOG_TYPE_FILTER_OPTIONS = [
-  { value: 'all',                       label: 'All Actions'    },
-  { value: LOG_TYPES.LOGIN,             label: 'Login'          },
-  { value: LOG_TYPES.LOGOUT,            label: 'Logout'         },
-  { value: LOG_TYPES.DEVICE_ADDED,      label: 'Device Added'   },
-  { value: LOG_TYPES.DEVICE_REMOVED,    label: 'Device Removed' },
+  { value: 'all',                    label: 'All Actions'    },
+  { value: LOG_TYPES.LOGIN,          label: 'Login'          },
+  { value: LOG_TYPES.LOGOUT,         label: 'Logout'         },
+  { value: LOG_TYPES.DEVICE_ADDED,   label: 'Device Added'   },
+  { value: LOG_TYPES.DEVICE_UPDATED, label: 'Device Updated' },
+  { value: LOG_TYPES.DEVICE_REMOVED, label: 'Device Removed' },
 ]
 
 const ALL_ROLE_FILTER_OPTIONS = [
@@ -372,10 +375,19 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   const pageLogs = allLogs
   const paginationItems = getLogsPaginationItems(safePage, totalPages)
 
-  const hasLogsResults =
+  const shouldShowLogsPagination =
     !isLogsLoading &&
-    !logsRequestError &&
-    totalCount > 0
+    !logsRequestError
+
+  const logsFillerRowsCount =
+    !logsRequestError && pageLogs.length > 0
+      ? Math.max(LOGS_PER_PAGE - pageLogs.length, 0)
+      : 0
+
+  const logsFillerRows = Array.from(
+    { length: logsFillerRowsCount },
+    (_, index) => index
+  )
 
   const isLogsToolbarDisabled =
     isLogsLoading || isPreparingLogsPdfPreview || isDownloadingLogsPdf
@@ -1097,7 +1109,11 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
               )}
 
               <div
-                className={`logs-table-scroll ${pageLogs.length === 0 ? 'logs-table-scroll-empty' : ''}`}
+                className={`logs-table-scroll ${
+                  !isLogsLoading && !logsRequestError && pageLogs.length === 0
+                    ? 'logs-table-scroll-empty'
+                    : ''
+                }`}
                 role="region"
                 aria-label="Activity logs table"
                 tabIndex="0"
@@ -1123,12 +1139,8 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                   </thead>
 
                   <tbody key={tableAnimKey}>
-                    {pageLogs.length === 0 ? (
-                      <tr className="logs-table-state-row logs-table-state-row-empty" aria-hidden="true">
-                        <td colSpan="6" className="logs-table-state-cell">&nbsp;</td>
-                      </tr>
-                    ) : (
-                      pageLogs.map((log, index) => {
+                    <>
+                      {pageLogs.map((log, index) => {
                         const meta  = LOG_TYPE_META[log.type] || { label: log.type, color: 'neutral' }
                         const rowNo = pageStart + index + 1
 
@@ -1166,20 +1178,35 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                               </span>
                             </td>
                           </tr>
-                        )
-                      })
-                    )}
+                              )
+                            })}
+
+                          {logsFillerRows.map((fillerIndex) => (
+                            <tr
+                              key={`logs-filler-row-${safePage}-${fillerIndex}`}
+                              className="logs-table-body-row logs-table-body-row-filler"
+                              aria-hidden="true"
+                            >
+                              <td>&nbsp;</td>
+                              <td>&nbsp;</td>
+                              <td>&nbsp;</td>
+                              <td>&nbsp;</td>
+                              <td>&nbsp;</td>
+                              <td>&nbsp;</td>
+                            </tr>
+                          ))}
+                        </>
                   </tbody>
                 </table>
 
-                {pageLogs.length === 0 && (
+                {!isLogsLoading && pageLogs.length === 0 && (
                   <div className="logs-table-empty-state" aria-live="polite">
                     {logsEmptyStateMessage}
                   </div>
                 )}
               </div>
 
-              {hasLogsResults && (
+              {shouldShowLogsPagination && (
                 <div className="logs-pagination-shell">
                   <nav className="logs-pagination" aria-label="Logs pagination">
                     <div className="logs-pagination-group logs-pagination-group-start">

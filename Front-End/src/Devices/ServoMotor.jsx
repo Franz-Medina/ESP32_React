@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import "./Styles/WidgetStyle.css";
+import { sendOneWayRpc } from "../Utils/thingsboardApi";
 
 export default function ServoMotor() {
   const STORAGE_KEY = 'avinya_devices';
@@ -9,12 +10,6 @@ export default function ServoMotor() {
   const [angle, setAngle] = useState(90);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [token, setToken] = useState(null);
-
-  const TB_BASE_URL = "https://thingsboard.cloud";
-
-  const TB_EMAIL = import.meta.env.VITE_TB_EMAIL;
-  const TB_PASSWORD = import.meta.env.VITE_TB_PASSWORD;
 
   const loadDefaultDevice = () => {
     try {
@@ -63,7 +58,6 @@ export default function ServoMotor() {
     setError(null);
 
     try {
-      await login();
       setConnected(true);
       console.log("Servo connected to device:", defaultId);
     } catch (err) {
@@ -96,23 +90,11 @@ export default function ServoMotor() {
     if (!deviceId || !connected) return;
 
     try {
-      const jwt = token || await login();
-
-      const res = await fetch(`${TB_BASE_URL}/api/plugins/rpc/oneway/${deviceId}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Authorization": `Bearer ${jwt}`
-        },
-        body: JSON.stringify({
-          method: "setServo",
-          params: numericValue
-        })
+      await sendOneWayRpc({
+        deviceId,
+        method: "setServo",
+        params: numericValue,
       });
-
-      if (!res.ok) {
-        throw new Error(`RPC failed (${res.status})`);
-      }
 
       console.log(`Servo angle sent: ${numericValue}°`);
     } catch (err) {
@@ -123,7 +105,6 @@ export default function ServoMotor() {
 
   const handleReconnect = () => {
     setConnected(false);
-    setToken(null);
     setError(null);
     connectToDefault();
   };
@@ -139,7 +120,6 @@ export default function ServoMotor() {
         if (newDefault && newDefault !== deviceId) {
           setDeviceId(newDefault);
           setConnected(false);
-          setToken(null);
           setTimeout(connectToDefault, 300);
         }
       }

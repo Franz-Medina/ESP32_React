@@ -1,17 +1,12 @@
 import React, { useState, useEffect } from "react";
 import "./Styles/WidgetStyle.css";
+import { fetchThingsBoardCounts } from "../Utils/thingsboardApi";
 
 function CountWidgets() {
   const [alarmCount, setAlarmCount] = useState(0);
   const [entityCount, setEntityCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [token, setToken] = useState(null);
-
-  const TB_BASE_URL = "https://thingsboard.cloud";
-
-  const TB_EMAIL = import.meta.env.VITE_TB_EMAIL;
-  const TB_PASSWORD = import.meta.env.VITE_TB_PASSWORD;
 
   const login = async () => {
     const res = await fetch(`${TB_BASE_URL}/api/auth/login`, {
@@ -35,27 +30,10 @@ function CountWidgets() {
 
   const fetchCounts = async () => {
     try {
-      const jwt = token || await login();
+      const data = await fetchThingsBoardCounts();
 
-      const alarmRes = await fetch(
-        `${TB_BASE_URL}/api/alarm/count?status=ACTIVE`,
-        { headers: { "X-Authorization": `Bearer ${jwt}` } }
-      );
-
-      const entityRes = await fetch(
-        `${TB_BASE_URL}/api/tenant/entities?pageSize=1&page=0&textSearch=`,
-        { headers: { "X-Authorization": `Bearer ${jwt}` } }
-      );
-
-      if (!alarmRes.ok || !entityRes.ok) {
-        throw new Error("Failed to fetch counts");
-      }
-
-      const alarmData = await alarmRes.json();
-      const entityData = await entityRes.json();
-
-      setAlarmCount(alarmData.count || 0);
-      setEntityCount(entityData.totalElements || 0);
+      setAlarmCount(data.alarmCount || 0);
+      setEntityCount(data.entityCount || 0);
       setError(null);
     } catch (err) {
       console.error("Count fetch error:", err);
@@ -75,7 +53,7 @@ function CountWidgets() {
     fetchCounts();
     const interval = setInterval(fetchCounts, 30000);
     return () => clearInterval(interval);
-  }, [token]);
+  }, []);
 
   return (
     <div className="widget">

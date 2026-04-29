@@ -1,16 +1,12 @@
 import React, { useState, useEffect } from "react";
 import "./Styles/WidgetStyle.css";
+import { fetchThingsBoardEntities } from "../Utils/thingsboardApi";
 
 function EntitiesTable() {
   const [entities, setEntities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [lastUpdated, setLastUpdated] = useState(null);
-  const [token, setToken] = useState(null);
-
-  const TB_BASE_URL = "";
-  const TB_EMAIL = import.meta.env.VITE_TB_EMAIL;
-  const TB_PASSWORD = import.meta.env.VITE_TB_PASSWORD;
   
   const login = async () => {
     const res = await fetch(`${TB_BASE_URL}/api/auth/login`, {
@@ -40,22 +36,9 @@ function EntitiesTable() {
       setLoading(true);
       setError("");
 
-      const jwt = token || await login();
+      const data = await fetchThingsBoardEntities();
 
-      const response = await fetch(
-        `${TB_BASE_URL}/api/tenant/entities?pageSize=50&page=0&sortProperty=createdTime&sortOrder=DESC`,
-        {
-          headers: {
-            "X-Authorization": `Bearer ${jwt}`
-          }
-        }
-      );
-
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-      const data = await response.json();
-
-      setEntities(data.data || []);
+      setEntities(data.entities || []);
       setLastUpdated(new Date());
     } catch (err) {
       console.error("FETCH ERROR:", err);

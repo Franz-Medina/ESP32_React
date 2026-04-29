@@ -1523,10 +1523,19 @@ const Users = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     isSavingEditedUser ||
     isPreparingEditUserModal
 
-  const hasUsersResults =
+  const shouldShowUsersPagination =
     !isUsersLoading &&
-    !usersLoadError &&
-    usersTotalCount > 0
+    !usersLoadError
+
+  const usersFillerRowsCount =
+    !usersLoadError && users.length > 0
+      ? Math.max(USERS_PER_PAGE - users.length, 0)
+      : 0
+
+  const usersFillerRows = Array.from(
+    { length: usersFillerRowsCount },
+    (_, index) => index
+  )
 
   const usersEmptyStateMessage = appliedUsersSearchQuery
     ? 'No matching users found.'
@@ -2038,14 +2047,9 @@ const Users = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                           {usersLoadError}
                         </td>
                       </tr>
-                    ) : !isUsersLoading && users.length === 0 ? (
-                      <tr className="users-table-state-row users-table-state-row-empty" aria-hidden="true">
-                        <td colSpan="9" className="users-table-state-cell">
-                          &nbsp;
-                        </td>
-                      </tr>
                     ) : (
-                      users.map((listedUser, index) => {
+                      <>
+                        {users.map((listedUser, index) => {
                         const profileImagePreview = buildApiAssetUrl(listedUser.profilePictureUrl)
                         const userInitials = getUserInitials(
                           listedUser.firstName,
@@ -2178,9 +2182,28 @@ const Users = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                               </div>
                             </td>
                           </tr>
-                        )
-                      })
-                    )}
+                              )
+                            })}
+
+                            {usersFillerRows.map((fillerIndex) => (
+                              <tr
+                                key={`users-filler-row-${currentUsersPage}-${fillerIndex}`}
+                                className="users-table-body-row users-table-body-row-filler"
+                                aria-hidden="true"
+                              >
+                                <td>&nbsp;</td>
+                                <td>&nbsp;</td>
+                                <td>&nbsp;</td>
+                                <td>&nbsp;</td>
+                                <td>&nbsp;</td>
+                                <td>&nbsp;</td>
+                                <td>&nbsp;</td>
+                                <td>&nbsp;</td>
+                                <td>&nbsp;</td>
+                              </tr>
+                            ))}
+                          </>
+                        )}
                   </tbody>
                 </table>
 
@@ -2191,7 +2214,7 @@ const Users = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                 )}
               </div>
 
-              {hasUsersResults && (
+              {shouldShowUsersPagination && (
                 <div className="users-pagination-shell">
                   <nav className="users-pagination" aria-label="Users pagination">
                     <div className="users-pagination-group users-pagination-group-start">
