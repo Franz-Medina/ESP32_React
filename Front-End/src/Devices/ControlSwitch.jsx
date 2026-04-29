@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import "./Styles/WidgetStyle.css";
+import { createActivityLog, ACTIVITY_LOG_TYPES } from "../Utils/activityLogsApi";
 
 function ControlSwitch({ 
   title = "SWITCH", 
@@ -59,10 +60,7 @@ function ControlSwitch({
       headers: { "X-Authorization": `Bearer ${jwt}` }
     });
 
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(`Telemetry failed (${res.status})`);
-    }
+    if (!res.ok) throw new Error(`Telemetry failed (${res.status})`);
 
     const data = await res.json();
 
@@ -73,37 +71,31 @@ function ControlSwitch({
     }
   };
 
-  const connectToDevice = async (devId) => {
-    if (!devId) {
-      setError("No default device set. Please go to Devices page and set one.");
+  const connectToDevice = async () => {
+    const defaultId = loadDefaultDevice();
+    if (!defaultId) {
+      setError("No default device set. Go to Devices page to set one.");
       setIsConnected(false);
       setIsLoading(false);
       return;
     }
 
-    setDeviceId(devId);
+    setDeviceId(defaultId);
     setIsLoading(true);
     setError(null);
 
     try {
       const jwt = await login();
-      await fetchCurrentState(devId, jwt);
-
+      await fetchCurrentState(defaultId, jwt);
       setIsConnected(true);
-      console.log("Connected to device:", devId);
+      console.log("✅ Connected to device:", defaultId);
     } catch (err) {
-      console.error("Connection error:", err);
-      
+      console.error(err);
       let msg = "Failed to connect";
-      if (err.message.includes("401") || err.message.includes("403")) {
-        msg = "Invalid ThingsBoard credentials. Check your .env file.";
-      } else if (err.message.includes("404")) {
-        msg = "Device not found. Please verify the Device ID in ThingsBoard.";
-      } else if (err.message.includes("Failed to fetch")) {
-        msg = "Cannot reach ThingsBoard Cloud. Check your internet.";
-      } else {
-        msg = err.message;
-      }
+      if (err.message.includes("401") || err.message.includes("403")) msg = "Invalid ThingsBoard credentials.";
+      else if (err.message.includes("404")) msg = "Device not found.";
+      else if (err.message.includes("Failed to fetch")) msg = "Cannot reach ThingsBoard Cloud.";
+      else msg = err.message;
 
       setError(msg);
       setIsConnected(false);
@@ -136,6 +128,14 @@ function ControlSwitch({
       if (!res.ok) throw new Error(`RPC failed (${res.status})`);
 
       console.log(`Command sent: ${rpcMethod}(${newState})`);
+
+      createActivityLog({
+        actionType: newState ? ACTIVITY_LOG_TYPES.PUMP_ON : ACTIVITY_LOG_TYPES.PUMP_OFF,
+        deviceId: deviceId,
+        description: `Pump was turned ${newState ? 'ON' : 'OFF'}`,
+        value: newState,
+      });
+
     } catch (err) {
       console.error(err);
       setIsOn(!newState);
@@ -146,19 +146,12 @@ function ControlSwitch({
   const handleReconnect = () => {
     setIsConnected(false);
     setToken(null);
-    const defaultId = loadDefaultDevice();
-    if (defaultId) {
-      connectToDevice(defaultId);
-    } else {
-      setError("No default device set. Go to Devices page.");
-      setIsLoading(false);
-    }
+    setError(null);
+    connectToDevice();
   };
 
   useEffect(() => {
-    const defaultId = loadDefaultDevice();
-    setDeviceId(defaultId);
-    connectToDevice(defaultId);
+    connectToDevice();
   }, []);
 
   useEffect(() => {
@@ -166,7 +159,10 @@ function ControlSwitch({
       if (e.key === STORAGE_KEY) {
         const newDefault = loadDefaultDevice();
         if (newDefault && newDefault !== deviceId) {
-          connectToDevice(newDefault);
+          setDeviceId(newDefault);
+          setIsConnected(false);
+          setToken(null);
+          setTimeout(connectToDevice, 300);
         }
       }
     };
@@ -184,7 +180,7 @@ function ControlSwitch({
       ) : !deviceId ? (
         <div className="widget-no-default">
           <p>No default device set.</p>
-          <small>Go to <strong>Devices</strong> page and set a default device.</small>
+          <small>Go to <strong>Devices</strong> page and set a default Device ID.</small>
         </div>
       ) : (
         <div className="widget-control">

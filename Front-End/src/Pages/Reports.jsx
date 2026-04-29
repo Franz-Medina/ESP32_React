@@ -1,32 +1,31 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
-import Swal from 'sweetalert2'
-import 'sweetalert2/dist/sweetalert2.min.css'
-import logo from '../Pictures/Avinya.png'
-import '../Styles/Reports.css'
-import { getCurrentUserProfile, isAdministratorRole } from '../Utils/getCurrentUserProfile'
-import { performReliableLogout } from '../Utils/performReliableLogout'
-import { buildApiAssetUrl } from '../Config/API'
+import { useEffect, useState, useCallback, useRef } from 'react';
+import Swal from 'sweetalert2';
+import 'sweetalert2/dist/sweetalert2.min.css';
+import logo from '../Pictures/Avinya.png';
+import '../Styles/Reports.css';
+import { getCurrentUserProfile, isAdministratorRole } from '../Utils/getCurrentUserProfile';
+import { performReliableLogout } from '../Utils/performReliableLogout';
+import { buildApiAssetUrl } from '../Config/API';
 import {
   ProfileMenuIcon,
   SearchIcon,
   FilterIcon,
-  FirstPageIcon,
-  PreviousPageIcon,
-  NextPageIcon,
-  LastPageIcon
-} from '../Components/Icons.jsx'
+  // Removed RefreshIcon since it doesn't exist
+} from '../Components/Icons.jsx';
+
+import { getLocalActivityLogs, ACTIVITY_LOG_TYPES } from '../Utils/activityLogsApi';
 
 const TELEMETRY_KEYS = [
   'temperature', 'humidity', 'pressure', 'voltage',
   'current', 'power', 'progress',
-]
+];
 
-const POLL_INTERVAL_MS = 10000
+const POLL_INTERVAL_MS = 10000;
 
 const formatTimestamp = (ts) => {
   try {
-    const date = new Date(ts)
-    if (Number.isNaN(date.getTime())) return String(ts)
+    const date = new Date(ts);
+    if (Number.isNaN(date.getTime())) return String(ts);
 
     return new Intl.DateTimeFormat('en-US', {
       month: 'long',
@@ -36,11 +35,11 @@ const formatTimestamp = (ts) => {
       minute: '2-digit',
       second: '2-digit',
       hour12: true,
-    }).format(date)
+    }).format(date);
   } catch {
-    return String(ts)
+    return String(ts);
   }
-}
+};
 
 const ReportsFilterDropdown = ({
   id,
@@ -53,7 +52,7 @@ const ReportsFilterDropdown = ({
   onSelect,
   disabled = false
 }) => {
-  const selectedOption = options.find((option) => option.value === value) || options[0]
+  const selectedOption = options.find((option) => option.value === value) || options[0];
 
   return (
     <div className={`logs-filter-dropdown ${isOpen ? 'open' : ''}`}>
@@ -93,215 +92,195 @@ const ReportsFilterDropdown = ({
         ))}
       </div>
     </div>
-  )
-}
+  );
+};
 
 const Reports = ({ onLogout, onNavigate, isDarkMode, onThemeToggle, deviceId }) => {
-  const [isEntitiesOpen, setIsEntitiesOpen] = useState(false)
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
-  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
+  // Sidebar States
+  const [isEntitiesOpen, setIsEntitiesOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
 
-  const [telemetryData, setTelemetryData] = useState([])
-  const [allKeys, setAllKeys] = useState([])
-  const [metricFilter, setMetricFilter] = useState('all')
-  const [searchInput, setSearchInput] = useState('')
-  const [appliedSearch, setAppliedSearch] = useState('')
+  // Tab State
+  const [activeTab, setActiveTab] = useState('telemetry'); // 'telemetry' or 'activity'
 
-  const [isLoading, setIsLoading] = useState(true)
-  const [isRefreshing, setIsRefreshing] = useState(false)
-  const [error, setError] = useState('')
+  // Telemetry States
+  const [telemetryData, setTelemetryData] = useState([]);
+  const [allKeys, setAllKeys] = useState([]);
+  const [metricFilter, setMetricFilter] = useState('all');
+  const [searchInput, setSearchInput] = useState('');
+  const [appliedSearch, setAppliedSearch] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [error, setError] = useState('');
 
-  const [openFilterDropdown, setOpenFilterDropdown] = useState('')
+  // Activity Logs States
+  const [activityLogs, setActivityLogs] = useState([]);
+  const [filteredActivityLogs, setFilteredActivityLogs] = useState([]);
+  const [activitySearch, setActivitySearch] = useState('');
+  const [activityFilterType, setActivityFilterType] = useState('all');
 
-  const pollIntervalRef = useRef(null)
-  const user = getCurrentUserProfile()
-  const isAdministrator = isAdministratorRole(user.roleLabel)
+  const pollIntervalRef = useRef(null);
+  const user = getCurrentUserProfile();
+  const isAdministrator = isAdministratorRole(user.roleLabel);
 
-  const sidebarProfileImagePreview = buildApiAssetUrl(user.profilePictureUrl)
+  const sidebarProfileImagePreview = buildApiAssetUrl(user.profilePictureUrl);
   const sidebarUserInitials = [user.firstName, user.lastName]
     .filter(Boolean)
     .map(v => String(v).trim().charAt(0).toUpperCase())
     .join('')
-    .slice(0, 2) || 'A'
+    .slice(0, 2) || 'A';
 
-  const getAuthHeaders = () => ({
-    'Content-Type': 'application/json',
-    'X-Authorization': `Bearer ${localStorage.getItem('jwtToken') || ''}`,
-  })
-
-const fetchTelemetry = useCallback(async (showLoading = true) => {
-  if (!deviceId) {
-    setError('Device ID is missing. Please select a device.');
-    setIsLoading(false);
-    return;
-  }
-
-  if (showLoading) setIsLoading(true);
-  setError('');
-  setTelemetryData([]);
-
-  try {
-    const token = localStorage.getItem('jwtToken') || localStorage.getItem('token');
-    if (!token) {
-      throw new Error('Authentication token not found. Please log in again.');
+  // ====================== TELEMETRY ======================
+  const fetchTelemetry = useCallback(async (showLoading = true) => {
+    if (!deviceId) {
+      setError('Device ID is missing. Please select a device.');
+      setIsLoading(false);
+      return;
     }
 
-    const keysParam = TELEMETRY_KEYS.length ? `?keys=${TELEMETRY_KEYS.join(',')}` : '';
-    const baseUrl = buildApiAssetUrl('');
+    if (showLoading) setIsLoading(true);
+    setError('');
+    setTelemetryData([]);
 
-    const url = `${baseUrl}/api/plugins/telemetry/DEVICE/${deviceId}/values/timeseries${keysParam}`;
+    try {
+      const token = localStorage.getItem('jwtToken') || localStorage.getItem('token');
+      if (!token) throw new Error('Authentication token not found.');
 
-    console.log('Fetching telemetry from:', url);
+      const keysParam = TELEMETRY_KEYS.length ? `?keys=${TELEMETRY_KEYS.join(',')}` : '';
+      const baseUrl = buildApiAssetUrl('');
+      const url = `${baseUrl}/api/plugins/telemetry/DEVICE/${deviceId}/values/timeseries${keysParam}`;
 
-    const res = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Authorization': `Bearer ${token}`,
-      },
-    });
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Authorization': `Bearer ${token}`,
+        },
+      });
 
-    console.log('Response status:', res.status);
+      if (!res.ok) throw new Error(`HTTP error ${res.status}`);
 
-    if (!res.ok) {
-      if (res.status === 401) throw new Error('Unauthorized – token invalid or expired');
-      if (res.status === 404) throw new Error(`Device not found (ID: ${deviceId})`);
-      throw new Error(`HTTP error ${res.status}`);
-    }
+      const rawData = await res.json();
+      let flatData = [];
+      const detectedKeys = new Set();
 
-    const rawData = await res.json();
-    console.log('Telemetry raw data received:', rawData);
+      Object.entries(rawData || {}).forEach(([metric, entries]) => {
+        if (!Array.isArray(entries) || entries.length === 0) return;
+        detectedKeys.add(metric);
 
-    let flatData = [];
-    const detectedKeys = new Set();
-
-    Object.entries(rawData || {}).forEach(([metric, entries]) => {
-      if (!Array.isArray(entries) || entries.length === 0) return;
-      detectedKeys.add(metric);
-
-      entries.forEach(entry => {
-        flatData.push({
-          metric,
-          value: entry.value != null ? entry.value : '—',
-          ts: entry.ts || Date.now(),
-          deviceId,
+        entries.forEach(entry => {
+          flatData.push({
+            metric,
+            value: entry.value != null ? entry.value : '—',
+            ts: entry.ts || Date.now(),
+            deviceId,
+          });
         });
       });
-    });
 
-    flatData.sort((a, b) => b.ts - a.ts);
+      flatData.sort((a, b) => b.ts - a.ts);
 
-    setTelemetryData(flatData);
-    setAllKeys(Array.from(detectedKeys).sort());
+      setTelemetryData(flatData);
+      setAllKeys(Array.from(detectedKeys).sort());
 
-    if (metricFilter !== 'all' && !detectedKeys.has(metricFilter)) {
-      setMetricFilter('all');
+      if (metricFilter !== 'all' && !detectedKeys.has(metricFilter)) {
+        setMetricFilter('all');
+      }
+
+      setError('');
+    } catch (err) {
+      console.error('Telemetry fetch error:', err);
+      setError(err.message || 'Failed to load telemetry.');
+      setTelemetryData([]);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
     }
+  }, [deviceId, metricFilter]);
 
-    setError('');
-  } catch (err) {
-    console.error('Telemetry fetch error:', err);
-    setError(err.message || 'Failed to load telemetry. Check console for details.');
-    setTelemetryData([]);
-  } finally {
-    setIsLoading(false);
-    setIsRefreshing(false);
-  }
-}, [deviceId, metricFilter]);
+  // ====================== ACTIVITY LOGS ======================
+  const loadActivityLogs = useCallback(() => {
+    try {
+      const logs = getLocalActivityLogs();
+      setActivityLogs(logs);
+    } catch (err) {
+      console.error('Failed to load activity logs:', err);
+    }
+  }, []);
 
   useEffect(() => {
-    if (!isAdministrator || !deviceId) return
+    let result = [...activityLogs];
 
-    fetchTelemetry(true)
+    if (activityFilterType !== 'all') {
+      result = result.filter(log => log.actionType === activityFilterType);
+    }
+
+    if (activitySearch.trim()) {
+      const term = activitySearch.toLowerCase();
+      result = result.filter(log =>
+        (log.deviceId && log.deviceId.toLowerCase().includes(term)) ||
+        (log.description && log.description.toLowerCase().includes(term)) ||
+        (log.userName && log.userName.toLowerCase().includes(term))
+      );
+    }
+
+    result.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    setFilteredActivityLogs(result);
+  }, [activityLogs, activityFilterType, activitySearch]);
+
+  useEffect(() => {
+    if (!isAdministrator || !deviceId) return;
+    fetchTelemetry(true);
 
     pollIntervalRef.current = setInterval(() => {
-      fetchTelemetry(false)
-    }, POLL_INTERVAL_MS)
+      fetchTelemetry(false);
+    }, POLL_INTERVAL_MS);
 
     return () => {
-      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
-    }
-  }, [fetchTelemetry, isAdministrator, deviceId])
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    };
+  }, [fetchTelemetry, isAdministrator, deviceId]);
+
+  useEffect(() => {
+    loadActivityLogs();
+  }, [loadActivityLogs]);
 
   const handleRefresh = () => {
-    setIsRefreshing(true)
-    fetchTelemetry(false)
-  }
+    setIsRefreshing(true);
+    fetchTelemetry(false);
+    loadActivityLogs();
+  };
 
-  const metricFilterOptions = [
-    { value: 'all', label: 'All Metrics' },
-    ...allKeys.map(key => ({
-      value: key,
-      label: key.charAt(0).toUpperCase() + key.slice(1)
-    }))
-  ]
-
-  const filteredData = telemetryData.filter(item => {
-    const matchesMetric = metricFilter === 'all' || item.metric === metricFilter
-    const matchesSearch = !appliedSearch ||
-      item.metric.toLowerCase().includes(appliedSearch.toLowerCase()) ||
-      String(item.value).toLowerCase().includes(appliedSearch.toLowerCase())
-    return matchesMetric && matchesSearch
-  })
-
-  const handleExportCSV = () => {
-    if (filteredData.length === 0) return
-
-    const header = ['Device ID', 'Metric', 'Value', 'Timestamp']
-    const escape = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`
-
-    const csv = [
-      header.map(escape).join(','),
-      ...filteredData.map(row => [
-        row.deviceId,
-        row.metric,
-        row.value,
-        formatTimestamp(row.ts)
-      ].map(escape).join(','))
-    ].join('\r\n')
-
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `device-report-${new Date().toISOString().slice(0, 10)}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
-  const handleMetricFilterChange = (value) => {
-    setMetricFilter(value)
-    setOpenFilterDropdown('')
-  }
+  const handleMetricFilterChange = (value) => setMetricFilter(value);
 
   const handleSearchSubmit = (e) => {
-    e.preventDefault()
-    setAppliedSearch(searchInput.trim())
-  }
+    e.preventDefault();
+    setAppliedSearch(searchInput.trim());
+  };
 
-  const handleSearchInputChange = (e) => setSearchInput(e.target.value)
+  const handleSearchInputChange = (e) => setSearchInput(e.target.value);
 
   const resetFilters = () => {
-    setMetricFilter('all')
-    setSearchInput('')
-    setAppliedSearch('')
-  }
+    setMetricFilter('all');
+    setSearchInput('');
+    setAppliedSearch('');
+  };
 
-  const areFiltersDefault = metricFilter === 'all' && !appliedSearch && !searchInput
+  const areFiltersDefault = metricFilter === 'all' && !appliedSearch && !searchInput;
 
   const closeDropdowns = () => {
-    setIsEntitiesOpen(false)
-    setIsProfileMenuOpen(false)
-    setOpenFilterDropdown('')
-  }
+    setIsEntitiesOpen(false);
+    setIsProfileMenuOpen(false);
+  };
 
   const handleSidebarToggle = () => {
-    if (!isSidebarCollapsed) closeDropdowns()
-    setIsSidebarCollapsed(prev => !prev)
-  }
+    if (!isSidebarCollapsed) closeDropdowns();
+    setIsSidebarCollapsed(prev => !prev);
+  };
 
   const handleLogout = async (e) => {
-    e.preventDefault()
+    e.preventDefault();
     const result = await Swal.fire({
       title: 'Log Out?',
       text: 'Are you sure you want to log out?',
@@ -319,17 +298,17 @@ const fetchTelemetry = useCallback(async (showLoading = true) => {
         confirmButton: 'avinya-swal-confirm',
         cancelButton: 'avinya-swal-cancel',
       },
-    })
+    });
 
     if (result.isConfirmed) {
-      closeDropdowns()
-      performReliableLogout(onLogout)
+      closeDropdowns();
+      performReliableLogout(onLogout);
     }
-  }
+  };
 
   if (!isAdministrator) {
-    onNavigate('dashboard')
-    return null
+    onNavigate('dashboard');
+    return null;
   }
 
   return (
@@ -357,18 +336,23 @@ const fetchTelemetry = useCallback(async (showLoading = true) => {
             <button type="button" className="dashboard-sidebar-link" data-tooltip="Dashboard" onClick={() => onNavigate('dashboard')}>
               <span className="dashboard-sidebar-link-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" />
-                  <rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" />
+                  <rect x="3" y="3" width="7" height="7" rx="1.5" />
+                  <rect x="14" y="3" width="7" height="7" rx="1.5" />
+                  <rect x="3" y="14" width="7" height="7" rx="1.5" />
+                  <rect x="14" y="14" width="7" height="7" rx="1.5" />
                 </svg>
               </span>
               <span className="dashboard-sidebar-link-label">Dashboard</span>
             </button>
 
             <div className={`dashboard-sidebar-group ${isEntitiesOpen ? 'open' : ''}`}>
-              <button type="button"
+              <button
+                type="button"
                 className={`dashboard-sidebar-link dashboard-sidebar-toggle ${isEntitiesOpen ? 'dashboard-sidebar-link-open' : ''}`}
                 onClick={() => { setIsProfileMenuOpen(false); setIsEntitiesOpen(p => !p) }}
-                aria-expanded={isEntitiesOpen} data-tooltip="Entities">
+                aria-expanded={isEntitiesOpen}
+                data-tooltip="Entities"
+              >
                 <span className="dashboard-sidebar-link-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M4 7h7" /><path d="M4 12h10" /><path d="M4 17h7" />
@@ -386,7 +370,8 @@ const fetchTelemetry = useCallback(async (showLoading = true) => {
                 <button type="button" className="dashboard-sidebar-sublink" onClick={() => onNavigate('devices')}>
                   <span className="dashboard-sidebar-sublink-icon" aria-hidden="true">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <rect x="3" y="7" width="7" height="10" rx="1.5" /><rect x="14" y="7" width="7" height="10" rx="1.5" />
+                      <rect x="3" y="7" width="7" height="10" rx="1.5" />
+                      <rect x="14" y="7" width="7" height="10" rx="1.5" />
                       <path d="M6.5 10.5h.01" /><path d="M17.5 10.5h.01" />
                     </svg>
                   </span>
@@ -399,8 +384,10 @@ const fetchTelemetry = useCallback(async (showLoading = true) => {
               <button type="button" className="dashboard-sidebar-link" data-tooltip="Users" onClick={() => onNavigate('users')}>
                 <span className="dashboard-sidebar-link-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" />
-                    <path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
                   </svg>
                 </span>
                 <span className="dashboard-sidebar-link-label">Users</span>
@@ -411,7 +398,8 @@ const fetchTelemetry = useCallback(async (showLoading = true) => {
               <button type="button" className="dashboard-sidebar-link" data-tooltip="Logs" onClick={() => onNavigate('logs')}>
                 <span className="dashboard-sidebar-link-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+                    <path d="M9 11l3 3L22 4" />
+                    <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
                   </svg>
                 </span>
                 <span className="dashboard-sidebar-link-label">Logs</span>
@@ -523,7 +511,7 @@ const fetchTelemetry = useCallback(async (showLoading = true) => {
       <section className="dashboard-content">
         <div className="dashboard-content-body dashboard-content-body-frame">
           <div className="dashboard-header dashboard-page-title-row">
-            <h1 className="dashboard-content-title">Device Telemetry Reports</h1>
+            <h1 className="dashboard-content-title">Device Reports</h1>
 
             <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
               <button
@@ -531,143 +519,242 @@ const fetchTelemetry = useCallback(async (showLoading = true) => {
                 className={`refresh-button ${isRefreshing ? 'spinning' : ''}`}
                 onClick={handleRefresh}
                 disabled={isLoading}
-                style={{
-                  padding: '8px 16px',
-                  background: '#980000',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '5px',
-                  cursor: isLoading ? 'not-allowed' : 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  fontWeight: 600
-                }}
               >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="18" height="18">
-                  <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.058 11H1M12 3v2m0 16v2m9-9H15M10 11l-3 3m0-6l3 3" />
-                </svg>
                 Refresh
-              </button>
-
-              <button
-                type="button"
-                className="logs-export-button"
-                onClick={handleExportCSV}
-                disabled={filteredData.length === 0 || isLoading}
-              >
-                <span className="logs-export-button-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                    <polyline points="14 2 14 8 20 8" />
-                    <line x1="12" y1="12" x2="12" y2="18" />
-                    <polyline points="9 15 12 18 15 15" />
-                  </svg>
-                </span>
-                <span>CSV Export</span>
               </button>
             </div>
           </div>
 
-          <section className="logs-panel">
-            <div className="logs-panel-toolbar">
-              <div className="logs-toolbar-top">
-                <div className="logs-filters-group" style={{ gridTemplateColumns: 'minmax(0, 1fr)' }}>
-                  <ReportsFilterDropdown
-                    id="metric-filter"
-                    label="Metric"
-                    icon={<FilterIcon />}
-                    value={metricFilter}
-                    options={metricFilterOptions}
-                    isOpen={openFilterDropdown === 'metric'}
-                    onToggle={() => setOpenFilterDropdown(prev => prev === 'metric' ? '' : 'metric')}
-                    onSelect={handleMetricFilterChange}
-                    disabled={isLoading}
-                  />
+          {/* Tab Navigation */}
+          <div style={{ marginBottom: '20px', borderBottom: '2px solid #eee', display: 'flex' }}>
+            <button
+              onClick={() => setActiveTab('telemetry')}
+              className={`tab-button ${activeTab === 'telemetry' ? 'active' : ''}`}
+              style={{
+                padding: '12px 24px',
+                fontWeight: activeTab === 'telemetry' ? '600' : '400',
+                borderBottom: activeTab === 'telemetry' ? '3px solid #980000' : '3px solid transparent',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer'
+              }}
+            >
+              Telemetry Data
+            </button>
+            <button
+              onClick={() => setActiveTab('activity')}
+              className={`tab-button ${activeTab === 'activity' ? 'active' : ''}`}
+              style={{
+                padding: '12px 24px',
+                fontWeight: activeTab === 'activity' ? '600' : '400',
+                borderBottom: activeTab === 'activity' ? '3px solid #980000' : '3px solid transparent',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer'
+              }}
+            >
+              Activity Logs
+            </button>
+          </div>
+
+          {/* Telemetry Tab */}
+          {activeTab === 'telemetry' && (
+            <section className="logs-panel">
+              <div className="logs-panel-toolbar">
+                <div className="logs-toolbar-top">
+                  <div className="logs-filters-group" style={{ gridTemplateColumns: 'minmax(0, 1fr)' }}>
+                    <ReportsFilterDropdown
+                      id="metric-filter"
+                      label="Metric"
+                      icon={<FilterIcon />}
+                      value={metricFilter}
+                      options={[
+                        { value: 'all', label: 'All Metrics' },
+                        ...allKeys.map(key => ({
+                          value: key,
+                          label: key.charAt(0).toUpperCase() + key.slice(1)
+                        }))
+                      ]}
+                      isOpen={false}
+                      onToggle={() => {}}
+                      onSelect={handleMetricFilterChange}
+                      disabled={isLoading}
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    className="logs-filter-reset-button"
+                    onClick={resetFilters}
+                    disabled={areFiltersDefault || isLoading}
+                  >
+                    Reset Filters
+                  </button>
                 </div>
 
-                <button
-                  type="button"
-                  className="logs-filter-reset-button"
-                  onClick={resetFilters}
-                  disabled={areFiltersDefault || isLoading}
-                >
-                  Reset Filters
-                </button>
+                <form className="logs-search-form" onSubmit={handleSearchSubmit}>
+                  <div className="logs-search-field">
+                    <span className="logs-search-input-icon" aria-hidden="true">
+                      <SearchIcon />
+                    </span>
+                    <div className="logs-search-floating-control">
+                      <input
+                        type="search"
+                        className="logs-search-input logs-search-floating-input"
+                        placeholder=" "
+                        value={searchInput}
+                        onChange={handleSearchInputChange}
+                        disabled={isLoading}
+                      />
+                      <label className="logs-search-floating-label">Search metric or value</label>
+                    </div>
+                  </div>
+                  <button type="submit" className="logs-search-button" disabled={isLoading}>
+                    Search
+                  </button>
+                </form>
               </div>
 
-              <form className="logs-search-form" onSubmit={handleSearchSubmit}>
-                <div className="logs-search-field">
-                  <span className="logs-search-input-icon" aria-hidden="true">
-                    <SearchIcon />
-                  </span>
-                  <div className="logs-search-floating-control">
+              <div className="logs-table-shell">
+                {isLoading && (
+                  <div className="logs-table-loading-overlay">
+                    <div className="logs-table-loading-card">
+                      <img src={logo} alt="Avinya Logo" className="logs-table-loading-logo" />
+                      <p className="logs-table-loading-title">Loading Telemetry...</p>
+                      <div className="logs-table-loading-loader">
+                        <span className="logs-table-loading-loader-bar"></span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className={`logs-table-scroll ${telemetryData.length === 0 ? 'logs-table-scroll-empty' : ''}`}>
+                  <table className="logs-table">
+                    <thead>
+                      <tr className="logs-table-head-row">
+                        <th>No.</th>
+                        <th>Metric</th>
+                        <th>Value</th>
+                        <th>Timestamp</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {telemetryData.length === 0 ? (
+                        <tr className="logs-table-state-row logs-table-state-row-empty">
+                          <td colSpan="4" className="logs-table-state-cell">
+                            {error || (appliedSearch || metricFilter !== 'all' ? 'No matching telemetry records found.' : 'No telemetry data available yet.')}
+                          </td>
+                        </tr>
+                      ) : (
+                        telemetryData.map((item, index) => (
+                          <tr key={`${item.metric}-${item.ts}`} className="logs-table-body-row">
+                            <td>{index + 1}</td>
+                            <td><span className="logs-action-badge">{item.metric}</span></td>
+                            <td>{item.value}</td>
+                            <td>{formatTimestamp(item.ts)}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* Activity Logs Tab */}
+          {activeTab === 'activity' && (
+            <section className="logs-panel">
+              <div className="logs-panel-toolbar">
+                <div className="logs-toolbar-top">
+                  <div className="logs-filters-group" style={{ gridTemplateColumns: 'minmax(0, 1fr)' }}>
+                    <select
+                      value={activityFilterType}
+                      onChange={(e) => setActivityFilterType(e.target.value)}
+                      className="logs-filter-field"
+                      style={{ height: '48px', padding: '0 14px' }}
+                    >
+                      <option value="all">All Activities</option>
+                      <option value={ACTIVITY_LOG_TYPES.PUMP_ON}>Pump ON</option>
+                      <option value={ACTIVITY_LOG_TYPES.PUMP_OFF}>Pump OFF</option>
+                      <option value={ACTIVITY_LOG_TYPES.LED_ON}>LED ON</option>
+                      <option value={ACTIVITY_LOG_TYPES.LED_OFF}>LED OFF</option>
+                      <option value={ACTIVITY_LOG_TYPES.SERVO_MOVE}>Servo Moved</option>
+                    </select>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="logs-filter-reset-button"
+                    onClick={() => {
+                      setActivitySearch('');
+                      setActivityFilterType('all');
+                    }}
+                  >
+                    Reset Filters
+                  </button>
+                </div>
+
+                <form className="logs-search-form" onSubmit={(e) => { e.preventDefault(); }}>
+                  <div className="logs-search-field">
+                    <span className="logs-search-input-icon"><SearchIcon /></span>
                     <input
                       type="search"
                       className="logs-search-input logs-search-floating-input"
-                      placeholder=" "
-                      value={searchInput}
-                      onChange={handleSearchInputChange}
-                      disabled={isLoading}
+                      placeholder="Search activity logs..."
+                      value={activitySearch}
+                      onChange={(e) => setActivitySearch(e.target.value)}
                     />
-                    <label className="logs-search-floating-label">Search metric or value</label>
                   </div>
-                </div>
-                <button type="submit" className="logs-search-button" disabled={isLoading}>
-                  Search
-                </button>
-              </form>
-            </div>
-
-            <div className="logs-table-shell">
-              {isLoading && (
-                <div className="logs-table-loading-overlay">
-                  <div className="logs-table-loading-card">
-                    <img src={logo} alt="Avinya Logo" className="logs-table-loading-logo" />
-                    <p className="logs-table-loading-title">Loading Telemetry...</p>
-                    <div className="logs-table-loading-loader">
-                      <span className="logs-table-loading-loader-bar"></span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <div className={`logs-table-scroll ${filteredData.length === 0 ? 'logs-table-scroll-empty' : ''}`}>
-                <table className="logs-table">
-                  <thead>
-                    <tr className="logs-table-head-row">
-                      <th>No.</th>
-                      <th>Metric</th>
-                      <th>Value</th>
-                      <th>Timestamp</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredData.length === 0 ? (
-                      <tr className="logs-table-state-row logs-table-state-row-empty">
-                        <td colSpan="4" className="logs-table-state-cell">
-                          {error || (appliedSearch || metricFilter !== 'all' ? 'No matching telemetry records found.' : 'No telemetry data available yet.')}
-                        </td>
-                      </tr>
-                    ) : (
-                      filteredData.map((item, index) => (
-                        <tr key={`${item.metric}-${item.ts}`} className="logs-table-body-row">
-                          <td>{index + 1}</td>
-                          <td><span className="logs-action-badge">{item.metric}</span></td>
-                          <td>{item.value}</td>
-                          <td>{formatTimestamp(item.ts)}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+                </form>
               </div>
-            </div>
-          </section>
+
+              <div className="logs-table-shell">
+                <div className="logs-table-scroll">
+                  <table className="logs-table">
+                    <thead>
+                      <tr className="logs-table-head-row">
+                        <th>Time</th>
+                        <th>Action</th>
+                        <th>Device</th>
+                        <th>User</th>
+                        <th>Details</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredActivityLogs.length === 0 ? (
+                        <tr className="logs-table-state-row">
+                          <td colSpan="5" className="logs-table-state-cell">
+                            No activity logs recorded yet.<br />
+                            Turn on/off devices to see logs here.
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredActivityLogs.map((log) => (
+                          <tr key={log.id} className="logs-table-body-row">
+                            <td>{formatTimestamp(log.timestamp)}</td>
+                            <td>
+                              <span className={`logs-action-badge ${log.actionType?.includes('ON') ? 'logs-action-badge-success' : 
+                                log.actionType?.includes('OFF') ? 'logs-action-badge-danger' : 'logs-action-badge-neutral'}`}>
+                                {log.actionType ? log.actionType.replace(/_/g, ' ') : 'Event'}
+                              </span>
+                            </td>
+                            <td>{log.deviceId || '—'}</td>
+                            <td>{log.userName || '—'}</td>
+                            <td className="logs-detail-text">{log.description || 'No description'}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
+          )}
         </div>
       </section>
     </main>
-  )
-}
+  );
+};
 
-export default Reports
+export default Reports;
