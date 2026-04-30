@@ -8,8 +8,6 @@ export const ACTIVITY_LOG_TYPES = {
   DEVICE_UPDATED: 'device_updated',
   DEVICE_REMOVED: 'device_removed',
 
-  // Widget-level activity types.
-  // These are for frontend readability, then mapped to backend-safe types before saving.
   PUMP_ON: 'pump_on',
   PUMP_OFF: 'pump_off',
   LED_ON: 'led_on',
@@ -175,9 +173,32 @@ export const clearActivityLogs = async () => {
   return parseApiResponse(response, 'Unable to clear logs right now.')
 }
 
+export const getLocalActivityLogs = () => {
+  try {
+    const logs = localStorage.getItem('avinya_activity_logs');
+    return logs ? JSON.parse(logs) : [];
+  } catch (e) {
+    console.error('Failed to load local activity logs:', e);
+    return [];
+  }
+};
+
+export const clearLocalActivityLogs = () => {
+  try {
+    localStorage.removeItem('avinya_activity_logs');
+    console.log('Local activity logs cleared');
+    return true;
+  } catch (e) {
+    console.error('Failed to clear local logs:', e);
+    return false;
+  }
+};
+
 export default {
   ACTIVITY_LOG_TYPES,
   fetchActivityLogs,
   createActivityLog,
   clearActivityLogs,
+  getLocalActivityLogs,
+  clearLocalActivityLogs,
 }

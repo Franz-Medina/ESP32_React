@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import "./Styles/WidgetStyle.css";
-import { fetchLatestTelemetry, sendOneWayRpc } from "../Utils/thingsboardApi";
+import { createActivityLog, ACTIVITY_LOG_TYPES } from "../Utils/activityLogsApi";
 
 function LEDIndicator({ instanceId = "widget-default" }) {
   const STORAGE_KEY = 'avinya_devices';
@@ -10,6 +10,11 @@ function LEDIndicator({ instanceId = "widget-default" }) {
   const [ledState, setLedState] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [token, setToken] = useState(null);
+
+  const TB_BASE_URL = "https://thingsboard.cloud";
+  const TB_EMAIL = import.meta.env.VITE_TB_EMAIL;
+  const TB_PASSWORD = import.meta.env.VITE_TB_PASSWORD;
 
   const loadDefaultDevice = () => {
     try {
@@ -43,13 +48,19 @@ function LEDIndicator({ instanceId = "widget-default" }) {
     return data.token;
   };
 
-  const fetchLedState = async (devId) => {
+  const fetchLedState = async (devId, jwt) => {
     if (!devId) return;
 
-    const { data } = await fetchLatestTelemetry({
-      deviceId: devId,
-      keys: ["led"],
-    });
+    const res = await fetch(
+      `${TB_BASE_URL}/api/plugins/telemetry/DEVICE/${devId}/values/timeseries?keys=led&useLatestTs=true`,
+      {
+        headers: { "X-Authorization": `Bearer ${jwt}` }
+      }
+    );
+
+    if (!res.ok) throw new Error(`Telemetry failed (${res.status})`);
+
+    const data = await res.json();
 
     if (data.led && data.led.length > 0) {
       const latest = data.led[0].value;
@@ -64,13 +75,31 @@ function LEDIndicator({ instanceId = "widget-default" }) {
     setLedState(newState);
 
     try {
-      await sendOneWayRpc({
-        deviceId,
-        method: "setLED",
-        params: newState,
+      const jwt = token ?? await login();
+
+      const res = await fetch(`${TB_BASE_URL}/api/plugins/rpc/oneway/${deviceId}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Authorization": `Bearer ${jwt}`
+        },
+        body: JSON.stringify({
+          method: "setLED",
+          params: newState
+        })
       });
 
+      if (!res.ok) throw new Error(`RPC failed (${res.status})`);
+
       console.log(`LED toggled to: ${newState ? "ON" : "OFF"}`);
+
+      createActivityLog({
+        actionType: newState ? ACTIVITY_LOG_TYPES.LED_ON : ACTIVITY_LOG_TYPES.LED_OFF,
+        deviceId: deviceId,
+        description: `LED was turned ${newState ? 'ON' : 'OFF'}`,
+        value: newState,
+      });
+
     } catch (err) {
       console.error("RPC ERROR:", err);
       setLedState(!newState);
@@ -93,7 +122,8 @@ function LEDIndicator({ instanceId = "widget-default" }) {
     setError(null);
 
     try {
-      await fetchLedState(defaultId);
+      const jwt = await login();
+      await fetchLedState(defaultId, jwt);
       setIsConnected(true);
       console.log("LED Indicator connected to device:", defaultId);
     } catch (err) {

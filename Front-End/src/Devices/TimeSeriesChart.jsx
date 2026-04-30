@@ -13,7 +13,7 @@ import {
 } from "chart.js";
 
 import "./Styles/WidgetStyle.css";
-import { fetchTelemetryHistory } from "../Utils/thingsboardApi";
+import { createActivityLog, ACTIVITY_LOG_TYPES } from "../Utils/activityLogsApi";
 
 ChartJS.register(
   CategoryScale,
@@ -38,6 +38,23 @@ function TimeSeriesChart({
   const [chartData, setChartData] = useState({ labels: [], datasets: [] });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [token, setToken] = useState(null);
+
+  const TB_BASE_URL = "https://thingsboard.cloud";
+  const TB_EMAIL = import.meta.env.VITE_TB_EMAIL;
+  const TB_PASSWORD = import.meta.env.VITE_TB_PASSWORD;
+
+  const loadDefaultDevice = () => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return parsed.defaultId ?? null;
+    } catch (e) {
+      console.error("Failed to load default device:", e);
+      return null;
+    }
+  };
 
   const login = async () => {
     const res = await fetch(`${TB_BASE_URL}/api/auth/login`, {
@@ -59,19 +76,23 @@ function TimeSeriesChart({
     return data.token;
   };
 
-  const fetchTimeSeries = async (devId) => {
+  const fetchTimeSeries = async (devId, jwt) => {
     if (!devId) return;
 
     const endTs = Date.now();
     const startTs = endTs - 60 * 60 * 1000;
 
-    const { data } = await fetchTelemetryHistory({
-      deviceId: devId,
-      keys: [dataKey],
-      startTs,
-      endTs,
-      limit: 50,
-    });
+    const res = await fetch(
+      `${TB_BASE_URL}/api/plugins/telemetry/DEVICE/${devId}/values/timeseries?keys=${dataKey}&startTs=${startTs}&endTs=${endTs}&limit=50`,
+      {
+        headers: { "X-Authorization": `Bearer ${jwt}` }
+      }
+    );
+
+    if (!res.ok) throw new Error(`Telemetry fetch failed (${res.status})`);
+
+    const data = await res.json();
+
     if (!data[dataKey] || data[dataKey].length === 0) {
       setChartData({ labels: [], datasets: [] });
       return;
@@ -121,9 +142,10 @@ function TimeSeriesChart({
     setError(null);
 
     try {
-      await fetchTimeSeries(defaultId);
+      const jwt = await login();
+      await fetchTimeSeries(defaultId, jwt);
       setIsConnected(true);
-      console.log("Time Series Chart connected to device: ", defaultId);
+      console.log("Time Series Chart connected to device:", defaultId);
     } catch (err) {
       console.error("Connection error:", err);
 
@@ -145,18 +167,6 @@ function TimeSeriesChart({
     }
   };
 
-  const loadDefaultDevice = () => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      return parsed.defaultId ?? null;
-    } catch (e) {
-      console.error("Failed to load default device:", e);
-      return null;
-    }
-  };
-
   const handleReconnect = () => {
     setIsConnected(false);
     setToken(null);
@@ -174,7 +184,8 @@ function TimeSeriesChart({
 
     const interval = setInterval(async () => {
       try {
-        await fetchTimeSeries(deviceId);
+        const jwt = token || await login();
+        await fetchTimeSeries(deviceId, jwt);
       } catch (err) {
         console.error("Chart polling error:", err);
       }

@@ -1943,8 +1943,62 @@
   margin-top: auto;
 }
 
-.refresh-button.spinning svg {
-  animation: spin 1s linear infinite;
+.refresh-button {
+  padding: 10px 22px;
+  background-color: #980000;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.25s ease;
+  box-shadow: 0 3px 8px rgba(152, 0, 0, 0.25);
+  min-width: 120px;
+  justify-content: center;
+}
+
+.refresh-button:hover:not(:disabled) {
+  background-color: #7a0000;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 14px rgba(152, 0, 0, 0.35);
+}
+
+.refresh-button:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(152, 0, 0, 0.3);
+}
+
+.refresh-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* Spinning animation */
+.refresh-button.spinning svg,
+.refresh-button .spinning svg {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Dark mode */
+[data-theme='dark'] .refresh-button {
+  background-color: #b61f1f;
+  box-shadow: 0 3px 8px rgba(182, 31, 31, 0.3);
+}
+
+[data-theme='dark'] .refresh-button:hover:not(:disabled) {
+  background-color: #cf2e2e;
+  box-shadow: 0 6px 14px rgba(207, 46, 46, 0.4);
 }
 
 @keyframes spin {

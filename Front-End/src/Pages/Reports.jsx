@@ -10,7 +10,6 @@ import {
   ProfileMenuIcon,
   SearchIcon,
   FilterIcon,
-  // Removed RefreshIcon since it doesn't exist
 } from '../Components/Icons.jsx';
 
 import { getLocalActivityLogs, ACTIVITY_LOG_TYPES } from '../Utils/activityLogsApi';
@@ -96,15 +95,12 @@ const ReportsFilterDropdown = ({
 };
 
 const Reports = ({ onLogout, onNavigate, isDarkMode, onThemeToggle, deviceId }) => {
-  // Sidebar States
   const [isEntitiesOpen, setIsEntitiesOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
 
-  // Tab State
-  const [activeTab, setActiveTab] = useState('telemetry'); // 'telemetry' or 'activity'
+  const [activeTab, setActiveTab] = useState('telemetry');
 
-  // Telemetry States
   const [telemetryData, setTelemetryData] = useState([]);
   const [allKeys, setAllKeys] = useState([]);
   const [metricFilter, setMetricFilter] = useState('all');
@@ -114,7 +110,6 @@ const Reports = ({ onLogout, onNavigate, isDarkMode, onThemeToggle, deviceId }) 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState('');
 
-  // Activity Logs States
   const [activityLogs, setActivityLogs] = useState([]);
   const [filteredActivityLogs, setFilteredActivityLogs] = useState([]);
   const [activitySearch, setActivitySearch] = useState('');
@@ -131,7 +126,6 @@ const Reports = ({ onLogout, onNavigate, isDarkMode, onThemeToggle, deviceId }) 
     .join('')
     .slice(0, 2) || 'A';
 
-  // ====================== TELEMETRY ======================
   const fetchTelemetry = useCallback(async (showLoading = true) => {
     if (!deviceId) {
       setError('Device ID is missing. Please select a device.');
@@ -199,7 +193,6 @@ const Reports = ({ onLogout, onNavigate, isDarkMode, onThemeToggle, deviceId }) 
     }
   }, [deviceId, metricFilter]);
 
-  // ====================== ACTIVITY LOGS ======================
   const loadActivityLogs = useCallback(() => {
     try {
       const logs = getLocalActivityLogs();
@@ -525,7 +518,6 @@ const Reports = ({ onLogout, onNavigate, isDarkMode, onThemeToggle, deviceId }) 
             </div>
           </div>
 
-          {/* Tab Navigation */}
           <div style={{ marginBottom: '20px', borderBottom: '2px solid #eee', display: 'flex' }}>
             <button
               onClick={() => setActiveTab('telemetry')}
@@ -557,7 +549,6 @@ const Reports = ({ onLogout, onNavigate, isDarkMode, onThemeToggle, deviceId }) 
             </button>
           </div>
 
-          {/* Telemetry Tab */}
           {activeTab === 'telemetry' && (
             <section className="logs-panel">
               <div className="logs-panel-toolbar">
@@ -662,7 +653,6 @@ const Reports = ({ onLogout, onNavigate, isDarkMode, onThemeToggle, deviceId }) 
             </section>
           )}
 
-          {/* Activity Logs Tab */}
           {activeTab === 'activity' && (
             <section className="logs-panel">
               <div className="logs-panel-toolbar">
@@ -726,7 +716,7 @@ const Reports = ({ onLogout, onNavigate, isDarkMode, onThemeToggle, deviceId }) 
                         <tr className="logs-table-state-row">
                           <td colSpan="5" className="logs-table-state-cell">
                             No activity logs recorded yet.<br />
-                            Turn on/off devices to see logs here.
+                            Turn on/off devices using the widgets to see logs here.
                           </td>
                         </tr>
                       ) : (
