@@ -7,3 +7,6 @@ export { default as BatteryGauge } from './BatteryGauge';
 export { default as ProgressWidget } from './ProgressWidget';
 export { default as TimeSeriesChart } from './TimeSeriesChart';
 export { default as MarkdownCard } from './MarkdownCard';
+export { default as UltraSonic } from './UltraSonic';
+export { default as ValueCard } from './ValueCard';
+export { default as SpeedGauge } from './SpeedGauge';
