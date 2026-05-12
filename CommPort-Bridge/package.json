@@ -1,0 +1,13 @@
+{
+  "name": "avinya-commport-bridge",
+  "version": "1.0.0",
+  "description": "CommPort bridge — connects ESP32 Serial to website via WebSocket",
+  "main": "bridge.js",
+  "scripts": {
+    "start": "node bridge.js"
+  },
+  "dependencies": {
+    "serialport": "^12.0.0",
+    "ws": "^8.0.0"
+  }
+}

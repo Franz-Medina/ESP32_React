@@ -1,60 +1,47 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import "./Styles/WidgetStyle.css";
 import { fetchLatestTelemetry, sendOneWayRpc } from "../Utils/thingsboardApi";
 import { createActivityLog, ACTIVITY_LOG_TYPES } from "../Utils/activityLogsApi";
+import { useConnectionMode } from "../Utils/useConnectionMode";
 
 function ControlSwitch({
-  title = "SWITCH",
-  rpcMethod = "setPump",
+  title        = "SWITCH",
+  rpcMethod    = "setPump",
   telemetryKey = "pump",
 }) {
   const STORAGE_KEY = "avinya_devices";
+  const { mode, isDetecting, isCommPort, isThingsBoard, isNone, wsUrl } = useConnectionMode();
 
-  const [deviceId, setDeviceId] = useState(null);
+  const [deviceId,    setDeviceId]    = useState(null);
   const [isConnected, setIsConnected] = useState(false);
-  const [isOn, setIsOn] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [isToggling, setIsToggling] = useState(false);
+  const [isOn,        setIsOn]        = useState(false);
+  const [isLoading,   setIsLoading]   = useState(true);
+  const [error,       setError]       = useState(null);
+  const [isToggling,  setIsToggling]  = useState(false);
+
+  const wsRef       = useRef(null);
+  const prevModeRef = useRef(null);
 
   const loadDefaultDevice = () => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      return parsed.defaultId ?? null;
-    } catch (e) {
-      console.error("Failed to load default device:", e);
-      return null;
-    }
+      return JSON.parse(raw).defaultId ?? null;
+    } catch { return null; }
   };
 
-  const fetchCurrentState = async (targetDeviceId) => {
-    if (!targetDeviceId) return;
-    const { data } = await fetchLatestTelemetry({
-      deviceId: targetDeviceId,
-      keys: [telemetryKey],
-    });
-    if (data[telemetryKey]?.length > 0) {
-      const value = data[telemetryKey][0].value;
-      const boolValue =
-        value === true || value === "true" || value === 1 || value === "1";
-      setIsOn(boolValue);
-    }
+  const parseBool = (value) =>
+    value === true || value === "true" || value === 1 || value === "1";
+
+  const getErrorMessage = (err) => {
+    const msg = err?.message || "";
+    if (msg.includes("401") || msg.includes("403")) return "Invalid or expired session.";
+    if (msg.includes("404"))                         return "Device not found.";
+    if (msg.includes("Failed to fetch"))             return "Unable to reach server.";
+    return msg || "Failed to connect.";
   };
 
-  const getConnectionErrorMessage = (err) => {
-    const message = err?.message || "";
-    if (message.includes("401") || message.includes("403"))
-      return "Invalid or expired session. Please log in again.";
-    if (message.includes("404"))
-      return "Device not found. Verify the Device ID in ThingsBoard.";
-    if (message.includes("Failed to fetch"))
-      return "Unable to reach server. Check your connection.";
-    return message || "Failed to connect.";
-  };
-
-  const connectToDevice = async (targetDeviceId = loadDefaultDevice()) => {
+  const connectThingsBoard = useCallback(async (targetDeviceId) => {
     if (!targetDeviceId) {
       setError("No default device set. Go to Devices to set one.");
       setIsConnected(false);
@@ -65,13 +52,95 @@ function ControlSwitch({
     setIsLoading(true);
     setError(null);
     try {
-      await fetchCurrentState(targetDeviceId);
+      const { data } = await fetchLatestTelemetry({
+        deviceId: targetDeviceId,
+        keys: [telemetryKey],
+      });
+      if (data[telemetryKey]?.length > 0) {
+        setIsOn(parseBool(data[telemetryKey][0].value));
+      }
       setIsConnected(true);
     } catch (err) {
-      setError(getConnectionErrorMessage(err));
+      setError(getErrorMessage(err));
       setIsConnected(false);
     } finally {
       setIsLoading(false);
+    }
+  }, [telemetryKey]);
+
+  const toggleThingsBoard = async () => {
+    const nextState = !isOn;
+    setIsOn(nextState);
+    setIsToggling(true);
+    setError(null);
+    try {
+      await sendOneWayRpc({ deviceId, method: rpcMethod, params: nextState });
+      await saveSwitchActivityLog(nextState);
+    } catch {
+      setIsOn(!nextState);
+      setError("Failed to send command.");
+    } finally {
+      setIsToggling(false);
+    }
+  };
+
+  const connectCommPort = useCallback(() => {
+    if (wsRef.current) {
+      wsRef.current.onclose = null;
+      wsRef.current.close();
+    }
+    setIsLoading(true);
+    setError(null);
+    setDeviceId("commport");
+
+    const ws = new WebSocket(wsUrl);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      setIsConnected(true);
+      setIsLoading(false);
+      setError(null);
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data[telemetryKey] !== undefined) {
+          setIsOn(parseBool(data[telemetryKey]));
+        }
+      } catch {
+      }
+    };
+
+    ws.onerror = () => {
+      setError("Cannot reach bridge. Is bridge.js running?");
+      setIsConnected(false);
+      setIsLoading(false);
+    };
+
+    ws.onclose = () => {
+      setIsConnected(false);
+      setError("Bridge disconnected. Check USB cable and bridge.js.");
+    };
+  }, [wsUrl, telemetryKey]);
+
+  const toggleCommPort = () => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      setError("Not connected to bridge.");
+      return;
+    }
+    const nextState = !isOn;
+    setIsOn(nextState);
+    setIsToggling(true);
+    try {
+      ws.send(JSON.stringify({ method: rpcMethod, params: nextState }));
+      saveSwitchActivityLog(nextState);
+    } catch {
+      setIsOn(!nextState);
+      setError("Failed to send command.");
+    } finally {
+      setIsToggling(false);
     }
   };
 
@@ -87,82 +156,140 @@ function ControlSwitch({
     }
   };
 
-  const handleToggle = async () => {
-    if (!deviceId || !isConnected || isToggling) return;
-    const nextState = !isOn;
-    setIsOn(nextState);
-    setIsToggling(true);
-    setError(null);
-    try {
-      await sendOneWayRpc({ deviceId, method: rpcMethod, params: nextState });
-      await saveSwitchActivityLog(nextState);
-    } catch (err) {
-      setIsOn(!nextState);
-      setError("Failed to send command.");
-    } finally {
-      setIsToggling(false);
-    }
+  const handleToggle = () => {
+    if (!isConnected || isToggling) return;
+    if (isCommPort) toggleCommPort();
+    else            toggleThingsBoard();
   };
 
   const handleReconnect = () => {
-    setIsConnected(false);
     setError(null);
-    const defaultId = loadDefaultDevice();
-    if (defaultId) {
-      void connectToDevice(defaultId);
+    setIsConnected(false);
+    if (isCommPort) {
+      connectCommPort();
     } else {
-      setError("No default device set. Go to Devices page.");
-      setIsLoading(false);
+      const defaultId = loadDefaultDevice();
+      if (defaultId) void connectThingsBoard(defaultId);
+      else { setError("No default device set."); setIsLoading(false); }
     }
   };
 
   useEffect(() => {
-    const defaultId = loadDefaultDevice();
-    setDeviceId(defaultId);
-    void connectToDevice(defaultId);
-  }, []);
+    if (isDetecting || isNone) return;
+    if (prevModeRef.current === mode) return;
+    prevModeRef.current = mode;
+
+    console.log(`[ControlSwitch] Mode switched to: ${mode}`);
+
+    if (wsRef.current) {
+      wsRef.current.onclose = null;
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+
+    setIsConnected(false);
+    setError(null);
+
+    if (isCommPort) {
+      connectCommPort();
+    } else if (isThingsBoard) {
+      const defaultId = loadDefaultDevice();
+      setDeviceId(defaultId);
+      void connectThingsBoard(defaultId);
+    }
+  }, [mode, isDetecting, isCommPort, isThingsBoard, isNone, connectCommPort, connectThingsBoard]);
 
   useEffect(() => {
+    if (!isThingsBoard) return;
     const handleStorageChange = (e) => {
       if (e.key !== STORAGE_KEY) return;
       const newDefault = loadDefaultDevice();
       if (newDefault && newDefault !== deviceId) {
         setDeviceId(newDefault);
         setIsConnected(false);
-        window.setTimeout(() => void connectToDevice(newDefault), 300);
+        setTimeout(() => void connectThingsBoard(newDefault), 300);
       }
     };
     window.addEventListener("storage", handleStorageChange);
     return () => window.removeEventListener("storage", handleStorageChange);
-  }, [deviceId]);
+  }, [deviceId, isThingsBoard, connectThingsBoard]);
 
-  const shortDeviceId = deviceId
-    ? deviceId.length > 16
-      ? `${deviceId.slice(0, 8)}…${deviceId.slice(-6)}`
-      : deviceId
-    : null;
+  useEffect(() => {
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.onclose = null;
+        wsRef.current.close();
+      }
+    };
+  }, []);
+
+  const shortDeviceId = !deviceId
+    ? null
+    : deviceId === "commport"
+      ? "COM Port"
+      : deviceId.length > 16
+        ? `${deviceId.slice(0, 8)}…${deviceId.slice(-6)}`
+        : deviceId;
+
+  const modeBadgeStyle = {
+    fontSize: "9px", fontWeight: 700, letterSpacing: ".05em",
+    textTransform: "uppercase", padding: "2px 7px", borderRadius: "999px",
+    background: isCommPort  ? "rgba(52,199,89,.12)"
+              : isDetecting ? "rgba(142,142,147,.12)"
+              : isNone      ? "rgba(255,59,48,.10)"
+              :               "rgba(152,0,0,.08)",
+    color:      isCommPort  ? "#34c759"
+              : isDetecting ? "#8e8e93"
+              : isNone      ? "#ff3b30"
+              :               "#980000",
+    border:     isCommPort  ? "1px solid rgba(52,199,89,.22)"
+              : isDetecting ? "1px solid rgba(142,142,147,.2)"
+              : isNone      ? "1px solid rgba(255,59,48,.2)"
+              :               "1px solid rgba(152,0,0,.16)",
+  };
+
+  const modeLabel = isDetecting ? "Detecting…"
+                  : isCommPort  ? "COM Port"
+                  : isNone      ? "No Connection"
+                  :               "Cloud";
 
   return (
     <div className={`cs-widget ${isOn ? "cs-widget--on" : ""}`}>
       <div className="cs-header">
         <span className="cs-title">{title}</span>
-        <div className={`cs-status-dot ${isConnected ? "cs-status-dot--connected" : ""}`} />
+        <div style={{ display: "flex", alignItems: "center", gap: "7px" }}>
+          <span style={modeBadgeStyle}>{modeLabel}</span>
+          <div className={`cs-status-dot ${isConnected ? "cs-status-dot--connected" : ""}`} />
+        </div>
       </div>
 
-      {isLoading ? (
+      {isDetecting ? (
         <div className="cs-state-view">
-          <div className="cs-spinner">
-            <div className="cs-spinner-arc" />
+          <div className="cs-spinner"><div className="cs-spinner-arc" /></div>
+          <p className="cs-state-label">Detecting connection…</p>
+          <p className="cs-state-sublabel">Checking ThingsBoard and CommPort</p>
+        </div>
+      ) : isNone ? (
+        <div className="cs-state-view">
+          <div className="cs-icon-circle cs-icon-circle--warn">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
           </div>
+          <p className="cs-state-label">No connection available</p>
+          <p className="cs-state-sublabel">Connect to WiFi or plug in the USB cable</p>
+          <button className="cs-reconnect-btn" onClick={handleReconnect}>Retry</button>
+        </div>
+      ) : isLoading ? (
+        <div className="cs-state-view">
+          <div className="cs-spinner"><div className="cs-spinner-arc" /></div>
           <p className="cs-state-label">Connecting…</p>
         </div>
       ) : !deviceId ? (
         <div className="cs-state-view">
           <div className="cs-icon-circle cs-icon-circle--warn">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10" />
-              <line x1="12" y1="8" x2="12" y2="12" />
-              <line x1="12" y1="16" x2="12.01" y2="16" />
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
             </svg>
           </div>
           <p className="cs-state-label">No device selected</p>
@@ -172,8 +299,10 @@ function ControlSwitch({
         <div className="cs-body">
           <div className="cs-device-pill">
             <svg className="cs-device-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="5" y="2" width="14" height="20" rx="2" />
-              <circle cx="12" cy="17" r="1" />
+              {isCommPort
+                ? <><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6M9 12h6M9 15h4"/></>
+                : <><rect x="5" y="2" width="14" height="20" rx="2"/><circle cx="12" cy="17" r="1"/></>
+              }
             </svg>
             <span>{shortDeviceId}</span>
           </div>
@@ -190,7 +319,6 @@ function ControlSwitch({
                 {isToggling && <span className="cs-knob-spinner" />}
               </span>
             </button>
-
             <span className={`cs-toggle-label ${isOn ? "cs-toggle-label--on" : ""}`}>
               {isOn ? "On" : "Off"}
             </span>
@@ -199,9 +327,8 @@ function ControlSwitch({
           {error && (
             <div className="cs-error">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-                <line x1="12" y1="9" x2="12" y2="13" />
-                <line x1="12" y1="17" x2="12.01" y2="17" />
+                <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
               </svg>
               <span>{error}</span>
             </div>
