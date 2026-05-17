@@ -83,6 +83,7 @@ export const getCurrentUserProfile = () => {
   }
 
   return {
+    id: user.id,
     firstName: String(user.firstName || '').trim(),
     lastName: String(user.lastName || '').trim(),
     email: String(user.email || '').trim(),

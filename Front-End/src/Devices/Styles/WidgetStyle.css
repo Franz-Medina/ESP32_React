@@ -93,6 +93,27 @@
 }
 .cs-error svg { flex-shrink:0; margin-top:1px; }
 
+.cs-readonly-note {
+  width: 100%;
+  margin: 4px 0 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(152, 0, 0, 0.14);
+  border-radius: 5px;
+  background: rgba(152, 0, 0, 0.045);
+  color: #980000;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+[data-theme="dark"] .cs-readonly-note {
+  border-color: rgba(197, 42, 42, 0.26);
+  background: rgba(197, 42, 42, 0.1);
+  color: #ffdddd;
+}
+
 .cs-reconnect-btn {
   width:100%; height:36px; border-radius:12px;
   border:1.5px solid var(--accent-22); background:var(--accent-05);
@@ -702,3 +723,173 @@
 [data-theme="dark"] .vc2-unit,[data-theme="dark"] .vc2-data-label{ color:var(--gray-3); }
 [data-theme="dark"] .vc2-tbar-tick    { background:#1c1c1e; }
 [data-theme="dark"] .vc2-spark-label  { color:var(--gray-3); }
+
+.dashboard-widget-grid-shell.editing {
+  border-color: rgba(152, 0, 0, 0.24);
+}
+
+.dashboard-widget-grid-pattern {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(152, 0, 0, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(152, 0, 0, 0.07) 1px, transparent 1px);
+  background-size: 32px 32px;
+  opacity: 1;
+}
+
+.dashboard-widget-grid {
+  position: relative;
+  min-height: 640px;
+  z-index: 1;
+}
+
+.dashboard-widget-frame {
+  border: 1px solid rgba(152, 0, 0, 0.12);
+  border-radius: 5px;
+  background: #ffffff;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+  transition:
+    border-color 0.25s ease,
+    box-shadow 0.25s ease,
+    transform 0.2s ease;
+}
+
+.dashboard-widget-frame:hover {
+  border-color: rgba(152, 0, 0, 0.22);
+  box-shadow: 0 14px 32px rgba(152, 0, 0, 0.08);
+}
+
+.dashboard-widget-edit-toolbar {
+  height: 34px;
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  background: rgba(152, 0, 0, 0.04);
+  border-bottom: 1px solid rgba(152, 0, 0, 0.12);
+  box-sizing: border-box;
+}
+
+.dashboard-widget-drag-handle,
+.dashboard-widget-edit-btn,
+.dashboard-widget-delete-btn {
+  height: 22px;
+  min-width: 58px;
+  padding: 0 8px;
+  border-radius: 5px;
+  border: 1px solid #dddddd;
+  background: #ffffff;
+  color: #1f1f1f;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color 0.25s ease,
+    border-color 0.25s ease,
+    color 0.25s ease,
+    transform 0.15s ease;
+}
+
+.dashboard-widget-drag-handle {
+  cursor: grab;
+}
+
+.dashboard-widget-drag-handle:active {
+  cursor: grabbing;
+}
+
+.dashboard-widget-edit-btn:hover {
+  color: #980000;
+  border-color: rgba(152, 0, 0, 0.28);
+  transform: translateY(-1px);
+}
+
+.dashboard-widget-delete-btn {
+  color: #980000;
+  border-color: rgba(152, 0, 0, 0.18);
+}
+
+.dashboard-widget-delete-btn:hover {
+  background: rgba(152, 0, 0, 0.08);
+  border-color: rgba(152, 0, 0, 0.28);
+  transform: translateY(-1px);
+}
+
+.dashboard-view-empty-state {
+  min-height: 640px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6b6b6b;
+  font-size: 14px;
+  text-align: center;
+}
+
+.react-grid-item.react-grid-placeholder {
+  background: rgba(152, 0, 0, 0.12);
+  border-radius: 5px;
+  opacity: 1;
+}
+
+.react-resizable-handle {
+  opacity: 0.8;
+}
+
+[data-theme='dark'] .dashboard-widget-grid-shell {
+  border-color: rgba(197, 42, 42, 0.24);
+  background: linear-gradient(180deg, #161b24 0%, #111720 100%);
+}
+
+[data-theme='dark'] .dashboard-widget-grid-pattern {
+  background-image:
+    linear-gradient(rgba(255, 221, 221, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 221, 221, 0.07) 1px, transparent 1px);
+}
+
+[data-theme='dark'] .dashboard-widget-frame {
+  background: #171d27;
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.32);
+}
+
+[data-theme='dark'] .dashboard-widget-edit-toolbar {
+  background: rgba(197, 42, 42, 0.12);
+  border-bottom-color: rgba(197, 42, 42, 0.22);
+}
+
+[data-theme='dark'] .dashboard-widget-drag-handle,
+[data-theme='dark'] .dashboard-widget-edit-btn,
+[data-theme='dark'] .dashboard-widget-delete-btn {
+  background: #202735;
+  border-color: rgba(255, 255, 255, 0.1);
+  color: #ebebf0;
+}
+
+[data-theme='dark'] .dashboard-widget-edit-btn:hover,
+[data-theme='dark'] .dashboard-widget-delete-btn:hover {
+  color: #ffdddd;
+  border-color: rgba(197, 42, 42, 0.34);
+  background: rgba(197, 42, 42, 0.16);
+}
+
+@media (max-width: 900px) {
+  .dashboard-view-toolbar,
+  .dashboard-view-actions {
+    flex-wrap: wrap;
+  }
+
+  .dashboard-view-back-button,
+  .dashboard-view-edit-mode-button,
+  .dashboard-view-add-widget-button,
+  .dashboard-view-cancel-button,
+  .dashboard-view-save-button {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+  }
+}

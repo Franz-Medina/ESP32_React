@@ -72,6 +72,11 @@
   --logs-pdf-preview-tag-gap: 12px;
   --logs-table-header-height: 39px;
   --logs-table-row-height: 40px;
+  --logs-visible-table-rows: 15;
+  --logs-table-viewport-height: calc(
+    var(--logs-table-header-height) +
+    (var(--logs-table-row-height) * var(--logs-visible-table-rows))
+  );
   scrollbar-gutter: stable both-edges;
 }
 
@@ -758,6 +763,7 @@
   cursor: not-allowed;
   transform: none;
   box-shadow: none;
+  pointer-events: none;
 }
 
 .logs-search-button:active { transform: translateY(0); box-shadow: none; }
@@ -812,7 +818,10 @@
 
 .logs-table-scroll:focus-visible { outline: none; }
 
-.logs-table-scroll::-webkit-scrollbar { height: 10px; }
+.logs-table-scroll::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
 .logs-table-scroll::-webkit-scrollbar-track { background: transparent; }
 .logs-table-scroll::-webkit-scrollbar-thumb {
   background: rgba(152, 0, 0, 0.18);
@@ -1093,7 +1102,7 @@
   padding: 0 12px;
   border: 1px solid transparent;
   border-radius: 5px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   white-space: nowrap;
   line-height: 1;
@@ -1978,7 +1987,7 @@
   }
 }
 
-/* Final table height, empty state, and spacing stabilization */
+/* Final Logs scroll, table visibility, and responsive height stabilization */
 .logs-page .dashboard-content,
 .logs-page .dashboard-content-body,
 .logs-panel,
@@ -1988,12 +1997,17 @@
   min-height: 0;
 }
 
+.logs-page .dashboard-content {
+  overflow: hidden;
+}
+
 .logs-page .dashboard-content-body {
-  --logs-visible-table-rows: 15;
-  --logs-table-viewport-height: calc(
-    var(--logs-table-header-height) + 
-    (var(--logs-table-row-height) * var(--logs-visible-table-rows))
-  );
+  height: 100%;
+  max-height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
 }
 
 .logs-panel {
@@ -2004,14 +2018,27 @@
 .logs-table-shell {
   flex: 0 0 auto;
   height: auto;
+  min-height: 0;
   max-height: none;
+  overflow: hidden;
 }
 
 .logs-table-scroll {
+  display: block;
   flex: 0 0 var(--logs-table-viewport-height);
+  width: 100%;
   height: var(--logs-table-viewport-height);
   min-height: var(--logs-table-viewport-height);
   max-height: var(--logs-table-viewport-height);
+  overflow-x: auto;
+  overflow-y: auto;
+  scrollbar-gutter: stable both-edges;
+}
+
+.logs-table {
+  width: max-content;
+  min-width: 100%;
+  table-layout: auto;
 }
 
 .logs-table-scroll-empty .logs-table tbody {
@@ -2020,11 +2047,709 @@
 
 .logs-table-scroll-empty .logs-table-empty-state {
   top: calc(
-    var(--logs-table-header-height) + 
+    var(--logs-table-header-height) +
     ((var(--logs-table-viewport-height) - var(--logs-table-header-height)) / 2)
   );
+  transform: translate(-50%, -50%);
 }
 
 .logs-pagination-shell {
   margin-top: 0;
+  flex-shrink: 0;
+}
+
+/* Small phones and narrow portrait screens */
+@media (max-width: 767px) {
+  .logs-page .dashboard-content-body {
+    --logs-content-padding: 14px;
+  }
+
+  .logs-table-scroll {
+    height: var(--logs-table-viewport-height);
+    min-height: var(--logs-table-viewport-height);
+    max-height: var(--logs-table-viewport-height);
+  }
+}
+
+/* Very narrow phones such as iPhone SE, Galaxy Fold outer display, and compact Android phones */
+@media (max-width: 390px) {
+  .logs-page .dashboard-content-body {
+    --logs-content-padding: 12px;
+  }
+
+  .logs-table-scroll {
+    height: var(--logs-table-viewport-height);
+    min-height: var(--logs-table-viewport-height);
+    max-height: var(--logs-table-viewport-height);
+  }
+}
+
+/* Landscape phones, foldables, and short-height screens */
+@media (max-width: 767px) and (orientation: landscape),
+       (max-height: 480px) and (orientation: landscape) {
+  .logs-page .dashboard-content-body {
+    --logs-content-padding: 12px;
+    --logs-toolbar-gap: 10px;
+    --logs-filter-control-height: 44px;
+  }
+
+  .logs-table-scroll {
+    height: var(--logs-table-viewport-height);
+    min-height: var(--logs-table-viewport-height);
+    max-height: var(--logs-table-viewport-height);
+  }
+}
+
+/* Tablets, Surface devices, foldables, and compact landscape displays */
+@media (min-width: 768px) and (max-width: 1180px) {
+  .logs-table-scroll {
+    height: var(--logs-table-viewport-height);
+    min-height: var(--logs-table-viewport-height);
+    max-height: var(--logs-table-viewport-height);
+  }
+}
+
+/* Nest Hub, Nest Hub Max, and compact landscape tablets */
+@media (min-width: 900px) and (max-height: 650px) {
+  .logs-page .dashboard-content-body {
+    --logs-content-padding: 16px;
+    --logs-toolbar-gap: 10px;
+    --logs-filter-control-height: 44px;
+  }
+
+  .logs-table-scroll {
+    height: var(--logs-table-viewport-height);
+    min-height: var(--logs-table-viewport-height);
+    max-height: var(--logs-table-viewport-height);
+  }
+}
+
+.logs-table {
+  width: max-content;
+  min-width: 100%;
+  table-layout: auto;
+}
+
+.logs-table-scroll-empty {
+  min-height: clamp(220px, 36vh, 340px);
+}
+
+.logs-table-scroll-empty .logs-table tbody {
+  display: none;
+}
+
+.logs-table-scroll-empty .logs-table-empty-state {
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.logs-pagination-shell {
+  margin-top: 0;
+  flex-shrink: 0;
+}
+
+/* Small phones and narrow portrait screens */
+@media (max-width: 767px) {
+  .logs-table-scroll {
+    min-height: 220px;
+  }
+}
+
+/* Very narrow phones such as iPhone SE and Galaxy Fold outer display */
+@media (max-width: 390px) {
+  .logs-table-scroll {
+    min-height: 200px;
+  }
+}
+
+/* Landscape phones, foldables, and short-height screens */
+@media (max-width: 767px) and (orientation: landscape),
+       (max-height: 480px) and (orientation: landscape) {
+  .logs-table-scroll {
+    min-height: 168px;
+  }
+}
+
+/* Nest Hub, Nest Hub Max, and compact landscape tablets */
+@media (min-width: 900px) and (max-height: 650px) {
+  .logs-table-scroll {
+    min-height: 180px;
+  }
+}
+
+/* =========================================================
+   Logs Title Alignment Lock
+   Keeps the Logs title aligned with the sidebar header
+   while preserving the Logs layout, filters, table, and scroll behavior.
+   ========================================================= */
+
+.logs-page {
+  --logs-title-anchor-expanded: 26px;
+  --logs-title-anchor-collapsed: 22px;
+  --logs-content-edge-space: 10px;
+  --logs-frame-border-size: 1px;
+  --logs-title-left-space: 24px;
+  --logs-content-bottom-space: 24px;
+  --logs-title-row-gap: 12px;
+}
+
+.logs-page .dashboard-content {
+  padding: var(--logs-content-edge-space);
+}
+
+.logs-page .dashboard-content-body.dashboard-content-body-frame {
+  padding:
+    calc(var(--logs-title-anchor-expanded) - var(--logs-content-edge-space) - var(--logs-frame-border-size))
+    var(--logs-title-left-space)
+    var(--logs-content-bottom-space);
+}
+
+.logs-page .dashboard-sidebar.collapsed + .dashboard-content .dashboard-content-body.dashboard-content-body-frame {
+  padding-top: calc(var(--logs-title-anchor-collapsed) - var(--logs-content-edge-space) - var(--logs-frame-border-size));
+}
+
+.logs-page .dashboard-header.dashboard-page-title-row {
+  min-height: var(--sidebar-header-row-height);
+  margin: 0 0 var(--logs-title-row-gap);
+  padding: 0;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.logs-page .dashboard-header.dashboard-page-title-row .dashboard-content-title {
+  min-height: var(--sidebar-header-row-height);
+  display: inline-flex;
+  align-items: center;
+  transform: translateY(0);
+}
+
+/* Mobile portrait and compact screens */
+@media (max-width: 767px) {
+  .logs-page {
+    --logs-title-anchor-expanded: 24px;
+    --logs-title-anchor-collapsed: 20px;
+    --logs-title-left-space: clamp(14px, 3.8vw, 16px);
+    --logs-content-bottom-space: clamp(14px, 3.8vw, 16px);
+    --logs-title-row-gap: 12px;
+  }
+}
+
+/* Surface Duo portrait and similar medium portrait screens */
+@media (min-width: 540px) and (max-width: 720px) and (orientation: portrait) {
+  .logs-page {
+    --logs-title-anchor-expanded: 26px;
+    --logs-title-anchor-collapsed: 22px;
+    --logs-title-left-space: 24px;
+    --logs-content-bottom-space: 24px;
+    --logs-title-row-gap: 12px;
+  }
+}
+
+/* Small landscape phones and short-height landscape screens */
+@media (max-width: 932px) and (orientation: landscape) and (max-height: 430px) {
+  .logs-page {
+    --logs-title-anchor-expanded: 18px;
+    --logs-title-anchor-collapsed: 18px;
+    --logs-title-left-space: 20px;
+    --logs-content-bottom-space: 20px;
+    --logs-title-row-gap: 10px;
+  }
+}
+
+/* =========================================================
+   Logs Mobile and Foldable Sidebar Layout Lock
+   Keeps Logs content away from the minimized sidebar on
+   phones, foldables, Surface Duo, and compact responsive views.
+   ========================================================= */
+
+.logs-page {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.logs-page .dashboard-content {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.logs-page .dashboard-content-body.dashboard-content-body-frame,
+.logs-page .logs-panel,
+.logs-page .logs-panel-toolbar,
+.logs-page .logs-toolbar-top,
+.logs-page .logs-filters-group,
+.logs-page .logs-toolbar-actions,
+.logs-page .logs-search-form,
+.logs-page .logs-table-shell,
+.logs-page .logs-table-scroll {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+@media (max-width: 767px) and (min-height: 431px) {
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content {
+    padding:
+      var(--sidebar-mobile-content-gap)
+      var(--sidebar-mobile-content-gap)
+      var(--sidebar-mobile-content-gap)
+      var(--sidebar-mobile-collapsed-content-offset);
+  }
+
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .dashboard-content-body.dashboard-content-body-frame {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content {
+    --logs-title-left-space: clamp(12px, 3.6vw, 16px);
+    --logs-content-bottom-space: clamp(12px, 3.6vw, 16px);
+    --logs-title-row-gap: 12px;
+  }
+
+  .logs-page .dashboard-sidebar:not(.collapsed) + .dashboard-content {
+    padding: var(--sidebar-mobile-content-gap);
+  }
+}
+
+/* Phones and narrow foldables in portrait */
+@media (max-width: 430px) and (orientation: portrait) {
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content {
+    padding-left: calc(var(--sidebar-collapsed-width) + 8px);
+    padding-right: 8px;
+  }
+
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .dashboard-content-body.dashboard-content-body-frame {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .dashboard-header.dashboard-page-title-row {
+    margin-bottom: 10px;
+  }
+
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-panel {
+    gap: 10px;
+  }
+
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-panel-toolbar {
+    gap: 10px;
+  }
+
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-toolbar-top,
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-filters-group,
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-toolbar-actions,
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-search-form {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-filter-field,
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-filter-reset-button,
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-clear-button,
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-export-button-toolbar,
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-search-field,
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-search-button {
+    height: 44px;
+    min-height: 44px;
+  }
+
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-filter-field,
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-search-field {
+    padding-left: 12px;
+    padding-right: 12px;
+    gap: 10px;
+  }
+
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-filter-reset-button,
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-clear-button,
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-export-button-toolbar,
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-search-button {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    justify-self: stretch;
+  }
+
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-table-shell {
+    border-radius: 5px;
+  }
+
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-table-scroll {
+    min-height: 300px;
+    height: min(52dvh, var(--logs-table-viewport-height));
+    max-height: min(52dvh, var(--logs-table-viewport-height));
+  }
+
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-pagination-shell {
+    padding: 10px;
+  }
+
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-pagination {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-pagination-group {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* Very narrow foldables, especially Galaxy Z Fold 5 portrait */
+@media (max-width: 360px) and (orientation: portrait) {
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content {
+    padding-left: calc(var(--sidebar-collapsed-width) + 6px);
+    padding-right: 6px;
+  }
+
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .dashboard-content-body.dashboard-content-body-frame {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .dashboard-content-title {
+    font-size: 20px;
+  }
+
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-panel-toolbar {
+    gap: 9px;
+  }
+
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-toolbar-top,
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-filters-group,
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-toolbar-actions,
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-search-form {
+    gap: 9px;
+  }
+
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-filter-field,
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-filter-reset-button,
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-clear-button,
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-export-button-toolbar,
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-search-field,
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-search-button {
+    height: 42px;
+    min-height: 42px;
+    font-size: 14px;
+  }
+
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-filter-label,
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-filter-label-static,
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-search-floating-input:focus + .logs-search-floating-label,
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-search-floating-input:not(:placeholder-shown) + .logs-search-floating-label {
+    font-size: 12px;
+  }
+
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-filter-dropdown-value,
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-search-input,
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-search-floating-label {
+    font-size: 14px;
+  }
+
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-table-scroll {
+    min-height: 280px;
+    height: min(50dvh, var(--logs-table-viewport-height));
+    max-height: min(50dvh, var(--logs-table-viewport-height));
+  }
+
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-table-head-row th,
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-table-body-row td {
+    font-size: 14px;
+  }
+}
+
+/* Surface Duo portrait and wider folded portrait screens */
+@media (min-width: 540px) and (max-width: 767px) and (orientation: portrait) {
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content {
+    padding-left: var(--sidebar-mobile-collapsed-content-offset);
+    padding-right: var(--sidebar-mobile-content-gap);
+  }
+
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .dashboard-content-body.dashboard-content-body-frame {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-toolbar-top,
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-filters-group,
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-toolbar-actions,
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-search-form {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-filter-field,
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-filter-reset-button,
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-clear-button,
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-export-button-toolbar,
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-search-field,
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-search-button {
+    height: 48px;
+    min-height: 48px;
+  }
+
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-table-scroll {
+    min-height: 360px;
+    height: min(56dvh, var(--logs-table-viewport-height));
+    max-height: min(56dvh, var(--logs-table-viewport-height));
+  }
+
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-pagination {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  }
+
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-pagination-group-start {
+    justify-content: flex-start;
+  }
+
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-pagination-group-center {
+    justify-content: center;
+  }
+
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-pagination-group-end {
+    justify-content: flex-end;
+  }
+}
+
+/* Surface Duo landscape */
+@media (min-width: 700px) and (max-width: 767px) and (min-height: 431px) and (max-height: 560px) and (orientation: landscape) {
+  .logs-page {
+    --sidebar-mobile-expanded-width: min(360px, 50vw);
+  }
+
+  .logs-page .dashboard-sidebar.collapsed + .dashboard-content {
+    padding:
+      var(--sidebar-mobile-content-gap)
+      var(--sidebar-mobile-content-gap)
+      var(--sidebar-mobile-content-gap)
+      var(--sidebar-mobile-collapsed-content-offset);
+  }
+
+  .logs-page .dashboard-sidebar:not(.collapsed) {
+    width: var(--sidebar-mobile-expanded-width);
+    min-width: var(--sidebar-mobile-expanded-width);
+    max-width: var(--sidebar-mobile-expanded-width);
+  }
+
+  .logs-page .dashboard-sidebar:not(.collapsed) + .dashboard-content {
+    padding:
+      var(--sidebar-mobile-content-gap)
+      var(--sidebar-mobile-content-gap)
+      var(--sidebar-mobile-content-gap)
+      calc(var(--sidebar-mobile-expanded-width) + var(--sidebar-mobile-content-gap));
+  }
+
+  .logs-page .dashboard-content-body.dashboard-content-body-frame {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
+  .logs-page .dashboard-header.dashboard-page-title-row {
+    justify-content: center;
+    text-align: center;
+  }
+
+  .logs-page .dashboard-header.dashboard-page-title-row .dashboard-content-title {
+    width: 100%;
+    justify-content: center;
+    text-align: center;
+  }
+
+  .logs-page .logs-toolbar-top,
+  .logs-page .logs-filters-group,
+  .logs-page .logs-toolbar-actions,
+  .logs-page .logs-search-form {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .logs-page .logs-filter-field,
+  .logs-page .logs-filter-reset-button,
+  .logs-page .logs-clear-button,
+  .logs-page .logs-export-button-toolbar,
+  .logs-page .logs-search-field,
+  .logs-page .logs-search-button {
+    height: 44px;
+    min-height: 44px;
+  }
+
+  .logs-page .logs-table-scroll {
+    min-height: 220px;
+    height: min(46dvh, var(--logs-table-viewport-height));
+    max-height: min(46dvh, var(--logs-table-viewport-height));
+  }
+
+  .logs-page .logs-pagination-shell {
+    padding: 8px 10px;
+  }
+}
+
+/* Compact landscape phones and short-height screens */
+@media (max-width: 932px) and (orientation: landscape) and (max-height: 430px) {
+  .logs-page .dashboard-content-body.dashboard-content-body-frame {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .logs-page .logs-panel-toolbar {
+    gap: 9px;
+  }
+
+  .logs-page .logs-toolbar-top,
+  .logs-page .logs-filters-group,
+  .logs-page .logs-toolbar-actions,
+  .logs-page .logs-search-form {
+    grid-template-columns: 1fr;
+    gap: 9px;
+  }
+
+  .logs-page .logs-filter-field,
+  .logs-page .logs-filter-reset-button,
+  .logs-page .logs-clear-button,
+  .logs-page .logs-export-button-toolbar,
+  .logs-page .logs-search-field,
+  .logs-page .logs-search-button {
+    height: 42px;
+    min-height: 42px;
+  }
+
+  .logs-page .logs-table-scroll {
+    min-height: 180px;
+    height: min(44dvh, var(--logs-table-viewport-height));
+    max-height: min(44dvh, var(--logs-table-viewport-height));
+  }
+
+  .logs-page .logs-pagination {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .logs-page .logs-pagination-group {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* Logs mobile table and toolbar stability */
+@media (max-width: 767px) {
+  .logs-page .logs-panel {
+    overflow: visible;
+  }
+
+  .logs-page .logs-table-shell {
+    overflow: hidden;
+  }
+
+  .logs-page .logs-table-scroll {
+    overflow-x: auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .logs-page .logs-table {
+    width: max-content;
+    min-width: 100%;
+  }
+
+  .logs-page .logs-table-head-row th,
+  .logs-page .logs-table-body-row td {
+    font-size: 14px;
+  }
+
+  .logs-page .logs-action-badge {
+    height: 30px;
+    min-height: 30px;
+    font-size: 14px;
+  }
+}
+
+/* Dark mode support for final Logs responsive lock */
+[data-theme='dark'] .logs-page .dashboard-sidebar.collapsed + .dashboard-content .dashboard-content-body.dashboard-content-body-frame {
+  border-color: rgba(255, 221, 221, 0.08);
+}
+
+[data-theme='dark'] .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-filter-field,
+[data-theme='dark'] .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-search-field,
+[data-theme='dark'] .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-filter-reset-button,
+[data-theme='dark'] .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-clear-button,
+[data-theme='dark'] .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-export-button-toolbar {
+  background: rgba(21, 24, 31, 0.96);
+  border-color: #262b35;
+}
+
+[data-theme='dark'] .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-filter-reset-button,
+[data-theme='dark'] .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-clear-button,
+[data-theme='dark'] .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-export-button-toolbar {
+  color: #ffffff;
+}
+
+[data-theme='dark'] .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-filter-reset-button:hover,
+[data-theme='dark'] .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-clear-button:hover,
+[data-theme='dark'] .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-export-button-toolbar:hover {
+  background: #171b22;
+  border-color: #323947;
+  color: #ffdddd;
+}
+
+[data-theme='dark'] .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-table-shell {
+  background: linear-gradient(
+    180deg,
+    rgba(21, 24, 31, 0.98) 0%,
+    rgba(17, 19, 24, 0.98) 100%
+  );
+  border-color: #262b35;
+}
+
+[data-theme='dark'] .logs-page .dashboard-sidebar.collapsed + .dashboard-content .logs-table-scroll {
+  scrollbar-color: rgba(255, 221, 221, 0.26) transparent;
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .logs-page .logs-panel,
+  .logs-page .logs-table-body-row,
+  .logs-page .logs-filter-field,
+  .logs-page .logs-filter-reset-button,
+  .logs-page .logs-clear-button,
+  .logs-page .logs-export-button,
+  .logs-page .logs-search-field,
+  .logs-page .logs-search-button,
+  .logs-page .logs-pagination-button {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* =========================================================
+   Logs Modal and Loading Layer Lock
+   Keeps Logs custom modals and loading overlays above the
+   minimized sidebar in light and dark mode.
+   ========================================================= */
+
+.logs-page .account-photo-modal-overlay,
+.logs-page .account-save-overlay,
+.logs-page .logs-table-loading-overlay {
+  z-index: 9000;
+}
+
+.logs-page .logs-table-loading-overlay {
+  position: fixed;
+  inset: 0;
+}
+
+.logs-page .account-save-overlay {
+  position: fixed;
+  inset: 0;
+}
+
+.logs-page .account-photo-modal,
+.logs-page .account-save-card,
+.logs-page .logs-table-loading-card {
+  position: relative;
+  z-index: 1;
 }

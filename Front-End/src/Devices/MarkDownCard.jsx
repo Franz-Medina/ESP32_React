@@ -5,10 +5,12 @@ function MarkdownCard({
   title = "Information",
   defaultContent = "This is a customizable information card.\n\nYou can put instructions, notes, or system status here.",
   allowEditing = true,
+  readOnly = false,
 }) {
   const [content, setContent] = useState(defaultContent);
   const [isEditing, setIsEditing] = useState(false);
   const [tempContent, setTempContent] = useState(defaultContent);
+  const canEditContent = allowEditing && !readOnly;
 
   const renderMarkdown = (text) => {
     if (!text) return "";
@@ -44,7 +46,7 @@ function MarkdownCard({
       <div className="cs-header">
         <span className="cs-title">{title}</span>
 
-        {allowEditing && !isEditing && (
+        {canEditContent && !isEditing && (
           <button
             className="md-edit-icon-btn"
             onClick={handleEdit}
@@ -78,7 +80,7 @@ function MarkdownCard({
         )}
       </div>
 
-      {allowEditing && isEditing && (
+      {canEditContent && isEditing && (
         <div className="md-actions">
           <button className="md-btn md-btn--cancel" onClick={handleCancel}>
             Cancel

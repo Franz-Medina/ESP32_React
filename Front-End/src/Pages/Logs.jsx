@@ -64,9 +64,15 @@ const getLogsPdfFileNameFromResponse = (response) => {
 export const LOG_TYPES = {
   LOGIN:          'login',
   LOGOUT:         'logout',
-  DEVICE_ADDED:   'device_added',
-  DEVICE_UPDATED: 'device_updated',
-  DEVICE_REMOVED: 'device_removed',
+  DEVICE_ADDED:      'device_added',
+  DEVICE_UPDATED:    'device_updated',
+  DEVICE_REMOVED:    'device_removed',
+  DASHBOARD_ADDED:   'dashboard_added',
+  DASHBOARD_UPDATED: 'dashboard_updated',
+  DASHBOARD_REMOVED: 'dashboard_removed',
+  WIDGET_ADDED: 'widget_added',
+  WIDGET_UPDATED: 'widget_updated',
+  WIDGET_REMOVED: 'widget_removed',
 }
 
 const LOG_TYPE_META = {
@@ -74,7 +80,13 @@ const LOG_TYPE_META = {
   [LOG_TYPES.LOGOUT]:         { label: 'Logout',         color: 'neutral' },
   [LOG_TYPES.DEVICE_ADDED]:   { label: 'Device Added',   color: 'info'    },
   [LOG_TYPES.DEVICE_UPDATED]: { label: 'Device Updated', color: 'warning' },
-  [LOG_TYPES.DEVICE_REMOVED]: { label: 'Device Removed', color: 'danger'  },
+  [LOG_TYPES.DEVICE_REMOVED]:    { label: 'Device Removed',    color: 'danger'  },
+  [LOG_TYPES.DASHBOARD_ADDED]:   { label: 'Dashboard Added',   color: 'info'    },
+  [LOG_TYPES.DASHBOARD_UPDATED]: { label: 'Dashboard Updated', color: 'warning' },
+  [LOG_TYPES.DASHBOARD_REMOVED]: { label: 'Dashboard Removed', color: 'danger'  },
+  [LOG_TYPES.WIDGET_ADDED]:   { label: 'Widget Added',   color: 'info'    },
+  [LOG_TYPES.WIDGET_UPDATED]: { label: 'Widget Updated', color: 'warning' },
+  [LOG_TYPES.WIDGET_REMOVED]: { label: 'Widget Removed', color: 'danger'  },
 }
 
 const ALL_LOG_TYPE_FILTER_OPTIONS = [
@@ -83,7 +95,13 @@ const ALL_LOG_TYPE_FILTER_OPTIONS = [
   { value: LOG_TYPES.LOGOUT,         label: 'Logout'         },
   { value: LOG_TYPES.DEVICE_ADDED,   label: 'Device Added'   },
   { value: LOG_TYPES.DEVICE_UPDATED, label: 'Device Updated' },
-  { value: LOG_TYPES.DEVICE_REMOVED, label: 'Device Removed' },
+  { value: LOG_TYPES.DEVICE_REMOVED,    label: 'Device Removed'    },
+  { value: LOG_TYPES.DASHBOARD_ADDED,   label: 'Dashboard Added'   },
+  { value: LOG_TYPES.DASHBOARD_UPDATED, label: 'Dashboard Updated' },
+  { value: LOG_TYPES.DASHBOARD_REMOVED, label: 'Dashboard Removed' },
+  { value: LOG_TYPES.WIDGET_ADDED,   label: 'Widget Added'   },
+  { value: LOG_TYPES.WIDGET_UPDATED, label: 'Widget Updated' },
+  { value: LOG_TYPES.WIDGET_REMOVED, label: 'Widget Removed' },
 ]
 
 const ALL_ROLE_FILTER_OPTIONS = [
@@ -212,7 +230,7 @@ const formatTimestamp = (iso) => {
       hour12: true
     }).format(date)
 
-    return `${month}, ${day}, ${year} | ${timePart}`
+    return `${month} ${day}, ${year} | ${timePart}`
   } catch {
     return iso
   }
@@ -394,7 +412,19 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
 
   const isLogsSearchDisabled =
     isLogsToolbarDisabled ||
-    (searchInput.trim().length === 0 && appliedSearch.length === 0)
+    searchInput.trim().length === 0
+
+  const shouldShowLogsPageLoader =
+    (isLogsTableTransitioning && hasLogsLoadedOnce) ||
+    isPreparingLogsPdfPreview ||
+    isDownloadingLogsPdf
+
+  const logsPageLoadingTitle =
+    isPreparingLogsPdfPreview
+      ? 'Preparing PDF'
+      : isDownloadingLogsPdf
+        ? 'Downloading PDF'
+        : logsTableLoadingTitle
 
   const logsPdfPreviewTags = [
     `Search: ${appliedSearch || 'All logs'}`,
@@ -459,6 +489,8 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     e.preventDefault()
 
     const nextSearchValue = searchInput.trim()
+
+    if (!nextSearchValue) return
 
     if (nextSearchValue === appliedSearch) {
       if (currentPage !== 1) {
@@ -687,6 +719,13 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     setOpenLogsFilterDropdown('')
   }
 
+  const handleProfileMenuToggle = (event) => {
+    event.stopPropagation()
+    setIsEntitiesOpen(false)
+    setOpenLogsFilterDropdown('')
+    setIsProfileMenuOpen((prev) => !prev)
+  }
+
   const handleSidebarToggle = () => {
     if (!isSidebarCollapsed) closeDropdowns()
     setIsSidebarCollapsed((prev) => !prev)
@@ -695,12 +734,6 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   const handleEntitiesToggle = () => {
     setIsProfileMenuOpen(false)
     setIsEntitiesOpen((prev) => !prev)
-  }
-
-  const handleProfileMenuToggle = (event) => {
-    event.stopPropagation()
-    setIsEntitiesOpen(false)
-    setIsProfileMenuOpen((prev) => !prev)
   }
 
   const showLogsStatusAlert = async ({ type, title, message }) => {
@@ -863,21 +896,6 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
               </span>
               <span className="dashboard-sidebar-link-label">Logs</span>
             </button>
-
-            {isAdministrator && (
-              <button type="button" className="dashboard-sidebar-link" data-tooltip="Reports" onClick={() => onNavigate('reports')}>
-                <span className="dashboard-sidebar-link-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                    <polyline points="14 2 14 8 20 8" />
-                    <line x1="16" y1="13" x2="8" y2="13" />
-                    <line x1="16" y1="17" x2="8" y2="17" />
-                    <polyline points="10 9 9 9 8 9" />
-                  </svg>
-                </span>
-                <span className="dashboard-sidebar-link-label">Reports</span>
-              </button>
-            )}
           </nav>
 
           <div className="dashboard-sidebar-footer">
@@ -1069,13 +1087,14 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                   <div className="logs-search-floating-control">
                     <input
                       id="logs-search-input"
-                      type="search"
+                      type="text"
                       className="logs-search-input logs-search-floating-input"
                       placeholder=" "
                       value={searchInput}
                       onChange={handleSearchInputChange}
                       aria-label="Search logs"
                       disabled={isLogsToolbarDisabled}
+                      autoComplete="off"
                     />
                     <label htmlFor="logs-search-input" className="logs-search-floating-label">Search</label>
                   </div>
@@ -1291,6 +1310,18 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
           </section>
         </div>
       </section>
+      {shouldShowLogsPageLoader && (
+        <div className="dashboard-action-overlay" role="status" aria-live="polite" aria-busy="true">
+          <div className="dashboard-action-card">
+            <img src={logo} alt="Avinya Logo" className="dashboard-action-logo" />
+            <p className="dashboard-action-title">{logsPageLoadingTitle}</p>
+            <div className="dashboard-action-loader" aria-hidden="true">
+              <span className="dashboard-action-loader-bar"></span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {isLogsPdfPreviewModalOpen && (
         <div
           className={`account-photo-modal-overlay ${isLogsPdfPreviewModalClosing ? 'account-modal-closing' : ''}`}

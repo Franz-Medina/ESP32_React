@@ -11,6 +11,7 @@ function ValueCard({
   pollingMs     = 5000,
   showSparkline = true,
   showTrend     = true,
+  deviceId: assignedDeviceId = "",
   thresholds    = [
     { value: 0,  color: "#34c759", label: "Normal"   },
     { value: 70, color: "#ff9f0a", label: "Warning"  },
@@ -59,11 +60,15 @@ function ValueCard({
   }, [cfg]);
 
   const loadDefaultDevice = () => {
+    if (assignedDeviceId) return assignedDeviceId;
+
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return null;
       return JSON.parse(raw).defaultId ?? null;
-    } catch { return null; }
+    } catch {
+      return null;
+    }
   };
 
   const fetchValue = useCallback(async (devId, key) => {
@@ -106,7 +111,9 @@ function ValueCard({
     }
   }, [fetchValue]);
 
-  useEffect(() => { void connectToDefault(cfg.dataKey); }, []);
+  useEffect(() => {
+    void connectToDefault(cfg.dataKey);
+  }, [assignedDeviceId, cfg.dataKey, connectToDefault]);
 
   useEffect(() => {
     if (intervalRef.current) clearInterval(intervalRef.current);
@@ -129,7 +136,7 @@ function ValueCard({
     };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
-  }, [deviceId, cfg.dataKey, connectToDefault]);
+  }, [deviceId, cfg.dataKey, assignedDeviceId, connectToDefault]);
 
   const handleReconnect = () => {
     setIsConnected(false);

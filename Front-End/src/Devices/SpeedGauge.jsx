@@ -144,7 +144,11 @@ const Gauge = ({ value = 0, min = 0, max = 120, units = "km/h" }) => {
 };
 
 /* ── Main widget ── */
-export default function SpeedGauge() {
+export default function SpeedGauge({
+  title = "SPEED MONITOR",
+  dataKey = "speed",
+  deviceId: assignedDeviceId = "",
+}) {
   const STORAGE_KEY = "avinya_devices";
 
   const [deviceId, setDeviceId] = useState(null);
@@ -154,6 +158,8 @@ export default function SpeedGauge() {
   const [error, setError] = useState(null);
 
   const loadDefaultDevice = () => {
+    if (assignedDeviceId) return assignedDeviceId;
+
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return null;
@@ -167,9 +173,9 @@ export default function SpeedGauge() {
 
   const fetchSpeed = async (devId) => {
     if (!devId) return;
-    const { data } = await fetchLatestTelemetry({ deviceId: devId, keys: ["speed"] });
-    if (data.speed?.length > 0) {
-      const v = parseFloat(data.speed[0].value);
+    const { data } = await fetchLatestTelemetry({ deviceId: devId, keys: [dataKey] });
+    if (data[dataKey]?.length > 0) {
+      const v = parseFloat(data[dataKey][0].value);
       setSpeed(isNaN(v) ? 0 : v);
     } else {
       setSpeed(0);
@@ -248,7 +254,7 @@ export default function SpeedGauge() {
     <div className="cs-widget">
       {/* Header */}
       <div className="cs-header">
-        <span className="cs-title">SPEED MONITOR</span>
+        <span className="cs-title">{title}</span>
         <div className={`cs-status-dot ${isConnected ? "cs-status-dot--connected" : ""}`} />
       </div>
 

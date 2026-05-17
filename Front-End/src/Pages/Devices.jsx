@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Swal from 'sweetalert2'
 import 'sweetalert2/dist/sweetalert2.min.css'
 import logo from '../Pictures/Avinya.png'
@@ -10,18 +10,25 @@ import {
   ProfileMenuIcon,
   EditIcon,
   TrashIcon,
-  SaveIcon
+  SaveIcon,
+  CopyIcon,
+  CheckIcon,
+  AccessTokenIcon,
+  LatestTelemetryIcon
 } from '../Components/Icons.jsx'
 import {
   fetchDevices,
   createDevice,
   updateDevice,
-  deleteDeviceById
+  deleteDeviceById,
+  resolveThingsBoardDeviceByName,
+  fetchDeviceAccessToken,
+  fetchDeviceLatestTelemetry
 } from '../Utils/devicesApi'
-import { syncDevicesForDashboardWidgets } from '../Utils/deviceStorage'
 
 const MAX_DEVICES = 5
 const DEVICE_MODAL_TRANSITION_MS = 280
+const COPY_FEEDBACK_TIMEOUT_MS = 1600
 
 const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   const [isEntitiesOpen, setIsEntitiesOpen] = useState(true)
@@ -36,12 +43,36 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   const [isModalClosing, setIsModalClosing] = useState(false)
   const [modalMode, setModalMode] = useState('add')
   const [editingDevice, setEditingDevice] = useState(null)
-  const [formId, setFormId] = useState('')
-  const [formDesc, setFormDesc] = useState('')
-  const [formIdError, setFormIdError] = useState('')
+  const [formDeviceName, setFormDeviceName] = useState('')
+  const [formDeviceNameError, setFormDeviceNameError] = useState('')
+  const [formResolvedDeviceId, setFormResolvedDeviceId] = useState('')
+  const [formConnectionStatus, setFormConnectionStatus] = useState('idle')
+  const [formConnectionMessage, setFormConnectionMessage] = useState('')
+  const [isDeviceConnecting, setIsDeviceConnecting] = useState(false)
 
   const [isDeviceActionLoading, setIsDeviceActionLoading] = useState(false)
   const [deviceActionLoadingTitle, setDeviceActionLoadingTitle] = useState('Loading Devices')
+
+  const [isAccessTokenModalOpen, setIsAccessTokenModalOpen] = useState(false)
+  const [isAccessTokenModalClosing, setIsAccessTokenModalClosing] = useState(false)
+  const [accessTokenDevice, setAccessTokenDevice] = useState(null)
+  const [accessTokenValue, setAccessTokenValue] = useState('')
+  const [accessTokenError, setAccessTokenError] = useState('')
+  const [isAccessTokenLoading, setIsAccessTokenLoading] = useState(false)
+
+  const [isTelemetryModalOpen, setIsTelemetryModalOpen] = useState(false)
+  const [isTelemetryModalClosing, setIsTelemetryModalClosing] = useState(false)
+  const [telemetryDevice, setTelemetryDevice] = useState(null)
+  const [telemetryRows, setTelemetryRows] = useState([])
+  const [hasCheckedTelemetry, setHasCheckedTelemetry] = useState(false)
+  const [telemetryError, setTelemetryError] = useState('')
+  const [isTelemetryLoading, setIsTelemetryLoading] = useState(false)
+  const [isTelemetryRefreshing, setIsTelemetryRefreshing] = useState(false)
+
+  const [copiedDeviceField, setCopiedDeviceField] = useState('')
+  const [isAccessTokenCopied, setIsAccessTokenCopied] = useState(false)
+  const deviceCopyFeedbackTimerRef = useRef(null)
+  const accessTokenCopyFeedbackTimerRef = useRef(null)
 
   const user = getCurrentUserProfile()
   const isAdministrator = isAdministratorRole(user.roleLabel)
@@ -67,6 +98,13 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     return () => document.removeEventListener('mousedown', handleOutsideClick)
   }, [])
 
+  useEffect(() => {
+    return () => {
+      window.clearTimeout(deviceCopyFeedbackTimerRef.current)
+      window.clearTimeout(accessTokenCopyFeedbackTimerRef.current)
+    }
+  }, [])
+
   const loadDevicesFromServer = useCallback(async () => {
     try {
       setIsDevicesLoading(true)
@@ -80,7 +118,7 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
       const nextDevices = Array.isArray(data.devices) ? data.devices : []
 
       setDevices(nextDevices)
-      syncDevicesForDashboardWidgets(nextDevices)
+      
     } catch (error) {
       console.error('DEVICES LOAD ERROR:', error)
 
@@ -100,15 +138,29 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   }, [loadDevicesFromServer])
 
   useEffect(() => {
-    if (!isModalOpen) return
+    if (!isModalOpen && !isAccessTokenModalOpen && !isTelemetryModalOpen) return
 
     const handleKey = (e) => {
-      if (e.key === 'Escape') void closeModal()
+      if (e.key !== 'Escape') return
+
+      if (isModalOpen) {
+        void closeModal()
+        return
+      }
+
+      if (isAccessTokenModalOpen) {
+        void closeAccessTokenModal()
+        return
+      }
+
+      if (isTelemetryModalOpen) {
+        void closeLatestTelemetryModal()
+      }
     }
 
     document.addEventListener('keydown', handleKey)
     return () => document.removeEventListener('keydown', handleKey)
-  }, [isModalOpen])
+  }, [isModalOpen, isAccessTokenModalOpen, isTelemetryModalOpen])
 
   const closeDropdowns = () => {
     setIsEntitiesOpen(false)
@@ -165,9 +217,12 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   const openAddModal = () => {
     setModalMode('add')
     setEditingDevice(null)
-    setFormId('')
-    setFormDesc('')
-    setFormIdError('')
+    setFormDeviceName('')
+    setFormDeviceNameError('')
+    setFormResolvedDeviceId('')
+    setFormConnectionStatus('idle')
+    setFormConnectionMessage('')
+    setCopiedDeviceField('')
     setIsModalClosing(false)
     setIsModalOpen(true)
   }
@@ -175,9 +230,12 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   const openEditModal = (device) => {
     setModalMode('edit')
     setEditingDevice(device)
-    setFormId(device.deviceUid || '')
-    setFormDesc(device.description || '')
-    setFormIdError('')
+    setFormDeviceName(device.deviceName || '')
+    setFormDeviceNameError('')
+    setFormResolvedDeviceId(device.thingsboardDeviceId || '')
+    setFormConnectionStatus(device.thingsboardDeviceId ? 'connected' : 'idle')
+    setFormConnectionMessage(device.thingsboardDeviceId ? 'Device is already connected.' : '')
+    setCopiedDeviceField('')
     setIsModalClosing(false)
     setIsModalOpen(true)
   }
@@ -193,9 +251,12 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     setIsModalClosing(false)
     setModalMode('add')
     setEditingDevice(null)
-    setFormId('')
-    setFormDesc('')
-    setFormIdError('')
+    setFormDeviceName('')
+    setFormDeviceNameError('')
+    setFormResolvedDeviceId('')
+    setFormConnectionStatus('idle')
+    setFormConnectionMessage('')
+    setCopiedDeviceField('')
   }
 
   const showDevicesStatusAlert = async ({ type, title, message }) => {
@@ -263,47 +324,45 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
       },
     })
 
-  const validateDeviceForm = ({ currentDeviceId = null } = {}) => {
-    if (!normalizedFormId) {
-      setFormIdError('Device ID cannot be empty.')
-      return false
-    }
-
-    if (normalizedFormId.length > 64) {
-      setFormIdError('Device ID must not exceed 64 characters.')
-      return false
-    }
-
-    if (!/^[A-Za-z0-9._:-]+$/.test(normalizedFormId)) {
-      setFormIdError('Device ID may only contain letters, numbers, dots, underscores, colons, and hyphens.')
-      return false
-    }
-
-    const hasDuplicate = devices.some((device) => {
-      if (currentDeviceId && device.id === currentDeviceId) return false
-      return String(device.deviceUid || '').trim().toLowerCase() === normalizedFormId.toLowerCase()
-    })
-
-    if (hasDuplicate) {
-      setFormIdError('This Device ID already exists.')
-      return false
-    }
-
-    return true
+  const restoreDeviceModal = ({
+    mode,
+    device,
+    deviceName,
+    resolvedDeviceId,
+    connectionStatus,
+    connectionMessage,
+  }) => {
+    setModalMode(mode)
+    setEditingDevice(device)
+    setFormDeviceName(deviceName)
+    setFormResolvedDeviceId(resolvedDeviceId)
+    setFormConnectionStatus(connectionStatus)
+    setFormConnectionMessage(connectionMessage)
+    setFormDeviceNameError('')
+    setIsModalClosing(false)
+    setIsModalOpen(true)
   }
 
   const handleSubmitDevice = async () => {
-    if (isModalClosing || isDeviceActionLoading) return
+    if (!canSubmitDevice) return
 
     const currentDeviceId = editingDevice?.id || null
 
-    if (!validateDeviceForm({ currentDeviceId })) return
+    if (!validateDeviceNameForm({ currentDeviceId })) return
 
     if (modalMode === 'edit' && !hasDeviceFormChanges) return
 
     const payload = {
-      deviceUid: normalizedFormId,
-      description: normalizedFormDesc,
+      deviceName: normalizedFormDeviceName,
+    }
+
+    const draftModalState = {
+      mode: modalMode,
+      device: editingDevice,
+      deviceName: normalizedFormDeviceName,
+      resolvedDeviceId: formResolvedDeviceId,
+      connectionStatus: formConnectionStatus,
+      connectionMessage: formConnectionMessage,
     }
 
     const targetDevice = editingDevice
@@ -314,12 +373,15 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     const confirmation = await confirmDeviceAction({
       title: isEditMode ? 'Edit Device?' : 'Add Device?',
       text: isEditMode
-        ? `Are you sure you want to save changes to "${targetDevice?.deviceUid}"?`
-        : `Are you sure you want to add "${payload.deviceUid}"?`,
+        ? `Are you sure you want to save changes to "${targetDevice?.deviceName}"?`
+        : `Are you sure you want to add "${payload.deviceName}"?`,
       confirmButtonText: 'Yes',
     })
 
-    if (!confirmation.isConfirmed) return
+    if (!confirmation.isConfirmed) {
+      restoreDeviceModal(draftModalState)
+      return
+    }
 
     setDeviceActionLoadingTitle(isEditMode ? 'Updating Device' : 'Adding Device')
     setIsDeviceActionLoading(true)
@@ -337,7 +399,6 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
         : [...devices, data.device]
 
       setDevices(nextDevices)
-      syncDevicesForDashboardWidgets(nextDevices)
 
       await showDevicesStatusAlert({
         type: 'success',
@@ -362,7 +423,7 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
 
     const confirmation = await confirmDeviceAction({
       title: 'Delete Device?',
-      text: `Are you sure you want to delete "${device.deviceUid}"?`,
+      text: `Are you sure you want to delete "${device.deviceName}"?`,
       confirmButtonText: 'Yes',
     })
 
@@ -380,7 +441,6 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
       const nextDevices = devices.filter((item) => item.id !== device.id)
 
       setDevices(nextDevices)
-      syncDevicesForDashboardWidgets(nextDevices)
 
       await showDevicesStatusAlert({
         type: 'success',
@@ -398,19 +458,304 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     }
   }
 
-  const normalizedFormId = formId.trim()
-  const normalizedFormDesc = formDesc.trim()
+  const openAccessTokenModal = async (device) => {
+    if (isDeviceActionLoading) return
+
+    setAccessTokenDevice(device)
+    setAccessTokenValue('')
+    setAccessTokenError('')
+    setIsAccessTokenCopied(false)
+    setIsAccessTokenModalClosing(false)
+    setIsAccessTokenModalOpen(true)
+    setIsAccessTokenLoading(true)
+
+    try {
+      const [data] = await Promise.all([
+        fetchDeviceAccessToken(device.id),
+        new Promise((resolve) => window.setTimeout(resolve, 520)),
+      ])
+
+      setAccessTokenValue(data.accessToken || '')
+    } catch (error) {
+      setAccessTokenError(error.message || 'Unable to load access token right now.')
+    } finally {
+      setIsAccessTokenLoading(false)
+    }
+  }
+
+  const closeAccessTokenModal = async () => {
+    if (isAccessTokenModalClosing || isAccessTokenLoading) return
+
+    setIsAccessTokenModalClosing(true)
+
+    await new Promise((resolve) => setTimeout(resolve, DEVICE_MODAL_TRANSITION_MS))
+
+    setIsAccessTokenModalOpen(false)
+    setIsAccessTokenModalClosing(false)
+    setAccessTokenDevice(null)
+    setAccessTokenValue('')
+    setAccessTokenError('')
+    setIsAccessTokenCopied(false)
+  }
+
+  const formatTelemetryLastUpdateTime = (timestamp) => {
+    const date = new Date(Number(timestamp))
+
+    if (Number.isNaN(date.getTime())) {
+      return 'N/A'
+    }
+
+    const dateText = new Intl.DateTimeFormat('en-US', {
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+    }).format(date)
+
+    const timeText = new Intl.DateTimeFormat('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    }).format(date)
+
+    return `${dateText} | ${timeText}`
+  }
+
+  const loadLatestTelemetryForDevice = async (device) => {
+    const data = await fetchDeviceLatestTelemetry(device.id)
+    return Array.isArray(data.telemetry) ? data.telemetry : []
+  }
+
+  const openLatestTelemetryModal = (device) => {
+    if (isDeviceActionLoading || isTelemetryRefreshing) return
+
+    setTelemetryDevice(device)
+    setTelemetryRows([])
+    setHasCheckedTelemetry(false)
+    setTelemetryError('')
+    setIsTelemetryModalClosing(false)
+    setIsTelemetryLoading(false)
+    setIsTelemetryRefreshing(false)
+    setIsTelemetryModalOpen(true)
+  }
+
+  const closeLatestTelemetryModal = async () => {
+    if (isTelemetryModalClosing || isTelemetryLoading || isTelemetryRefreshing) return
+
+    setIsTelemetryModalClosing(true)
+
+    await new Promise((resolve) => setTimeout(resolve, DEVICE_MODAL_TRANSITION_MS))
+
+    setIsTelemetryModalOpen(false)
+    setIsTelemetryModalClosing(false)
+    setTelemetryDevice(null)
+    setTelemetryRows([])
+    setHasCheckedTelemetry(false)
+    setTelemetryError('')
+    setIsTelemetryLoading(false)
+    setIsTelemetryRefreshing(false)
+  }
+
+  const closeLatestTelemetryModalForRefresh = async () => {
+    setIsTelemetryModalClosing(true)
+
+    await new Promise((resolve) => setTimeout(resolve, DEVICE_MODAL_TRANSITION_MS))
+
+    setIsTelemetryModalOpen(false)
+    setIsTelemetryModalClosing(false)
+  }
+
+  const handleCheckLatestTelemetry = async () => {
+    if (!telemetryDevice || isTelemetryLoading || isTelemetryRefreshing) return
+
+    const currentDevice = telemetryDevice
+
+    await closeLatestTelemetryModalForRefresh()
+
+    setIsTelemetryRefreshing(true)
+
+    try {
+      const [rows] = await Promise.all([
+        loadLatestTelemetryForDevice(currentDevice),
+        new Promise((resolve) => window.setTimeout(resolve, 620)),
+      ])
+
+      setTelemetryDevice(currentDevice)
+      setTelemetryRows(rows)
+      setTelemetryError('')
+      setHasCheckedTelemetry(true)
+    } catch (error) {
+      setTelemetryDevice(currentDevice)
+      setTelemetryRows([])
+      setTelemetryError(error.message || 'Unable to load latest telemetry right now.')
+      setHasCheckedTelemetry(true)
+    } finally {
+      setIsTelemetryRefreshing(false)
+      setIsTelemetryModalClosing(false)
+      setIsTelemetryModalOpen(true)
+    }
+  }
+
+  const normalizedFormDeviceName = formDeviceName.trim()
+  const isDeviceConnected =
+    formConnectionStatus === 'connected' && Boolean(formResolvedDeviceId)
 
   const isEditingDevice = modalMode === 'edit' && editingDevice
 
   const hasDeviceFormChanges = useMemo(() => {
     if (!isEditingDevice) return true
 
-    return (
-      normalizedFormId !== String(editingDevice.deviceUid || '').trim() ||
-      normalizedFormDesc !== String(editingDevice.description || '').trim()
-    )
-  }, [editingDevice, isEditingDevice, normalizedFormDesc, normalizedFormId])
+    return normalizedFormDeviceName !== String(editingDevice.deviceName || '').trim()
+  }, [editingDevice, isEditingDevice, normalizedFormDeviceName])
+
+  const canConnectDevice =
+    !isModalClosing &&
+    !isDeviceConnecting &&
+    Boolean(normalizedFormDeviceName) &&
+    (modalMode === 'add' || hasDeviceFormChanges)
+
+  const canSubmitDevice =
+    !isModalClosing &&
+    !isDeviceActionLoading &&
+    isDeviceConnected &&
+    (modalMode === 'add' || hasDeviceFormChanges)
+
+  const handleDeviceNameChange = (value) => {
+    setFormDeviceName(value)
+    setFormDeviceNameError('')
+    setFormResolvedDeviceId('')
+    setFormConnectionStatus('idle')
+    setFormConnectionMessage('')
+    setCopiedDeviceField('')
+  }
+
+  const validateDeviceNameForm = ({ currentDeviceId = null } = {}) => {
+    if (!normalizedFormDeviceName) {
+      setFormDeviceNameError('Device Name cannot be empty.')
+      return false
+    }
+
+    if (normalizedFormDeviceName.length > 255) {
+      setFormDeviceNameError('Device Name must not exceed 255 characters.')
+      return false
+    }
+
+    const hasDuplicate = devices.some((device) => {
+      if (currentDeviceId && device.id === currentDeviceId) return false
+      return String(device.deviceName || '').trim() === normalizedFormDeviceName
+    })
+
+    if (hasDuplicate) {
+      setFormDeviceNameError('This Device Name already exists.')
+      return false
+    }
+
+    return true
+  }
+
+  const handleConnectDevice = async () => {
+    if (!canConnectDevice) return
+
+    const currentDeviceId = editingDevice?.id || null
+
+    if (!validateDeviceNameForm({ currentDeviceId })) return
+
+    const deviceNameToConnect = normalizedFormDeviceName
+
+    const draftModalState = {
+      mode: modalMode,
+      device: editingDevice,
+      deviceName: deviceNameToConnect,
+      resolvedDeviceId: '',
+      connectionStatus: 'checking',
+      connectionMessage: 'Checking ThingsBoard Cloud...',
+    }
+
+    await closeModal()
+
+    setIsDeviceConnecting(true)
+
+    try {
+      const [data] = await Promise.all([
+        resolveThingsBoardDeviceByName(deviceNameToConnect),
+        new Promise((resolve) => window.setTimeout(resolve, 620)),
+      ])
+
+      const resolvedDevice = data.device || {}
+
+      restoreDeviceModal({
+        ...draftModalState,
+        deviceName: resolvedDevice.deviceName || deviceNameToConnect,
+        resolvedDeviceId: resolvedDevice.thingsboardDeviceId || '',
+        connectionStatus: 'connected',
+        connectionMessage: 'Device connected successfully.',
+      })
+    } catch (error) {
+      restoreDeviceModal({
+        ...draftModalState,
+        resolvedDeviceId: '',
+        connectionStatus: 'not-connected',
+        connectionMessage: error.message || 'Device was not found in ThingsBoard Cloud.',
+      })
+    } finally {
+      setIsDeviceConnecting(false)
+    }
+  }
+
+  const copyTextToClipboard = async (value) => {
+    const text = String(value || '').trim()
+
+    if (!text) return false
+
+    try {
+      await navigator.clipboard.writeText(text)
+      return true
+    } catch {
+      try {
+        const textarea = document.createElement('textarea')
+        textarea.value = text
+        textarea.setAttribute('readonly', '')
+        textarea.style.position = 'fixed'
+        textarea.style.opacity = '0'
+        document.body.appendChild(textarea)
+        textarea.select()
+        document.execCommand('copy')
+        textarea.remove()
+        return true
+      } catch {
+        return false
+      }
+    }
+  }
+
+  const handleCopyDeviceId = async () => {
+    if (!formResolvedDeviceId || copiedDeviceField === 'device-id') return
+
+    const didCopy = await copyTextToClipboard(formResolvedDeviceId)
+
+    if (!didCopy) return
+
+    window.clearTimeout(deviceCopyFeedbackTimerRef.current)
+    setCopiedDeviceField('device-id')
+
+    deviceCopyFeedbackTimerRef.current = window.setTimeout(() => {
+      setCopiedDeviceField('')
+    }, COPY_FEEDBACK_TIMEOUT_MS)
+  }
+
+  const handleCopyAccessToken = async () => {
+    if (!accessTokenValue || isAccessTokenCopied) return
+
+    const didCopy = await copyTextToClipboard(accessTokenValue)
+
+    if (!didCopy) return
+
+    window.clearTimeout(accessTokenCopyFeedbackTimerRef.current)
+    setIsAccessTokenCopied(true)
+
+    accessTokenCopyFeedbackTimerRef.current = window.setTimeout(() => {
+      setIsAccessTokenCopied(false)
+    }, COPY_FEEDBACK_TIMEOUT_MS)
+  }
 
   const atLimit = devices.length >= MAX_DEVICES
 
@@ -523,21 +868,6 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                   </svg>
                 </span>
                 <span className="dashboard-sidebar-link-label">Logs</span>
-              </button>
-            )}
-
-            {isAdministrator && (
-              <button type="button" className="dashboard-sidebar-link" data-tooltip="Reports" onClick={() => onNavigate('reports')}>
-                <span className="dashboard-sidebar-link-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                    <polyline points="14 2 14 8 20 8" />
-                    <line x1="16" y1="13" x2="8" y2="13" />
-                    <line x1="16" y1="17" x2="8" y2="17" />
-                    <polyline points="10 9 9 9 8 9" />
-                  </svg>
-                </span>
-                <span className="dashboard-sidebar-link-label">Reports</span>
               </button>
             )}
           </nav>
@@ -720,41 +1050,63 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                     </span>
 
                     <div className="devices-slot-info">
-                      <span className="devices-slot-id" title={device.deviceUid}>
-                        {device.deviceUid}
+                      <span className="devices-slot-id" title={device.deviceName}>
+                        {device.deviceName}
                       </span>
-
-                      {device.description && (
-                        <span className="devices-slot-desc" title={device.description}>
-                          {device.description}
-                        </span>
-                      )}
                     </div>
 
                     <div className="devices-slot-right">
                       <div className="devices-slot-actions">
                         <button
                           type="button"
-                          className="devices-slot-action-btn devices-slot-edit"
+                          className="devices-slot-action-btn devices-icon-action devices-slot-edit"
                           onClick={() => openEditModal(device)}
                           disabled={isDeviceActionLoading}
+                          data-devices-tooltip="Edit"
+                          aria-label="Edit device"
                         >
                           <span className="devices-slot-action-icon" aria-hidden="true">
                             <EditIcon />
                           </span>
-                          <span>Edit</span>
                         </button>
 
                         <button
                           type="button"
-                          className="devices-slot-action-btn devices-slot-delete"
+                          className="devices-slot-action-btn devices-icon-action devices-slot-token"
+                          onClick={() => void openAccessTokenModal(device)}
+                          disabled={isDeviceActionLoading}
+                          data-devices-tooltip="Access Token"
+                          aria-label="View access token"
+                        >
+                          <span className="devices-slot-action-icon" aria-hidden="true">
+                            <AccessTokenIcon />
+                          </span>
+                        </button>
+
+                        <button
+                          type="button"
+                          className="devices-slot-action-btn devices-icon-action devices-slot-telemetry"
+                          onClick={() => void openLatestTelemetryModal(device)}
+                          disabled={isDeviceActionLoading || isTelemetryRefreshing}
+                          data-devices-tooltip="Latest Telemetry"
+                          aria-label="View latest telemetry"
+                        >
+                          <span className="devices-slot-action-icon" aria-hidden="true">
+                            <LatestTelemetryIcon />
+                          </span>
+                        </button>
+
+                        <button
+                          type="button"
+                          className="devices-slot-action-btn devices-icon-action devices-slot-delete"
                           onClick={() => handleDeleteDevice(device)}
                           disabled={isDeviceActionLoading}
+                          data-devices-tooltip="Delete"
+                          aria-label="Delete device"
                         >
                           <span className="devices-slot-action-icon" aria-hidden="true">
                             <TrashIcon />
                           </span>
-                          <span>Delete</span>
                         </button>
                       </div>
                     </div>
@@ -796,53 +1148,120 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
 
             <div className="devices-modal-body">
               <div className="devices-field">
-                <label className="devices-field-label" htmlFor="device-id-input">
-                  Device ID <span className="devices-field-required">*</span>
-                </label>
-                <div className="devices-input-wrapper">
-                  <svg className="devices-input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <rect x="3" y="7" width="7" height="10" rx="1.5" />
-                    <rect x="14" y="7" width="7" height="10" rx="1.5" />
-                    <path d="M6.5 10.5h.01" /><path d="M17.5 10.5h.01" />
-                  </svg>
-                  <input
-                    id="device-id-input"
-                    type="text"
-                    className={`devices-input ${formIdError ? 'devices-input-has-error' : ''}`}
-                    placeholder=""
-                    value={formId}
-                    onChange={(e) => { setFormId(e.target.value); setFormIdError('') }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') void handleSubmitDevice() }}
-                    autoFocus
-                    maxLength={64}
-                  />
-                </div>
-                {formIdError && (
-                  <p className="devices-field-error">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13">
-                      <circle cx="12" cy="12" r="10" />
-                      <path d="M12 8v4M12 16h.01" />
+                <div className={`devices-account-field devices-floating-field ${formDeviceNameError ? 'devices-field-error-state' : ''}`}>
+                  <span className="devices-account-field-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="3" y="7" width="7" height="10" rx="1.5" />
+                      <rect x="14" y="7" width="7" height="10" rx="1.5" />
+                      <path d="M6.5 10.5h.01" />
+                      <path d="M17.5 10.5h.01" />
                     </svg>
-                    {formIdError}
-                  </p>
+                  </span>
+
+                  <div className="devices-floating-control">
+                    <input
+                      id="device-name-input"
+                      type="text"
+                      className="devices-input devices-floating-input"
+                      placeholder=" "
+                      value={formDeviceName}
+                      onChange={(e) => handleDeviceNameChange(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && canConnectDevice) void handleConnectDevice()
+                      }}
+                      autoFocus
+                      maxLength={255}
+                    />
+
+                    <label htmlFor="device-name-input" className="devices-floating-label">
+                      Device Name <span className="devices-field-required">*</span>
+                    </label>
+                  </div>
+                </div>
+
+                {formDeviceNameError && (
+                  <div className="devices-modal-error-row">
+                    <span className="devices-modal-error-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Zm1 15h-2v-2h2Zm0-4h-2V7h2Z" />
+                      </svg>
+                    </span>
+                    <span>{formDeviceNameError}</span>
+                  </div>
                 )}
               </div>
 
+              <div className="devices-connect-row">
+                <button
+                  type="button"
+                  className="devices-connect-btn"
+                  onClick={() => void handleConnectDevice()}
+                  disabled={!canConnectDevice}
+                >
+                  {isDeviceConnecting ? 'Connecting' : 'Connect'}
+                </button>
+
+                <span className={`devices-connection-status devices-connection-status-${formConnectionStatus}`}>
+                  {formConnectionStatus === 'connected'
+                    ? 'Connected'
+                    : formConnectionStatus === 'not-connected'
+                      ? 'Not Connected'
+                      : formConnectionStatus === 'checking'
+                        ? 'Checking'
+                        : 'Not Connected'}
+                </span>
+              </div>
+
+              {formConnectionMessage && (
+                <p className={`devices-connection-message devices-connection-message-${formConnectionStatus}`}>
+                  {formConnectionMessage}
+                </p>
+              )}
+
               <div className="devices-field">
-                <label className="devices-field-label" htmlFor="device-desc-input">
-                  Description
-                  <span className="devices-field-optional">Optional</span>
-                </label>
-                <textarea
-                  id="device-desc-input"
-                  className="devices-textarea"
-                  placeholder="What is this device used for?"
-                  value={formDesc}
-                  onChange={(e) => setFormDesc(e.target.value)}
-                  maxLength={200}
-                  rows={3}
-                />
-                <span className="devices-field-char-count">{formDesc.length} / 200</span>
+                <div className="devices-readonly-copy-row devices-readonly-copy-row-floating">
+                  <div className="devices-account-field devices-floating-field devices-readonly-field">
+                    <span className="devices-account-field-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="7.5" cy="15.5" r="5.5" />
+                        <path d="M12 11l8-8" />
+                        <path d="M17 3h4v4" />
+                      </svg>
+                    </span>
+
+                    <div className="devices-floating-control">
+                      <input
+                        id="device-id-output"
+                        type="text"
+                        className="devices-input devices-floating-input devices-readonly-input"
+                        value={formResolvedDeviceId}
+                        placeholder=" "
+                        readOnly
+                      />
+
+                      <label htmlFor="device-id-output" className="devices-floating-label devices-floating-label-static">
+                        Device ID
+                      </label>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    className={`devices-copy-btn ${copiedDeviceField === 'device-id' ? 'devices-copy-btn-copied' : ''}`}
+                    onClick={() => void handleCopyDeviceId()}
+                    disabled={!formResolvedDeviceId || copiedDeviceField === 'device-id'}
+                    aria-label={copiedDeviceField === 'device-id' ? 'Device ID copied' : 'Copy Device ID'}
+                    data-devices-tooltip={copiedDeviceField === 'device-id' ? 'Copied' : 'Copy'}
+                  >
+                    {copiedDeviceField === 'device-id' ? <CheckIcon /> : <CopyIcon />}
+                  </button>
+                </div>
+
+                {copiedDeviceField === 'device-id' && (
+                  <span className="devices-copy-inline-feedback" role="status" aria-live="polite">
+                    Device ID copied
+                  </span>
+                )}
               </div>
             </div>
 
@@ -860,11 +1279,7 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                 type="button"
                 className="devices-modal-confirm-btn"
                 onClick={() => void handleSubmitDevice()}
-                disabled={
-                  isModalClosing ||
-                  isDeviceActionLoading ||
-                  (modalMode === 'edit' && !hasDeviceFormChanges)
-                }
+                disabled={!canSubmitDevice}
               >
                 {modalMode === 'edit' ? (
                   <span className="devices-modal-confirm-icon" aria-hidden="true">
@@ -881,11 +1296,222 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
           </div>
         </div>
       )}
-      {isDeviceActionLoading && (
+      {isAccessTokenModalOpen && (
+        <div
+          className={`devices-modal-backdrop ${isAccessTokenModalClosing ? 'devices-modal-closing' : ''}`}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) void closeAccessTokenModal()
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="devices-token-modal-title"
+        >
+          <div className={`devices-modal devices-token-modal ${isAccessTokenModalClosing ? 'devices-modal-closing' : ''}`}>
+            <div className="devices-modal-header">
+              <h2 className="devices-modal-title" id="devices-token-modal-title">
+                Access Token
+              </h2>
+
+              <button
+                type="button"
+                className="devices-modal-close"
+                onClick={() => void closeAccessTokenModal()}
+                aria-label="Close"
+                disabled={isAccessTokenLoading}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
+                  <path d="M18 6 6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="devices-modal-body">
+              <div className="devices-token-device-name">
+                {accessTokenDevice?.deviceName || 'Device'}
+              </div>
+
+              <div className="devices-field">
+                <div className="devices-readonly-copy-row devices-readonly-copy-row-floating">
+                  <div className="devices-account-field devices-floating-field devices-readonly-field">
+                    <span className="devices-account-field-icon" aria-hidden="true">
+                      <AccessTokenIcon />
+                    </span>
+
+                    <div className="devices-floating-control">
+                      <input
+                        id="device-access-token-output"
+                        type="text"
+                        className="devices-input devices-floating-input devices-readonly-input"
+                        value={isAccessTokenLoading ? 'Loading access token...' : accessTokenValue}
+                        placeholder=" "
+                        readOnly
+                      />
+
+                      <label htmlFor="device-access-token-output" className="devices-floating-label devices-floating-label-static">
+                        Access Token
+                      </label>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    className={`devices-copy-btn ${isAccessTokenCopied ? 'devices-copy-btn-copied' : ''}`}
+                    onClick={() => void handleCopyAccessToken()}
+                    disabled={!accessTokenValue || isAccessTokenLoading || isAccessTokenCopied}
+                    aria-label={isAccessTokenCopied ? 'Access Token copied' : 'Copy access token'}
+                    data-devices-tooltip={isAccessTokenCopied ? 'Copied' : 'Copy'}
+                  >
+                    {isAccessTokenCopied ? <CheckIcon /> : <CopyIcon />}
+                  </button>
+                </div>
+
+                {isAccessTokenCopied && (
+                  <span className="devices-copy-inline-feedback" role="status" aria-live="polite">
+                    Access Token copied
+                  </span>
+                )}
+
+                {accessTokenError && (
+                  <p className="devices-field-error">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13">
+                      <circle cx="12" cy="12" r="10" />
+                      <path d="M12 8v4M12 16h.01" />
+                    </svg>
+                    {accessTokenError}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="devices-modal-footer">
+              <button
+                type="button"
+                className="devices-modal-cancel-btn"
+                onClick={() => void closeAccessTokenModal()}
+                disabled={isAccessTokenLoading}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {isTelemetryModalOpen && (
+        <div
+          className={`devices-modal-backdrop ${isTelemetryModalClosing ? 'devices-modal-closing' : ''}`}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) void closeLatestTelemetryModal()
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="devices-telemetry-modal-title"
+        >
+          <div className={`devices-modal devices-telemetry-modal ${isTelemetryModalClosing ? 'devices-modal-closing' : ''}`}>
+            <div className="devices-modal-header">
+              <h2 className="devices-modal-title" id="devices-telemetry-modal-title">
+                Latest Telemetry
+              </h2>
+
+              <button
+                type="button"
+                className="devices-modal-close"
+                onClick={() => void closeLatestTelemetryModal()}
+                aria-label="Close"
+                disabled={isTelemetryLoading}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
+                  <path d="M18 6 6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="devices-modal-body devices-telemetry-modal-body">
+              <div className="devices-telemetry-device-name">
+                {telemetryDevice?.deviceName || 'Device'}
+              </div>
+
+              {isTelemetryLoading || isTelemetryRefreshing ? (
+                <div className="devices-telemetry-state" role="status" aria-live="polite">
+                  Checking latest telemetry...
+                </div>
+              ) : telemetryError ? (
+                <div className="devices-telemetry-state devices-telemetry-state-error" role="alert">
+                  {telemetryError}
+                </div>
+              ) : !hasCheckedTelemetry ? (
+                <div className="devices-telemetry-state">
+                  Click Check Latest Telemetry after uploading your Arduino code with the Access Token to view the latest data from ThingsBoard.
+                </div>
+              ) : telemetryRows.length === 0 ? (
+                <div className="devices-telemetry-state">
+                  No latest telemetry found yet. Check the Access Token, upload the Arduino code, then try again.
+                </div>
+              ) : (
+                <div className="devices-telemetry-table-scroll">
+                  <table className="devices-telemetry-table">
+                    <thead>
+                      <tr>
+                        <th>Key</th>
+                        <th>Value</th>
+                        <th>Last Update Time</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {telemetryRows.map((row, index) => (
+                        <tr
+                          key={`${row.key}-${row.lastUpdateTimestamp}`}
+                          className="devices-telemetry-table-row"
+                          style={{ '--devices-telemetry-row-delay': `${Math.min(index, 9) * 28}ms` }}
+                        >
+                          <td>{row.key}</td>
+                          <td>{row.value || 'N/A'}</td>
+                          <td>{formatTelemetryLastUpdateTime(row.lastUpdateTimestamp)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            <div className="devices-modal-footer devices-telemetry-modal-footer">
+              <button
+                type="button"
+                className="devices-modal-cancel-btn"
+                onClick={() => void closeLatestTelemetryModal()}
+                disabled={isTelemetryLoading || isTelemetryRefreshing}
+              >
+                Close
+              </button>
+
+              <button
+                type="button"
+                className="devices-modal-confirm-btn devices-check-telemetry-btn"
+                onClick={() => void handleCheckLatestTelemetry()}
+                disabled={isTelemetryLoading || isTelemetryRefreshing}
+              >
+                <span className="devices-modal-confirm-icon" aria-hidden="true">
+                  <LatestTelemetryIcon />
+                </span>
+                <span className="devices-check-telemetry-label">
+                  Check Latest Telemetry
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {(isDeviceActionLoading || isDeviceConnecting || isTelemetryRefreshing) && (
         <div className="devices-action-overlay" role="status" aria-live="polite" aria-busy="true">
-          <div className="devices-action-card">
+          <div className={`devices-action-card ${isTelemetryRefreshing ? 'devices-action-card-telemetry' : ''}`}>
             <img src={logo} alt="Avinya Logo" className="devices-action-logo" />
-            <p className="devices-action-title">{deviceActionLoadingTitle}</p>
+            <p className="devices-action-title">
+              {isDeviceConnecting
+                ? 'Connecting Device'
+                : isTelemetryRefreshing
+                  ? 'Checking Latest Telemetry'
+                  : deviceActionLoadingTitle}
+            </p>
             <div className="devices-action-loader" aria-hidden="true">
               <span className="devices-action-loader-bar"></span>
             </div>

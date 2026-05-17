@@ -316,7 +316,8 @@ const getDeleteAccountConfirmPasswordValidationError = (password, confirmPasswor
 const PHONE_COUNTRY_CODE_REGEX = /^\+[1-9]\d{0,3}$/;
 
 const MAX_DEVICES_PER_USER = 5;
-const DEVICE_UID_REGEX = /^[A-Za-z0-9._:-]+$/;
+const DEVICE_NAME_MAX_LENGTH = 255;
+const DASHBOARD_NAME_MAX_LENGTH = 80;
 
 const THINGSBOARD_DEVICE_ID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -387,65 +388,119 @@ const thingsBoardFetchJson = async (path, options = {}) => {
   return data;
 };
 
-const resolveThingsBoardDevice = async (deviceUid) => {
-  const normalizedDeviceUid = String(deviceUid || "").trim();
+const resolveThingsBoardDeviceByName = async (deviceName) => {
+  const normalizedDeviceName = String(deviceName || "").trim();
 
-  if (!normalizedDeviceUid) {
-    throw new Error("Device ID cannot be empty.");
-  }
-
-  if (THINGSBOARD_DEVICE_ID_REGEX.test(normalizedDeviceUid)) {
-    return {
-      inputDeviceUid: normalizedDeviceUid,
-      thingsboardDeviceId: normalizedDeviceUid,
-    };
+  if (!normalizedDeviceName) {
+    throw new Error("Device Name cannot be empty.");
   }
 
   const device = await thingsBoardFetchJson(
-    `/api/tenant/devices?deviceName=${encodeURIComponent(normalizedDeviceUid)}`
+    `/api/tenant/devices?deviceName=${encodeURIComponent(normalizedDeviceName)}`
   );
 
   const resolvedDeviceId =
     typeof device?.id === "object" ? device.id.id : device?.id;
 
-  if (!resolvedDeviceId) {
+  if (!resolvedDeviceId || device.name !== normalizedDeviceName) {
     throw new Error(
-      `Device "${normalizedDeviceUid}" was not found in ThingsBoard Cloud.`
+      `Device "${normalizedDeviceName}" was not found in ThingsBoard Cloud.`
     );
   }
 
   return {
-    inputDeviceUid: normalizedDeviceUid,
+    deviceName: device.name,
     thingsboardDeviceId: resolvedDeviceId,
   };
+};
+
+const getThingsBoardDeviceAccessToken = async (thingsboardDeviceId) => {
+  if (!THINGSBOARD_DEVICE_ID_REGEX.test(String(thingsboardDeviceId || ""))) {
+    throw new Error("Invalid ThingsBoard device ID.");
+  }
+
+  const credentials = await thingsBoardFetchJson(
+    `/api/device/${encodeURIComponent(thingsboardDeviceId)}/credentials`
+  );
+
+  if (
+    credentials.credentialsType !== "ACCESS_TOKEN" ||
+    !credentials.credentialsId
+  ) {
+    throw new Error("Access token is not available for this device.");
+  }
+
+  return credentials.credentialsId;
+};
+
+const mapThingsBoardTelemetryValue = (value) => {
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  if (typeof value === "object") {
+    return JSON.stringify(value);
+  }
+
+  return String(value);
+};
+
+const mapThingsBoardLatestTelemetryToRows = (telemetryData = {}) =>
+  Object.entries(telemetryData || {})
+    .map(([key, values]) => {
+      const latestValue = Array.isArray(values) ? values[0] : null;
+
+      if (!latestValue || latestValue.ts === undefined || latestValue.ts === null) {
+        return null;
+      }
+
+      return {
+        key,
+        value: mapThingsBoardTelemetryValue(latestValue.value),
+        lastUpdateTimestamp: Number(latestValue.ts),
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.key.localeCompare(b.key));
+
+const getThingsBoardDeviceLatestTelemetry = async (thingsboardDeviceId) => {
+  if (!THINGSBOARD_DEVICE_ID_REGEX.test(String(thingsboardDeviceId || ""))) {
+    throw new Error("Invalid ThingsBoard device ID.");
+  }
+
+  const telemetryKeys = await thingsBoardFetchJson(
+    `/api/plugins/telemetry/DEVICE/${encodeURIComponent(thingsboardDeviceId)}/keys/timeseries`
+  );
+
+  const safeTelemetryKeys = Array.isArray(telemetryKeys)
+    ? telemetryKeys
+        .map((key) => String(key || "").trim())
+        .filter((key) => key && TB_TELEMETRY_KEYS_REGEX.test(key))
+    : [];
+
+  if (safeTelemetryKeys.length === 0) {
+    return [];
+  }
+
+  const latestTelemetryData = await thingsBoardFetchJson(
+    `/api/plugins/telemetry/DEVICE/${encodeURIComponent(thingsboardDeviceId)}/values/timeseries?keys=${encodeURIComponent(safeTelemetryKeys.join(","))}&useLatestTs=true`
+  );
+
+  return mapThingsBoardLatestTelemetryToRows(latestTelemetryData);
 };
 
 const getSafeThingsBoardQueryValue = (value = "") =>
   String(value || "").trim();
 
-const getDeviceUidValidationError = (value) => {
+const getDeviceNameValidationError = (value) => {
   const normalizedValue = String(value || "").trim();
 
   if (!normalizedValue) {
-    return "Device ID cannot be empty.";
+    return "Device Name cannot be empty.";
   }
 
-  if (normalizedValue.length > 64) {
-    return "Device ID must not exceed 64 characters.";
-  }
-
-  if (!DEVICE_UID_REGEX.test(normalizedValue)) {
-    return "Device ID may only contain letters, numbers, dots, underscores, colons, and hyphens.";
-  }
-
-  return "";
-};
-
-const getDeviceDescriptionValidationError = (value) => {
-  const normalizedValue = String(value || "").trim();
-
-  if (normalizedValue.length > 200) {
-    return "Description must not exceed 200 characters.";
+  if (normalizedValue.length > DEVICE_NAME_MAX_LENGTH) {
+    return `Device Name must not exceed ${DEVICE_NAME_MAX_LENGTH} characters.`;
   }
 
   return "";
@@ -453,12 +508,368 @@ const getDeviceDescriptionValidationError = (value) => {
 
 const mapDeviceRowToClientDevice = (deviceRow) => ({
   id: deviceRow.id,
-  deviceUid: deviceRow.device_uid,
-  thingsboardDeviceId: deviceRow.thingsboard_device_id || deviceRow.device_uid,
-  description: deviceRow.description || "",
+  deviceName: deviceRow.device_name,
+  thingsboardDeviceId: deviceRow.thingsboard_device_id || "",
   createdAt: deviceRow.created_at,
   updatedAt: deviceRow.updated_at,
 });
+
+const getDashboardNameValidationError = (value) => {
+  const normalizedValue = String(value || "").trim();
+
+  if (!normalizedValue) {
+    return "Dashboard Name cannot be empty.";
+  }
+
+  if (normalizedValue.length > DASHBOARD_NAME_MAX_LENGTH) {
+    return `Dashboard Name must not exceed ${DASHBOARD_NAME_MAX_LENGTH} characters.`;
+  }
+
+  return "";
+};
+
+const DASHBOARD_WIDGET_KEYS = new Set([
+  "battery-gauge",
+  "control-switch",
+  "count-widget",
+  "entities-table",
+  "led-indicator",
+  "mark-down-card",
+  "progress-widget",
+  "servo-motor",
+  "speed-gauge",
+  "time-series-chart",
+  "ultrasonic",
+  "value-card",
+]);
+
+const DASHBOARD_WIDGET_OPTIONAL_DATA_KEY = new Set([
+  "count-widget",
+  "entities-table",
+  "mark-down-card",
+]);
+
+const normalizeArduinoSource = (value = "") =>
+  String(value || "")
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+
+const getTelemetryValueKind = (value) => {
+  const normalizedValue = String(value ?? "").trim().toLowerCase();
+
+  if (!normalizedValue) {
+    return "empty";
+  }
+
+  if (normalizedValue === "true" || normalizedValue === "false") {
+    return "boolean";
+  }
+
+  if (Number.isFinite(Number(normalizedValue))) {
+    return "number";
+  }
+
+  if (
+    [
+      "on",
+      "off",
+      "open",
+      "closed",
+      "locked",
+      "unlocked",
+      "active",
+      "inactive",
+      "boot",
+      "online",
+      "offline",
+    ].includes(normalizedValue)
+  ) {
+    return "state";
+  }
+
+  return "text";
+};
+
+const hasAnyCodeSignal = (normalizedCode, signals = []) =>
+  signals.some((signal) =>
+    normalizedCode.includes(String(signal || "").trim().toLowerCase())
+  );
+
+const hasDataKeyHint = (dataKey = "", hints = []) => {
+  const normalizedDataKey = String(dataKey || "").trim().toLowerCase();
+
+  return hints.some((hint) =>
+    normalizedDataKey.includes(String(hint || "").trim().toLowerCase())
+  );
+};
+
+const normalizeTelemetryKey = (value = "") =>
+  String(value || "").trim().toLowerCase();
+
+const findTelemetryRowByKey = (telemetryRows = [], dataKey = "") => {
+  const normalizedDataKey = normalizeTelemetryKey(dataKey);
+
+  return telemetryRows.find(
+    (row) => normalizeTelemetryKey(row.key) === normalizedDataKey
+  ) || null;
+};
+
+const DASHBOARD_WIDGET_COMPATIBILITY_RULES = {
+  "battery-gauge": {
+    valueKinds: ["number"],
+    dataKeyHints: ["battery", "batt", "voltage", "volt", "soc", "level", "percent"],
+    codeSignals: ["battery", "voltage", "analogread"],
+    message: "Battery Gauge requires numeric battery, voltage, level, or percentage telemetry code.",
+  },
+  "control-switch": {
+    valueKinds: ["boolean", "state"],
+    dataKeyHints: ["pump", "switch", "relay", "lock", "door", "buzzer", "manual", "state", "status"],
+    codeSignals: ["rpc", "method", "params", "set", "callback", "command", "manual", "digitalwrite", "pinmode", "relay", "buzzer", "switch"],
+    message: "Control Switch requires boolean or state telemetry with device control code such as relay, buzzer, switch, or RPC handling.",
+  },
+  "led-indicator": {
+    valueKinds: ["boolean", "state"],
+    dataKeyHints: ["led", "light", "lamp"],
+    codeSignals: ["led", "digitalwrite", "pinmode"],
+    message: "LED Indicator requires LED or digital output handling code.",
+  },
+  "servo-motor": {
+    valueKinds: ["number"],
+    dataKeyHints: ["servo", "angle"],
+    codeSignals: ["servo", "write"],
+    message: "Servo Motor requires numeric servo angle telemetry and servo control code.",
+  },
+  ultrasonic: {
+    valueKinds: ["number"],
+    dataKeyHints: ["distance", "ultrasonic", "cm"],
+    codeSignals: ["ultrasonic", "trig", "echo", "distance"],
+    message: "Ultrasonic widget requires numeric distance telemetry and ultrasonic sensor code.",
+  },
+  "speed-gauge": {
+    valueKinds: ["number"],
+    dataKeyHints: ["speed", "rpm", "velocity"],
+    codeSignals: ["speed", "rpm", "velocity"],
+    message: "Speed Gauge requires numeric speed, RPM, or velocity telemetry code.",
+  },
+  "progress-widget": {
+    valueKinds: ["number"],
+    dataKeyHints: ["progress", "percent", "percentage", "level", "humidity", "moisture", "battery"],
+    codeSignals: ["progress", "percent", "level", "telemetry"],
+    message: "Progress Widget requires numeric progress, level, percentage, or similar telemetry code.",
+  },
+  "time-series-chart": {
+    valueKinds: ["number"],
+    dataKeyHints: [],
+    codeSignals: ["telemetry"],
+    message: "Time Series Chart requires numeric telemetry code for the selected Data Key.",
+  },
+  "value-card": {
+    valueKinds: ["number", "boolean", "state", "text"],
+    dataKeyHints: [],
+    codeSignals: ["telemetry"],
+    message: "Value Card requires telemetry code for the selected Data Key.",
+  },
+};
+
+const getArduinoWidgetCompatibilityError = ({
+  widgetKey,
+  dataKey,
+  inoFileContent,
+  telemetryValue,
+  expectedAccessToken = "",
+}) => {
+  const safeWidgetKey = String(widgetKey || "").trim();
+  const safeDataKey = String(dataKey || "").trim();
+  const normalizedDataKey = safeDataKey.toLowerCase();
+  const normalizedCode = normalizeArduinoSource(inoFileContent);
+  const normalizedAccessToken = String(expectedAccessToken || "").trim().toLowerCase();
+
+  if (DASHBOARD_WIDGET_OPTIONAL_DATA_KEY.has(safeWidgetKey)) {
+    return "";
+  }
+
+  if (!safeDataKey) {
+    return DASHBOARD_WIDGET_OPTIONAL_DATA_KEY.has(safeWidgetKey)
+      ? ""
+      : "Data Key is required.";
+  }
+
+  if (!normalizedCode) {
+    return "The uploaded .ino file is empty.";
+  }
+
+  if (normalizedAccessToken && !normalizedCode.includes(normalizedAccessToken)) {
+    return "The .ino file does not contain the selected device access token.";
+  }
+
+  if (!normalizedCode.includes(normalizedDataKey)) {
+    return `The .ino file does not contain the selected Data Key "${safeDataKey}".`;
+  }
+
+  const rule = DASHBOARD_WIDGET_COMPATIBILITY_RULES[safeWidgetKey];
+
+  if (!rule) {
+    return "Please select a valid widget type.";
+  }
+
+  const telemetryValueKind = getTelemetryValueKind(telemetryValue);
+
+  if (rule.valueKinds.length > 0 && !rule.valueKinds.includes(telemetryValueKind)) {
+    return `${safeDataKey} is not suitable for this widget because its latest telemetry value is ${telemetryValueKind}.`;
+  }
+
+  if (rule.dataKeyHints.length > 0 && !hasDataKeyHint(safeDataKey, rule.dataKeyHints)) {
+    return rule.message;
+  }
+
+  const codeSignals = [...rule.codeSignals, normalizedDataKey];
+
+  if (!hasAnyCodeSignal(normalizedCode, codeSignals)) {
+    return rule.message;
+  }
+
+  return "";
+};
+
+const getDashboardWidgetValidationError = ({ widgetKey, widgetName, dataKey }) => {
+  const safeWidgetKey = String(widgetKey || "").trim();
+  const safeWidgetName = String(widgetName || "").trim();
+  const safeDataKey = String(dataKey || "").trim();
+
+  if (!DASHBOARD_WIDGET_KEYS.has(safeWidgetKey)) {
+    return "Please select a valid widget type.";
+  }
+
+  if (!safeWidgetName) {
+    return "Widget Name is required.";
+  }
+
+  if (safeWidgetName.length > 100) {
+    return "Widget Name must not exceed 100 characters.";
+  }
+
+  const requiresDataKey = !DASHBOARD_WIDGET_OPTIONAL_DATA_KEY.has(safeWidgetKey);
+
+  if (!safeDataKey && !DASHBOARD_WIDGET_OPTIONAL_DATA_KEY.has(safeWidgetKey)) {
+    return "Data Key is required.";
+  }
+
+  if (safeDataKey && !/^[A-Za-z0-9_.:-]+$/.test(safeDataKey)) {
+    return "Data Key contains invalid characters.";
+  }
+
+  return "";
+};
+
+const mapDashboardWidgetRowToClient = (row) => ({
+  id: row.id,
+  dashboardId: row.dashboard_id,
+  widgetKey: row.widget_key,
+  widgetType: row.widget_type,
+  widgetName: row.widget_name,
+  dataKey: row.data_key || "",
+  inoFileName: row.ino_file_name || "",
+  validationStatus: row.validation_status || "unchecked",
+  validationMessage: row.validation_message || "",
+  layout: {
+    x: Number(row.layout_x || 0),
+    y: Number(row.layout_y || 0),
+    w: Number(row.layout_w || 6),
+    h: Number(row.layout_h || 7),
+  },
+  settings: row.settings || {},
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+const mapDashboardRowToClientDashboard = (row) => ({
+  id: row.id,
+  dashboardName: row.dashboard_name,
+  assignedUserId: row.assigned_user_id,
+  firstName: row.first_name || "",
+  lastName: row.last_name || "",
+  email: row.email || "",
+  deviceId: row.device_id,
+  deviceName: row.device_name || "",
+  thingsboardDeviceId: row.thingsboard_device_id || "",
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+const DASHBOARDS_SORT_SQL = {
+  newest: "dashboards.created_at DESC, dashboards.id DESC",
+  oldest: "dashboards.created_at ASC, dashboards.id ASC",
+  dashboard_name_asc: "LOWER(dashboards.dashboard_name) ASC, dashboards.id ASC",
+  dashboard_name_desc: "LOWER(dashboards.dashboard_name) DESC, dashboards.id DESC",
+  user_asc: "LOWER(users.last_name) ASC, LOWER(users.first_name) ASC, dashboards.id ASC",
+  user_desc: "LOWER(users.last_name) DESC, LOWER(users.first_name) DESC, dashboards.id DESC",
+  device_asc: "LOWER(devices.device_name) ASC, dashboards.id ASC",
+  device_desc: "LOWER(devices.device_name) DESC, dashboards.id DESC",
+};
+
+const getDashboardFilterId = (value = "") => {
+  const parsedValue = Number.parseInt(String(value || "").trim(), 10);
+
+  return Number.isInteger(parsedValue) && parsedValue > 0
+    ? parsedValue
+    : "all";
+};
+
+const getDashboardsRouteFilters = (source = {}) => {
+  const search =
+    typeof source.search === "string" ? source.search.trim() : "";
+  const escapedSearch = search.replace(/[\\%_]/g, "\\$&");
+
+  const sortBy =
+    typeof source.sortBy === "string"
+      ? source.sortBy.trim().toLowerCase()
+      : "newest";
+
+  return {
+    search,
+    escapedSearch,
+    assignedUserId: getDashboardFilterId(source.assignedUserId),
+    deviceId: getDashboardFilterId(source.deviceId),
+    sortBy: DASHBOARDS_SORT_SQL[sortBy] ? sortBy : "newest",
+  };
+};
+
+const buildDashboardsListWhereClause = (filters, actorId) => {
+  const params = [actorId];
+  const whereParts = ["dashboards.created_by_user_id = $1"];
+  let nextParamIndex = 2;
+
+  if (filters.escapedSearch) {
+    params.push(`%${filters.escapedSearch}%`);
+    whereParts.push(`(
+      dashboards.dashboard_name ILIKE $${nextParamIndex} ESCAPE '\\'
+      OR users.first_name ILIKE $${nextParamIndex} ESCAPE '\\'
+      OR users.last_name ILIKE $${nextParamIndex} ESCAPE '\\'
+      OR users.email ILIKE $${nextParamIndex} ESCAPE '\\'
+      OR devices.device_name ILIKE $${nextParamIndex} ESCAPE '\\'
+      OR CONCAT_WS(' ', users.first_name, users.last_name) ILIKE $${nextParamIndex} ESCAPE '\\'
+      OR CONCAT_WS(', ', users.last_name, users.first_name) ILIKE $${nextParamIndex} ESCAPE '\\'
+    )`);
+    nextParamIndex += 1;
+  }
+
+  if (filters.assignedUserId !== "all") {
+    params.push(filters.assignedUserId);
+    whereParts.push(`dashboards.assigned_user_id = $${nextParamIndex}`);
+    nextParamIndex += 1;
+  }
+
+  if (filters.deviceId !== "all") {
+    params.push(filters.deviceId);
+    whereParts.push(`dashboards.device_id = $${nextParamIndex}`);
+    nextParamIndex += 1;
+  }
+
+  return {
+    params,
+    whereSql: `WHERE ${whereParts.join("\n        AND ")}`,
+  };
+};
 
 const ALLOWED_PROFILE_IMAGE_MIME_TYPES = new Set([
   "image/jpeg",
@@ -647,6 +1058,115 @@ const mapUserRowToClientUser = (userRow) => ({
   profilePictureUrl: userRow.profile_picture_url || "",
 });
 
+const getAuthenticatedRequestUser = async (req, res) => {
+  const result = await pool.query(
+    `SELECT id, first_name, last_name, email, role_label
+     FROM users
+     WHERE id = $1
+     LIMIT 1`,
+    [req.user.id]
+  );
+
+  if (result.rows.length === 0) {
+    res.status(404).json({
+      message: "User account not found.",
+    });
+    return null;
+  }
+
+  return result.rows[0];
+};
+
+const requireAdministratorRequest = async (req, res) => {
+  const user = await getAuthenticatedRequestUser(req, res);
+
+  if (!user) return null;
+
+  if (user.role_label !== "Administrator") {
+    res.status(403).json({
+      message: "Only the Administrator account can access this action.",
+    });
+    return null;
+  }
+
+  return user;
+};
+
+const getDashboardDeviceAccessForRequest = async ({
+  req,
+  res,
+  thingsboardDeviceId = "",
+  internalDeviceId = null,
+  requireControl = false,
+}) => {
+  const user = await getAuthenticatedRequestUser(req, res);
+
+  if (!user) return null;
+
+  if (requireControl && user.role_label === "Administrator") {
+    res.status(403).json({
+      message: "Administrator accounts can monitor assigned dashboards but cannot control user devices.",
+    });
+    return null;
+  }
+
+  const useInternalDeviceId = Number.isInteger(Number(internalDeviceId)) && Number(internalDeviceId) > 0;
+  const deviceMatchSql = useInternalDeviceId
+    ? "dev.id = $2"
+    : "dev.thingsboard_device_id = $2";
+  const deviceMatchValue = useInternalDeviceId
+    ? Number(internalDeviceId)
+    : String(thingsboardDeviceId || "").trim();
+
+  if (!useInternalDeviceId && !THINGSBOARD_DEVICE_ID_REGEX.test(deviceMatchValue)) {
+    res.status(400).json({
+      message: "Invalid ThingsBoard device ID.",
+    });
+    return null;
+  }
+
+  const result = user.role_label === "Administrator"
+    ? await pool.query(
+        `
+        SELECT
+          dev.id,
+          dev.device_name,
+          dev.thingsboard_device_id
+        FROM devices dev
+        WHERE dev.owner_user_id = $1
+          AND ${deviceMatchSql}
+        LIMIT 1
+        `,
+        [user.id, deviceMatchValue]
+      )
+    : await pool.query(
+        `
+        SELECT
+          dev.id,
+          dev.device_name,
+          dev.thingsboard_device_id
+        FROM dashboards d
+        JOIN devices dev ON dev.id = d.device_id
+        WHERE d.assigned_user_id = $1
+          AND ${deviceMatchSql}
+        LIMIT 1
+        `,
+        [user.id, deviceMatchValue]
+      );
+
+  if (result.rows.length === 0) {
+    res.status(403).json({
+      message: "You are not authorized to access this device.",
+    });
+    return null;
+  }
+
+  return {
+    user,
+    device: result.rows[0],
+  };
+};
+
 const USERS_SORT_SQL = {
   newest: "created_at DESC, id DESC",
   oldest: "created_at ASC, id ASC",
@@ -793,6 +1313,9 @@ const LOG_ACTION_LABELS = {
   device_added: "Device Added",
   device_updated: "Device Updated",
   device_removed: "Device Removed",
+  dashboard_added: "Dashboard Added",
+  dashboard_updated: "Dashboard Updated",
+  dashboard_removed: "Dashboard Removed",
 };
 
 const LOGS_EXPORT_MAX_ROWS = 1500;
@@ -843,7 +1366,7 @@ const getLogsPdfTimestampText = (value) => {
       hour12: true,
     }).format(date);
 
-    return `${month}, ${day}, ${year} | ${timePart}`;
+    return `${month} ${day}, ${year} | ${timePart}`;
   } catch {
     return String(value || "");
   }
@@ -868,6 +1391,12 @@ const LOG_ACTION_TYPES = {
   DEVICE_ADDED: "device_added",
   DEVICE_UPDATED: "device_updated",
   DEVICE_REMOVED: "device_removed",
+  DASHBOARD_ADDED: "dashboard_added",
+  DASHBOARD_UPDATED: "dashboard_updated",
+  DASHBOARD_REMOVED: "dashboard_removed",
+  WIDGET_ADDED: "widget_added",
+  WIDGET_UPDATED: "widget_updated",
+  WIDGET_REMOVED: "widget_removed",
 };
 
 const LOG_ACTION_TYPE_VALUES = Object.values(LOG_ACTION_TYPES);
@@ -890,11 +1419,23 @@ const buildLogDetails = ({ actionType, deviceId = "" }) => {
     case LOG_ACTION_TYPES.LOGOUT:
       return "User logged out";
     case LOG_ACTION_TYPES.DEVICE_ADDED:
-      return `Device ID "${deviceId}" was added`;
+      return `Device "${deviceId}" was added`;
     case LOG_ACTION_TYPES.DEVICE_UPDATED:
-      return `Device ID "${deviceId}" was updated`;
+      return `Device "${deviceId}" was updated`;
     case LOG_ACTION_TYPES.DEVICE_REMOVED:
-      return `Device ID "${deviceId}" was removed`;
+      return `Device "${deviceId}" was removed`;
+    case LOG_ACTION_TYPES.DASHBOARD_ADDED:
+      return `Dashboard "${deviceId}" was added`;
+    case LOG_ACTION_TYPES.DASHBOARD_UPDATED:
+      return `Dashboard "${deviceId}" was updated`;
+    case LOG_ACTION_TYPES.DASHBOARD_REMOVED:
+      return `Dashboard "${deviceId}" was removed`;
+    case LOG_ACTION_TYPES.WIDGET_ADDED:
+      return `Widget "${deviceId}" was added`;
+    case LOG_ACTION_TYPES.WIDGET_UPDATED:
+      return `Widget "${deviceId}" was updated`;
+    case LOG_ACTION_TYPES.WIDGET_REMOVED:
+      return `Widget "${deviceId}" was removed`;
     default:
       return "";
   }
@@ -991,7 +1532,11 @@ const buildLogsListWhereClause = (filters) => {
         WHEN action_type = 'login' THEN 'Login'
         WHEN action_type = 'logout' THEN 'Logout'
         WHEN action_type = 'device_added' THEN 'Device Added'
+        WHEN action_type = 'device_updated' THEN 'Device Updated'
         WHEN action_type = 'device_removed' THEN 'Device Removed'
+        WHEN action_type = 'dashboard_added' THEN 'Dashboard Added'
+        WHEN action_type = 'dashboard_updated' THEN 'Dashboard Updated'
+        WHEN action_type = 'dashboard_removed' THEN 'Dashboard Removed'
         ELSE action_type
       END ILIKE $${nextParamIndex} ESCAPE '\\'
     )`);
@@ -1641,7 +2186,19 @@ const ensureLogsTableSchema = async () => {
   await pool.query(`
     ALTER TABLE logs
     ADD CONSTRAINT logs_action_type_check
-    CHECK (action_type IN ('login', 'logout', 'device_added', 'device_updated', 'device_removed'));
+    CHECK (action_type IN (
+      'login',
+      'logout',
+      'device_added',
+      'device_updated',
+      'device_removed',
+      'dashboard_added',
+      'dashboard_updated',
+      'dashboard_removed',
+      'widget_added',
+      'widget_updated',
+      'widget_removed'
+    ));
   `);
 
   await pool.query(`
@@ -1657,14 +2214,184 @@ const ensureLogsTableSchema = async () => {
   `);
 };
 
+const ensureDashboardsTableExists = async () => {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS dashboards (
+      id SERIAL PRIMARY KEY,
+      dashboard_name VARCHAR(80) NOT NULL,
+      assigned_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      device_id INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+      created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+};
+
+const ensureDashboardsTableSchema = async () => {
+  await pool.query(`
+    ALTER TABLE dashboards
+    ADD COLUMN IF NOT EXISTS dashboard_name VARCHAR(80);
+  `);
+
+  await pool.query(`
+    ALTER TABLE dashboards
+    ADD COLUMN IF NOT EXISTS assigned_user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
+  `);
+
+  await pool.query(`
+    ALTER TABLE dashboards
+    ADD COLUMN IF NOT EXISTS device_id INTEGER REFERENCES devices(id) ON DELETE CASCADE;
+  `);
+
+  await pool.query(`
+    ALTER TABLE dashboards
+    ADD COLUMN IF NOT EXISTS created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
+  `);
+
+  await pool.query(`
+    ALTER TABLE dashboards
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;
+  `);
+
+  await pool.query(`
+    ALTER TABLE dashboards
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;
+  `);
+
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_dashboards_dashboard_name_unique
+    ON dashboards (LOWER(dashboard_name));
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_dashboards_assigned_user_id
+    ON dashboards (assigned_user_id);
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_dashboards_device_id
+    ON dashboards (device_id);
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_dashboards_created_at
+    ON dashboards (created_at DESC);
+  `);
+};
+
+const ensureDashboardWidgetsTableExists = async () => {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS dashboard_widgets (
+      id SERIAL PRIMARY KEY,
+      dashboard_id INTEGER NOT NULL REFERENCES dashboards(id) ON DELETE CASCADE,
+      widget_key VARCHAR(80) NOT NULL,
+      widget_type VARCHAR(80) NOT NULL,
+      widget_name VARCHAR(100) NOT NULL,
+      data_key VARCHAR(120),
+      ino_file_name VARCHAR(255),
+      validation_status VARCHAR(20) NOT NULL DEFAULT 'unchecked',
+      validation_message TEXT NOT NULL DEFAULT '',
+      layout_x INTEGER NOT NULL DEFAULT 0,
+      layout_y INTEGER NOT NULL DEFAULT 0,
+      layout_w INTEGER NOT NULL DEFAULT 6,
+      layout_h INTEGER NOT NULL DEFAULT 7,
+      settings JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+};
+
+const ensureDashboardWidgetsTableSchema = async () => {
+  await pool.query(`
+    ALTER TABLE dashboard_widgets
+    ADD COLUMN IF NOT EXISTS widget_key VARCHAR(80);
+  `);
+
+  await pool.query(`
+    ALTER TABLE dashboard_widgets
+    ADD COLUMN IF NOT EXISTS widget_type VARCHAR(80);
+  `);
+
+  await pool.query(`
+    ALTER TABLE dashboard_widgets
+    ADD COLUMN IF NOT EXISTS widget_name VARCHAR(100);
+  `);
+
+  await pool.query(`
+    ALTER TABLE dashboard_widgets
+    ADD COLUMN IF NOT EXISTS data_key VARCHAR(120);
+  `);
+
+  await pool.query(`
+    ALTER TABLE dashboard_widgets
+    ADD COLUMN IF NOT EXISTS ino_file_name VARCHAR(255);
+  `);
+
+  await pool.query(`
+    ALTER TABLE dashboard_widgets
+    ADD COLUMN IF NOT EXISTS validation_status VARCHAR(20) NOT NULL DEFAULT 'unchecked';
+  `);
+
+  await pool.query(`
+    ALTER TABLE dashboard_widgets
+    ADD COLUMN IF NOT EXISTS validation_message TEXT NOT NULL DEFAULT '';
+  `);
+
+  await pool.query(`
+    ALTER TABLE dashboard_widgets
+    ADD COLUMN IF NOT EXISTS layout_x INTEGER NOT NULL DEFAULT 0;
+  `);
+
+  await pool.query(`
+    ALTER TABLE dashboard_widgets
+    ADD COLUMN IF NOT EXISTS layout_y INTEGER NOT NULL DEFAULT 0;
+  `);
+
+  await pool.query(`
+    ALTER TABLE dashboard_widgets
+    ADD COLUMN IF NOT EXISTS layout_w INTEGER NOT NULL DEFAULT 6;
+  `);
+
+  await pool.query(`
+    ALTER TABLE dashboard_widgets
+    ADD COLUMN IF NOT EXISTS layout_h INTEGER NOT NULL DEFAULT 7;
+  `);
+
+  await pool.query(`
+    ALTER TABLE dashboard_widgets
+    ADD COLUMN IF NOT EXISTS settings JSONB NOT NULL DEFAULT '{}'::jsonb;
+  `);
+
+  await pool.query(`
+    ALTER TABLE dashboard_widgets
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;
+  `);
+
+  await pool.query(`
+    ALTER TABLE dashboard_widgets
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_dashboard_widgets_dashboard_id
+    ON dashboard_widgets (dashboard_id);
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_dashboard_widgets_created_at
+    ON dashboard_widgets (created_at DESC);
+  `);
+};
+
 const ensureDevicesTableExists = async () => {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS devices (
       id SERIAL PRIMARY KEY,
       owner_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      device_uid VARCHAR(64) NOT NULL,
-      thingsboard_device_id VARCHAR(64),
-      description VARCHAR(200) NOT NULL DEFAULT '',
+      device_name VARCHAR(255) NOT NULL,
+      thingsboard_device_id VARCHAR(64) NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
@@ -1678,8 +2405,30 @@ const ensureDevicesTableSchema = async () => {
   `);
 
   await pool.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'devices'
+          AND column_name = 'device_uid'
+      )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'devices'
+          AND column_name = 'device_name'
+      ) THEN
+        ALTER TABLE devices RENAME COLUMN device_uid TO device_name;
+      END IF;
+    END $$;
+  `);
+
+  await pool.query(`
     ALTER TABLE devices
-    ADD COLUMN IF NOT EXISTS device_uid VARCHAR(64);
+    ADD COLUMN IF NOT EXISTS device_name VARCHAR(255);
   `);
 
   await pool.query(`
@@ -1695,40 +2444,54 @@ const ensureDevicesTableSchema = async () => {
         FROM information_schema.columns
         WHERE table_schema = 'public'
           AND table_name = 'devices'
-          AND column_name = 'device_id'
+          AND column_name = 'device_uid'
       ) THEN
         EXECUTE '
           UPDATE devices
-          SET device_uid = COALESCE(NULLIF(device_uid, ''''), NULLIF(device_id, ''''))
-          WHERE device_uid IS NULL OR TRIM(device_uid) = ''''
+          SET device_name = COALESCE(
+            NULLIF(TRIM(device_name), ''''),
+            NULLIF(TRIM(device_uid), ''''),
+            CONCAT(''Device '', id)
+          )
+          WHERE device_name IS NULL OR TRIM(device_name) = ''''
         ';
-
-        EXECUTE 'ALTER TABLE devices ALTER COLUMN device_id DROP NOT NULL';
-        EXECUTE 'ALTER TABLE devices DROP COLUMN device_id';
       END IF;
     END $$;
   `);
 
   await pool.query(`
-    UPDATE devices
-    SET device_uid = CONCAT('legacy-device-', id)
-    WHERE device_uid IS NULL OR TRIM(device_uid) = '';
-  `);
-
-  await pool.query(`
-    UPDATE devices
-    SET thingsboard_device_id = device_uid
-    WHERE thingsboard_device_id IS NULL OR TRIM(thingsboard_device_id) = '';
+    DROP INDEX IF EXISTS idx_devices_owner_device_uid_unique;
   `);
 
   await pool.query(`
     ALTER TABLE devices
-    ALTER COLUMN device_uid SET NOT NULL;
+    DROP COLUMN IF EXISTS device_uid;
   `);
 
   await pool.query(`
     ALTER TABLE devices
-    ADD COLUMN IF NOT EXISTS description VARCHAR(200) NOT NULL DEFAULT '';
+    DROP COLUMN IF EXISTS description;
+  `);
+
+  await pool.query(`
+    ALTER TABLE devices
+    DROP COLUMN IF EXISTS access_token;
+  `);
+
+  await pool.query(`
+    ALTER TABLE devices
+    DROP COLUMN IF EXISTS is_default;
+  `);
+
+  await pool.query(`
+    UPDATE devices
+    SET device_name = COALESCE(NULLIF(device_name, ''), thingsboard_device_id, CONCAT('Device ', id))
+    WHERE device_name IS NULL OR TRIM(device_name) = '';
+  `);
+
+  await pool.query(`
+    ALTER TABLE devices
+    ALTER COLUMN device_name SET NOT NULL;
   `);
 
   await pool.query(`
@@ -1742,8 +2505,13 @@ const ensureDevicesTableSchema = async () => {
   `);
 
   await pool.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_devices_owner_device_uid_unique
-    ON devices (owner_user_id, LOWER(device_uid));
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_devices_owner_device_name_unique
+    ON devices (owner_user_id, device_name);
+  `);
+
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_devices_owner_thingsboard_id_unique
+    ON devices (owner_user_id, thingsboard_device_id);
   `);
 
   await pool.query(`
@@ -3056,19 +3824,49 @@ app.delete("/users/:userId", authenticateToken, async (req, res) => {
   }
 });
 
+app.get("/thingsboard/devices/resolve", authenticateToken, async (req, res) => {
+  try {
+    const actor = await requireAdministratorRequest(req, res);
+    if (!actor) return;
+
+    const deviceName =
+      typeof req.query.deviceName === "string" ? req.query.deviceName.trim() : "";
+
+    const deviceNameValidationError = getDeviceNameValidationError(deviceName);
+
+    if (deviceNameValidationError) {
+      return res.status(400).json({
+        message: deviceNameValidationError,
+      });
+    }
+
+    const resolvedDevice = await resolveThingsBoardDeviceByName(deviceName);
+
+    return res.status(200).json({
+      message: "Device connected successfully.",
+      device: resolvedDevice,
+    });
+  } catch (error) {
+    console.error("THINGSBOARD DEVICE RESOLVE ERROR:", error);
+
+    return res.status(404).json({
+      message: error.message || "Device was not found in ThingsBoard Cloud.",
+    });
+  }
+});
+
 app.get("/devices", authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT
         id,
-        device_uid,
+        device_name,
         thingsboard_device_id,
-        description,
         created_at,
         updated_at
       FROM devices
-       WHERE owner_user_id = $1
-       ORDER BY created_at ASC, id ASC`,
+      WHERE owner_user_id = $1
+      ORDER BY created_at ASC, id ASC`,
       [req.user.id]
     );
 
@@ -3089,26 +3887,22 @@ app.post("/devices", authenticateToken, async (req, res) => {
   const client = await pool.connect();
 
   try {
-    const deviceUid =
-      typeof req.body.deviceUid === "string" ? req.body.deviceUid.trim() : "";
-    const description =
-      typeof req.body.description === "string" ? req.body.description.trim() : "";
+    const actor = await requireAdministratorRequest(req, res);
+    if (!actor) return;
 
-    const deviceUidValidationError = getDeviceUidValidationError(deviceUid);
-    const descriptionValidationError = getDeviceDescriptionValidationError(description);
+    const deviceName =
+      typeof req.body.deviceName === "string" ? req.body.deviceName.trim() : "";
 
-    if (deviceUidValidationError) {
-      return res.status(400).json({ message: deviceUidValidationError });
-    }
+    const deviceNameValidationError = getDeviceNameValidationError(deviceName);
 
-    if (descriptionValidationError) {
-      return res.status(400).json({ message: descriptionValidationError });
+    if (deviceNameValidationError) {
+      return res.status(400).json({ message: deviceNameValidationError });
     }
 
     let resolvedDevice;
 
     try {
-      resolvedDevice = await resolveThingsBoardDevice(deviceUid);
+      resolvedDevice = await resolveThingsBoardDeviceByName(deviceName);
     } catch (thingsBoardError) {
       return res.status(400).json({
         message:
@@ -3118,21 +3912,6 @@ app.post("/devices", authenticateToken, async (req, res) => {
     }
 
     await client.query("BEGIN");
-
-    const actorResult = await client.query(
-      `SELECT id, first_name, last_name, email, role_label
-       FROM users
-       WHERE id = $1
-       LIMIT 1`,
-      [req.user.id]
-    );
-
-    if (actorResult.rows.length === 0) {
-      await client.query("ROLLBACK");
-      return res.status(404).json({
-        message: "User account not found.",
-      });
-    }
 
     const countResult = await client.query(
       `SELECT COUNT(*)::int AS total_count
@@ -3155,11 +3934,11 @@ app.post("/devices", authenticateToken, async (req, res) => {
       FROM devices
       WHERE owner_user_id = $1
         AND (
-          LOWER(device_uid) = LOWER($2)
-          OR LOWER(COALESCE(thingsboard_device_id, '')) = LOWER($3)
+          device_name = $2
+          OR COALESCE(thingsboard_device_id, '') = $3
         )
       LIMIT 1`,
-      [req.user.id, deviceUid, resolvedDevice.thingsboardDeviceId]
+      [req.user.id, resolvedDevice.deviceName, resolvedDevice.thingsboardDeviceId]
     );
 
     if (duplicateResult.rows.length > 0) {
@@ -3172,27 +3951,22 @@ app.post("/devices", authenticateToken, async (req, res) => {
     const insertedDeviceResult = await client.query(
       `INSERT INTO devices (
         owner_user_id,
-        device_uid,
-        thingsboard_device_id,
-        description
+        device_name,
+        thingsboard_device_id
       )
-      VALUES ($1, $2, $3, $4)
+      VALUES ($1, $2, $3)
       RETURNING
         id,
-        device_uid,
+        device_name,
         thingsboard_device_id,
-        description,
         created_at,
         updated_at`,
       [
         req.user.id,
-        deviceUid,
+        resolvedDevice.deviceName,
         resolvedDevice.thingsboardDeviceId,
-        description,
       ]
     );
-
-    const actor = actorResult.rows[0];
 
     await insertActivityLog({
       actionType: LOG_ACTION_TYPES.DEVICE_ADDED,
@@ -3202,10 +3976,10 @@ app.post("/devices", authenticateToken, async (req, res) => {
       actorRole: actor.role_label || "User",
       details: buildLogDetails({
         actionType: LOG_ACTION_TYPES.DEVICE_ADDED,
-        deviceId: deviceUid,
+        deviceId: resolvedDevice.deviceName,
       }),
-      deviceId: deviceUid,
-      deviceDescription: description,
+      deviceId: resolvedDevice.deviceName,
+      deviceDescription: "",
       client,
     });
 
@@ -3238,10 +4012,11 @@ app.put("/devices/:deviceId", authenticateToken, async (req, res) => {
 
   try {
     const targetDeviceId = Number.parseInt(req.params.deviceId, 10);
-    const deviceUid =
-      typeof req.body.deviceUid === "string" ? req.body.deviceUid.trim() : "";
-    const description =
-      typeof req.body.description === "string" ? req.body.description.trim() : "";
+    const actor = await requireAdministratorRequest(req, res);
+    if (!actor) return;
+
+    const deviceName =
+      typeof req.body.deviceName === "string" ? req.body.deviceName.trim() : "";
 
     if (!Number.isInteger(targetDeviceId) || targetDeviceId < 1) {
       return res.status(400).json({
@@ -3249,21 +4024,16 @@ app.put("/devices/:deviceId", authenticateToken, async (req, res) => {
       });
     }
 
-    const deviceUidValidationError = getDeviceUidValidationError(deviceUid);
-    const descriptionValidationError = getDeviceDescriptionValidationError(description);
+    const deviceNameValidationError = getDeviceNameValidationError(deviceName);
 
-    if (deviceUidValidationError) {
-      return res.status(400).json({ message: deviceUidValidationError });
-    }
-
-    if (descriptionValidationError) {
-      return res.status(400).json({ message: descriptionValidationError });
+    if (deviceNameValidationError) {
+      return res.status(400).json({ message: deviceNameValidationError });
     }
 
     let resolvedDevice;
 
     try {
-      resolvedDevice = await resolveThingsBoardDevice(deviceUid);
+      resolvedDevice = await resolveThingsBoardDeviceByName(deviceName);
     } catch (thingsBoardError) {
       return res.status(400).json({
         message:
@@ -3274,30 +4044,15 @@ app.put("/devices/:deviceId", authenticateToken, async (req, res) => {
 
     await client.query("BEGIN");
 
-    const actorResult = await client.query(
-      `SELECT id, first_name, last_name, email, role_label
-       FROM users
-       WHERE id = $1
-       LIMIT 1`,
-      [req.user.id]
-    );
-
-    if (actorResult.rows.length === 0) {
-      await client.query("ROLLBACK");
-      return res.status(404).json({
-        message: "User account not found.",
-      });
-    }
-
     const currentDeviceResult = await client.query(
       `SELECT
-         id,
-         device_uid,
-         description
-       FROM devices
-       WHERE id = $1
-         AND owner_user_id = $2
-       FOR UPDATE`,
+        id,
+        device_name,
+        thingsboard_device_id
+      FROM devices
+      WHERE id = $1
+        AND owner_user_id = $2
+      FOR UPDATE`,
       [targetDeviceId, req.user.id]
     );
 
@@ -3313,14 +4068,14 @@ app.put("/devices/:deviceId", authenticateToken, async (req, res) => {
       FROM devices
       WHERE owner_user_id = $1
         AND (
-          LOWER(device_uid) = LOWER($2)
-          OR LOWER(COALESCE(thingsboard_device_id, '')) = LOWER($3)
+          device_name = $2
+          OR COALESCE(thingsboard_device_id, '') = $3
         )
         AND id <> $4
       LIMIT 1`,
       [
         req.user.id,
-        deviceUid,
+        resolvedDevice.deviceName,
         resolvedDevice.thingsboardDeviceId,
         targetDeviceId,
       ]
@@ -3337,33 +4092,29 @@ app.put("/devices/:deviceId", authenticateToken, async (req, res) => {
 
     const updatedDeviceResult = await client.query(
       `UPDATE devices
-      SET device_uid = $1,
+      SET device_name = $1,
           thingsboard_device_id = $2,
-          description = $3,
           updated_at = CURRENT_TIMESTAMP
-      WHERE id = $4
-        AND owner_user_id = $5
+      WHERE id = $3
+        AND owner_user_id = $4
       RETURNING
         id,
-        device_uid,
+        device_name,
         thingsboard_device_id,
-        description,
         created_at,
         updated_at`,
       [
-        deviceUid,
+        resolvedDevice.deviceName,
         resolvedDevice.thingsboardDeviceId,
-        description,
         targetDeviceId,
         req.user.id,
       ]
     );
 
-    const actor = actorResult.rows[0];
     const updateDetails =
-      currentDevice.device_uid === deviceUid
-        ? `Device ID "${deviceUid}" was updated`
-        : `Device ID "${currentDevice.device_uid}" was updated to "${deviceUid}"`;
+    currentDevice.device_name === resolvedDevice.deviceName
+      ? `Device "${resolvedDevice.deviceName}" was updated`
+      : `Device "${currentDevice.device_name}" was updated to "${resolvedDevice.deviceName}"`;
 
     await insertActivityLog({
       actionType: LOG_ACTION_TYPES.DEVICE_UPDATED,
@@ -3372,8 +4123,8 @@ app.put("/devices/:deviceId", authenticateToken, async (req, res) => {
       actorEmail: actor.email,
       actorRole: actor.role_label || "User",
       details: updateDetails,
-      deviceId: deviceUid,
-      deviceDescription: description,
+      deviceId: resolvedDevice.deviceName,
+      deviceDescription: "",
       client,
     });
 
@@ -3401,6 +4152,94 @@ app.put("/devices/:deviceId", authenticateToken, async (req, res) => {
   }
 });
 
+app.get("/devices/:deviceId/access-token", authenticateToken, async (req, res) => {
+  try {
+    const actor = await requireAdministratorRequest(req, res);
+    if (!actor) return;
+
+    const targetDeviceId = Number.parseInt(req.params.deviceId, 10);
+
+    if (!Number.isInteger(targetDeviceId) || targetDeviceId < 1) {
+      return res.status(400).json({
+        message: "Invalid device.",
+      });
+    }
+
+    const result = await pool.query(
+      `SELECT
+         id,
+         device_name,
+         thingsboard_device_id
+       FROM devices
+       WHERE id = $1
+         AND owner_user_id = $2
+       LIMIT 1`,
+      [targetDeviceId, req.user.id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        message: "Device not found.",
+      });
+    }
+
+    const device = result.rows[0];
+    const accessToken = await getThingsBoardDeviceAccessToken(
+      device.thingsboard_device_id
+    );
+
+    return res.status(200).json({
+      deviceName: device.device_name,
+      thingsboardDeviceId: device.thingsboard_device_id,
+      accessToken,
+    });
+  } catch (error) {
+    console.error("DEVICE ACCESS TOKEN ERROR:", error);
+
+    return res.status(500).json({
+      message: error.message || "Unable to load access token right now.",
+    });
+  }
+});
+
+app.get("/devices/:deviceId/latest-telemetry", authenticateToken, async (req, res) => {
+  try {
+    const targetDeviceId = Number.parseInt(req.params.deviceId, 10);
+
+    if (!Number.isInteger(targetDeviceId) || targetDeviceId < 1) {
+      return res.status(400).json({
+        message: "Invalid device.",
+      });
+    }
+
+    const deviceAccess = await getDashboardDeviceAccessForRequest({
+      req,
+      res,
+      internalDeviceId: targetDeviceId,
+    });
+
+    if (!deviceAccess) return;
+
+    const device = deviceAccess.device;
+
+    const telemetry = await getThingsBoardDeviceLatestTelemetry(
+      device.thingsboard_device_id
+    );
+
+    return res.status(200).json({
+      deviceName: device.device_name,
+      thingsboardDeviceId: device.thingsboard_device_id,
+      telemetry,
+    });
+  } catch (error) {
+    console.error("DEVICE LATEST TELEMETRY ERROR:", error);
+
+    return res.status(500).json({
+      message: error.message || "Unable to load latest telemetry right now.",
+    });
+  }
+});
+
 app.delete("/devices/:deviceId", authenticateToken, async (req, res) => {
   const client = await pool.connect();
 
@@ -3413,32 +4252,20 @@ app.delete("/devices/:deviceId", authenticateToken, async (req, res) => {
       });
     }
 
+    const actor = await requireAdministratorRequest(req, res);
+    if (!actor) return;
+
     await client.query("BEGIN");
-
-    const actorResult = await client.query(
-      `SELECT id, first_name, last_name, email, role_label
-       FROM users
-       WHERE id = $1
-       LIMIT 1`,
-      [req.user.id]
-    );
-
-    if (actorResult.rows.length === 0) {
-      await client.query("ROLLBACK");
-      return res.status(404).json({
-        message: "User account not found.",
-      });
-    }
 
     const currentDeviceResult = await client.query(
       `SELECT
-         id,
-         device_uid,
-         description
-       FROM devices
-       WHERE id = $1
-         AND owner_user_id = $2
-       FOR UPDATE`,
+        id,
+        device_name,
+        thingsboard_device_id
+      FROM devices
+      WHERE id = $1
+        AND owner_user_id = $2
+      FOR UPDATE`,
       [targetDeviceId, req.user.id]
     );
 
@@ -3458,8 +4285,6 @@ app.delete("/devices/:deviceId", authenticateToken, async (req, res) => {
       [targetDeviceId, req.user.id]
     );
 
-    const actor = actorResult.rows[0];
-
     await insertActivityLog({
       actionType: LOG_ACTION_TYPES.DEVICE_REMOVED,
       actorUserId: actor.id,
@@ -3468,10 +4293,10 @@ app.delete("/devices/:deviceId", authenticateToken, async (req, res) => {
       actorRole: actor.role_label || "User",
       details: buildLogDetails({
         actionType: LOG_ACTION_TYPES.DEVICE_REMOVED,
-        deviceId: currentDevice.device_uid,
+        deviceId: currentDevice.device_name,
       }),
-      deviceId: currentDevice.device_uid,
-      deviceDescription: currentDevice.description,
+      deviceId: currentDevice.device_name,
+      deviceDescription: "",
       client,
     });
 
@@ -3509,6 +4334,14 @@ app.get("/thingsboard/telemetry/latest", authenticateToken, async (req, res) => 
         message: "Invalid telemetry keys.",
       });
     }
+
+    const deviceAccess = await getDashboardDeviceAccessForRequest({
+      req,
+      res,
+      thingsboardDeviceId: deviceId,
+    });
+
+    if (!deviceAccess) return;
 
     const data = await thingsBoardFetchJson(
       `/api/plugins/telemetry/DEVICE/${encodeURIComponent(deviceId)}/values/timeseries?keys=${encodeURIComponent(keys)}&useLatestTs=true`
@@ -3552,6 +4385,14 @@ app.get("/thingsboard/telemetry/history", authenticateToken, async (req, res) =>
 
     const safeLimit = Math.min(Math.max(Number.isFinite(limit) ? limit : 50, 1), 500);
 
+    const deviceAccess = await getDashboardDeviceAccessForRequest({
+      req,
+      res,
+      thingsboardDeviceId: deviceId,
+    });
+
+    if (!deviceAccess) return;
+
     const data = await thingsBoardFetchJson(
       `/api/plugins/telemetry/DEVICE/${encodeURIComponent(deviceId)}/values/timeseries?keys=${encodeURIComponent(keys)}&startTs=${startTs}&endTs=${endTs}&limit=${safeLimit}`
     );
@@ -3583,6 +4424,15 @@ app.post("/thingsboard/rpc", authenticateToken, async (req, res) => {
       });
     }
 
+    const deviceAccess = await getDashboardDeviceAccessForRequest({
+      req,
+      res,
+      thingsboardDeviceId: deviceId,
+      requireControl: true,
+    });
+
+    if (!deviceAccess) return;
+
     await thingsBoardFetchJson(
       `/api/plugins/rpc/oneway/${encodeURIComponent(deviceId)}`,
       {
@@ -3608,6 +4458,9 @@ app.post("/thingsboard/rpc", authenticateToken, async (req, res) => {
 
 app.get("/thingsboard/counts", authenticateToken, async (req, res) => {
   try {
+    const actor = await requireAdministratorRequest(req, res);
+    if (!actor) return;
+
     const [alarmData, entityData] = await Promise.all([
       thingsBoardFetchJson("/api/alarm/count?status=ACTIVE"),
       thingsBoardFetchJson("/api/tenant/entities?pageSize=1&page=0&textSearch="),
@@ -3628,6 +4481,9 @@ app.get("/thingsboard/counts", authenticateToken, async (req, res) => {
 
 app.get("/thingsboard/entities", authenticateToken, async (req, res) => {
   try {
+    const actor = await requireAdministratorRequest(req, res);
+    if (!actor) return;
+
     const data = await thingsBoardFetchJson(
       "/api/tenant/entities?pageSize=50&page=0&sortProperty=createdTime&sortOrder=DESC"
     );
@@ -3641,6 +4497,845 @@ app.get("/thingsboard/entities", authenticateToken, async (req, res) => {
     return res.status(500).json({
       message: error.message || "Unable to load ThingsBoard entities.",
     });
+  }
+});
+
+app.get("/dashboards/options", authenticateToken, async (req, res) => {
+  try {
+    const actor = await requireAdministratorRequest(req, res);
+    if (!actor) return;
+
+    const [usersResult, devicesResult] = await Promise.all([
+      pool.query(`
+        SELECT id, first_name, last_name, email
+        FROM users
+        WHERE role_label = 'User'
+        ORDER BY LOWER(last_name), LOWER(first_name), id
+      `),
+      pool.query(`
+        SELECT id, device_name, thingsboard_device_id
+        FROM devices
+        WHERE owner_user_id = $1
+        ORDER BY LOWER(device_name), id
+      `, [actor.id]),
+    ]);
+
+    return res.status(200).json({
+      users: usersResult.rows.map((row) => ({
+        id: row.id,
+        firstName: row.first_name,
+        lastName: row.last_name,
+        email: row.email,
+      })),
+      devices: devicesResult.rows.map(mapDeviceRowToClientDevice),
+    });
+  } catch (error) {
+    console.error("DASHBOARD OPTIONS ERROR:", error);
+
+    return res.status(500).json({
+      message: "Unable to load dashboard options right now.",
+    });
+  }
+});
+
+app.get("/dashboards/current", authenticateToken, async (req, res) => {
+  try {
+    const dashboardResult = await pool.query(
+      `
+      SELECT
+        d.*,
+        u.first_name,
+        u.last_name,
+        u.email,
+        dev.device_name,
+        dev.thingsboard_device_id
+      FROM dashboards d
+      JOIN users u ON u.id = d.assigned_user_id
+      JOIN devices dev ON dev.id = d.device_id
+      WHERE d.assigned_user_id = $1
+      ORDER BY d.updated_at DESC, d.created_at DESC
+      LIMIT 1
+      `,
+      [req.user.id]
+    );
+
+    if (dashboardResult.rows.length === 0) {
+      return res.status(200).json({
+        dashboard: null,
+        widgets: [],
+      });
+    }
+
+    const dashboard = mapDashboardRowToClientDashboard(dashboardResult.rows[0]);
+
+    const widgetsResult = await pool.query(
+      `
+      SELECT *
+      FROM dashboard_widgets
+      WHERE dashboard_id = $1
+      ORDER BY layout_y ASC, layout_x ASC, id ASC
+      `,
+      [dashboard.id]
+    );
+
+    return res.status(200).json({
+      dashboard,
+      widgets: widgetsResult.rows.map(mapDashboardWidgetRowToClient),
+    });
+  } catch (error) {
+    console.error("CURRENT DASHBOARD ERROR:", error);
+    return res.status(500).json({
+      message: error.message || "Unable to load current dashboard.",
+    });
+  }
+});
+
+app.get("/dashboards", authenticateToken, async (req, res) => {
+  try {
+    const actor = await requireAdministratorRequest(req, res);
+    if (!actor) return;
+
+    const filters = getDashboardsRouteFilters(req.query);
+    const { params, whereSql } = buildDashboardsListWhereClause(filters, actor.id);
+    const sortSql = DASHBOARDS_SORT_SQL[filters.sortBy] || DASHBOARDS_SORT_SQL.newest;
+
+    const result = await pool.query(`
+      SELECT
+        dashboards.id,
+        dashboards.dashboard_name,
+        dashboards.assigned_user_id,
+        dashboards.device_id,
+        dashboards.created_at,
+        dashboards.updated_at,
+        users.first_name,
+        users.last_name,
+        users.email,
+        devices.device_name,
+        devices.thingsboard_device_id
+      FROM dashboards
+      INNER JOIN users ON users.id = dashboards.assigned_user_id
+      INNER JOIN devices ON devices.id = dashboards.device_id
+      ${whereSql}
+      ORDER BY ${sortSql}
+    `, params);
+
+    return res.status(200).json({
+      dashboards: result.rows.map(mapDashboardRowToClientDashboard),
+    });
+  } catch (error) {
+    console.error("DASHBOARDS LIST ERROR:", error);
+
+    return res.status(500).json({
+      message: "Unable to load dashboards right now.",
+    });
+  }
+});
+
+app.post("/dashboards", authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+
+  try {
+    const actor = await requireAdministratorRequest(req, res);
+    if (!actor) return;
+
+    const dashboardName = String(req.body.dashboardName || "").trim();
+    const assignedUserId = Number(req.body.assignedUserId);
+    const deviceId = Number(req.body.deviceId);
+
+    const dashboardNameError = getDashboardNameValidationError(dashboardName);
+
+    if (dashboardNameError) {
+      return res.status(400).json({ message: dashboardNameError });
+    }
+
+    if (!Number.isInteger(assignedUserId) || assignedUserId <= 0) {
+      return res.status(400).json({ message: "Please select a valid user." });
+    }
+
+    if (!Number.isInteger(deviceId) || deviceId <= 0) {
+      return res.status(400).json({ message: "Please select a valid device." });
+    }
+
+    await client.query("BEGIN");
+
+    const userResult = await client.query(
+      `SELECT id FROM users WHERE id = $1 AND role_label = 'User' LIMIT 1`,
+      [assignedUserId]
+    );
+
+    if (userResult.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ message: "Selected user was not found." });
+    }
+
+    const deviceResult = await client.query(
+      `SELECT id FROM devices WHERE id = $1 AND owner_user_id = $2 LIMIT 1`,
+      [deviceId, actor.id]
+    );
+
+    if (deviceResult.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ message: "Selected device was not found." });
+    }
+
+    const duplicateResult = await client.query(
+      `SELECT id FROM dashboards WHERE LOWER(dashboard_name) = LOWER($1) LIMIT 1`,
+      [dashboardName]
+    );
+
+    if (duplicateResult.rows.length > 0) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ message: "This Dashboard Name already exists." });
+    }
+
+    const insertResult = await client.query(
+      `INSERT INTO dashboards (
+        dashboard_name,
+        assigned_user_id,
+        device_id,
+        created_by_user_id
+      )
+      VALUES ($1, $2, $3, $4)
+      RETURNING id`,
+      [dashboardName, assignedUserId, deviceId, actor.id]
+    );
+
+    await insertActivityLog({
+      actionType: LOG_ACTION_TYPES.DASHBOARD_ADDED,
+      actorUserId: actor.id,
+      actorName: getSafeLogActorName(actor),
+      actorEmail: actor.email,
+      actorRole: actor.role_label || "Administrator",
+      details: buildLogDetails({
+        actionType: LOG_ACTION_TYPES.DASHBOARD_ADDED,
+        deviceId: dashboardName,
+      }),
+      deviceId: String(insertResult.rows[0].id),
+      deviceDescription: dashboardName,
+      client,
+    });
+
+    await client.query("COMMIT");
+
+    const dashboardResult = await pool.query(`
+      SELECT
+        dashboards.id,
+        dashboards.dashboard_name,
+        dashboards.assigned_user_id,
+        dashboards.device_id,
+        dashboards.created_at,
+        dashboards.updated_at,
+        users.first_name,
+        users.last_name,
+        users.email,
+        devices.device_name,
+        devices.thingsboard_device_id
+      FROM dashboards
+      INNER JOIN users ON users.id = dashboards.assigned_user_id
+      INNER JOIN devices ON devices.id = dashboards.device_id
+      WHERE dashboards.id = $1
+      LIMIT 1
+    `, [insertResult.rows[0].id]);
+
+    return res.status(201).json({
+      message: "Dashboard added successfully.",
+      dashboard: mapDashboardRowToClientDashboard(dashboardResult.rows[0]),
+    });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error("DASHBOARD CREATE ERROR:", error);
+
+    return res.status(500).json({
+      message: error.message || "Unable to add dashboard right now.",
+    });
+  } finally {
+    client.release();
+  }
+});
+
+app.put("/dashboards/:dashboardId", authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+
+  try {
+    const actor = await requireAdministratorRequest(req, res);
+    if (!actor) return;
+
+    const dashboardId = Number(req.params.dashboardId);
+    const dashboardName = String(req.body.dashboardName || "").trim();
+    const assignedUserId = Number(req.body.assignedUserId);
+    const deviceId = Number(req.body.deviceId);
+
+    if (!Number.isInteger(dashboardId) || dashboardId <= 0) {
+      return res.status(400).json({ message: "Invalid dashboard ID." });
+    }
+
+    const dashboardNameError = getDashboardNameValidationError(dashboardName);
+
+    if (dashboardNameError) {
+      return res.status(400).json({ message: dashboardNameError });
+    }
+
+    if (!Number.isInteger(assignedUserId) || assignedUserId <= 0) {
+      return res.status(400).json({ message: "Please select a valid user." });
+    }
+
+    if (!Number.isInteger(deviceId) || deviceId <= 0) {
+      return res.status(400).json({ message: "Please select a valid device." });
+    }
+
+    await client.query("BEGIN");
+
+    const existingResult = await client.query(
+      `SELECT id, dashboard_name
+       FROM dashboards
+       WHERE id = $1 AND created_by_user_id = $2
+       LIMIT 1`,
+      [dashboardId, actor.id]
+    );
+
+    if (existingResult.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ message: "Dashboard was not found." });
+    }
+
+    const duplicateResult = await client.query(
+      `SELECT id
+       FROM dashboards
+       WHERE LOWER(dashboard_name) = LOWER($1)
+         AND id <> $2
+       LIMIT 1`,
+      [dashboardName, dashboardId]
+    );
+
+    if (duplicateResult.rows.length > 0) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ message: "This Dashboard Name already exists." });
+    }
+
+    await client.query(
+      `UPDATE dashboards
+       SET dashboard_name = $1,
+           assigned_user_id = $2,
+           device_id = $3,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $4`,
+      [dashboardName, assignedUserId, deviceId, dashboardId]
+    );
+
+    await insertActivityLog({
+      actionType: LOG_ACTION_TYPES.DASHBOARD_UPDATED,
+      actorUserId: actor.id,
+      actorName: getSafeLogActorName(actor),
+      actorEmail: actor.email,
+      actorRole: actor.role_label || "Administrator",
+      details: buildLogDetails({
+        actionType: LOG_ACTION_TYPES.DASHBOARD_UPDATED,
+        deviceId: dashboardName,
+      }),
+      deviceId: String(dashboardId),
+      deviceDescription: dashboardName,
+      client,
+    });
+
+    await client.query("COMMIT");
+
+    const dashboardResult = await pool.query(`
+      SELECT
+        dashboards.id,
+        dashboards.dashboard_name,
+        dashboards.assigned_user_id,
+        dashboards.device_id,
+        dashboards.created_at,
+        dashboards.updated_at,
+        users.first_name,
+        users.last_name,
+        users.email,
+        devices.device_name,
+        devices.thingsboard_device_id
+      FROM dashboards
+      INNER JOIN users ON users.id = dashboards.assigned_user_id
+      INNER JOIN devices ON devices.id = dashboards.device_id
+      WHERE dashboards.id = $1
+      LIMIT 1
+    `, [dashboardId]);
+
+    return res.status(200).json({
+      message: "Dashboard updated successfully.",
+      dashboard: mapDashboardRowToClientDashboard(dashboardResult.rows[0]),
+    });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error("DASHBOARD UPDATE ERROR:", error);
+
+    return res.status(500).json({
+      message: error.message || "Unable to update dashboard right now.",
+    });
+  } finally {
+    client.release();
+  }
+});
+
+app.get("/dashboards/:dashboardId/widgets", authenticateToken, async (req, res) => {
+  try {
+    const dashboardId = Number.parseInt(String(req.params.dashboardId || ""), 10);
+
+    if (!Number.isInteger(dashboardId) || dashboardId <= 0) {
+      return res.status(400).json({ message: "Invalid dashboard ID." });
+    }
+
+    const dashboardResult = await pool.query(
+      `
+      SELECT *
+      FROM dashboards
+      WHERE id = $1
+        AND (
+          created_by_user_id = $2
+          OR assigned_user_id = $2
+        )
+      LIMIT 1
+      `,
+      [dashboardId, req.user.id]
+    );
+
+    if (dashboardResult.rows.length === 0) {
+      return res.status(404).json({ message: "Dashboard not found." });
+    }
+
+    const widgetsResult = await pool.query(
+      `
+      SELECT *
+      FROM dashboard_widgets
+      WHERE dashboard_id = $1
+      ORDER BY layout_y ASC, layout_x ASC, id ASC
+      `,
+      [dashboardId]
+    );
+
+    return res.status(200).json({
+      widgets: widgetsResult.rows.map(mapDashboardWidgetRowToClient),
+    });
+  } catch (error) {
+    console.error("DASHBOARD WIDGETS LOAD ERROR:", error);
+    return res.status(500).json({
+      message: error.message || "Unable to load dashboard widgets.",
+    });
+  }
+});
+
+app.post("/dashboards/:dashboardId/widgets/validate", authenticateToken, async (req, res) => {
+  try {
+    const dashboardId = Number.parseInt(String(req.params.dashboardId || ""), 10);
+
+    if (!Number.isInteger(dashboardId) || dashboardId <= 0) {
+      return res.status(400).json({ message: "Invalid dashboard ID." });
+    }
+
+    const actor = await requireAdministratorRequest(req, res);
+    if (!actor) return;
+
+    const widgetKey = String(req.body.widgetKey || "").trim();
+    const widgetName = String(req.body.widgetName || "").trim();
+    const dataKey = String(req.body.dataKey || "").trim();
+    const inoFileName = String(req.body.inoFileName || "").trim();
+    const inoFileContent = String(req.body.inoFileContent || "");
+
+    const formError = getDashboardWidgetValidationError({
+      widgetKey,
+      widgetName,
+      dataKey,
+    });
+
+    if (formError) {
+      return res.status(400).json({
+        isCompatible: false,
+        status: "failed",
+        message: formError,
+      });
+    }
+
+    const dashboardResult = await pool.query(
+      `
+      SELECT d.*, dev.thingsboard_device_id
+      FROM dashboards d
+      JOIN devices dev ON dev.id = d.device_id
+      WHERE d.id = $1
+        AND d.created_by_user_id = $2
+      LIMIT 1
+      `,
+      [dashboardId, req.user.id]
+    );
+
+    if (dashboardResult.rows.length === 0) {
+      return res.status(404).json({
+        isCompatible: false,
+        status: "failed",
+        message: "Dashboard not found.",
+      });
+    }
+
+    const requiresSourceFile = !DASHBOARD_WIDGET_OPTIONAL_DATA_KEY.has(widgetKey);
+
+    if (requiresSourceFile && !inoFileName.toLowerCase().endsWith(".ino")) {
+      return res.status(400).json({
+        isCompatible: false,
+        status: "failed",
+        message: "Please upload a valid Arduino .ino file.",
+      });
+    }
+
+    if (requiresSourceFile && !inoFileContent.trim()) {
+      return res.status(400).json({
+        isCompatible: false,
+        status: "failed",
+        message: "The uploaded .ino file is empty.",
+      });
+    }
+
+    if (!DASHBOARD_WIDGET_OPTIONAL_DATA_KEY.has(widgetKey)) {
+      const thingsboardDeviceId = dashboardResult.rows[0].thingsboard_device_id;
+
+      const telemetryRows = await getThingsBoardDeviceLatestTelemetry(thingsboardDeviceId);
+      const telemetryRow = findTelemetryRowByKey(telemetryRows, dataKey);
+
+      if (!telemetryRow) {
+        const availableDataKeys = telemetryRows
+          .map((row) => String(row.key || "").trim())
+          .filter(Boolean)
+          .join(", ");
+
+        return res.status(400).json({
+          isCompatible: false,
+          status: "failed",
+          message: availableDataKeys
+            ? `Data Key "${dataKey}" was not found in the selected device latest telemetry. Available keys: ${availableDataKeys}.`
+            : "The selected device has no latest telemetry yet.",
+        });
+      }
+
+      const expectedAccessToken = await getThingsBoardDeviceAccessToken(thingsboardDeviceId);
+
+      const widgetCodeError = getArduinoWidgetCompatibilityError({
+        widgetKey,
+        dataKey,
+        inoFileContent,
+        telemetryValue: telemetryRow.value,
+        expectedAccessToken,
+      });
+
+      if (widgetCodeError) {
+        return res.status(400).json({
+          isCompatible: false,
+          status: "failed",
+          message: widgetCodeError,
+        });
+      }
+    }
+
+    return res.status(200).json({
+      isCompatible: true,
+      status: "success",
+      message: "Widget is compatible with the selected device.",
+    });
+  } catch (error) {
+    console.error("DASHBOARD WIDGET VALIDATION ERROR:", error);
+    return res.status(500).json({
+      isCompatible: false,
+      status: "failed",
+      message: error.message || "Unable to validate widget.",
+    });
+  }
+});
+
+app.put("/dashboards/:dashboardId/widgets", authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+
+  try {
+    const dashboardId = Number.parseInt(String(req.params.dashboardId || ""), 10);
+    const widgets = Array.isArray(req.body.widgets) ? req.body.widgets : [];
+
+    if (!Number.isInteger(dashboardId) || dashboardId <= 0) {
+      return res.status(400).json({ message: "Invalid dashboard ID." });
+    }
+
+    const actor = await requireAdministratorRequest(req, res);
+    if (!actor) return;
+
+    const dashboardResult = await client.query(
+      `
+      SELECT *
+      FROM dashboards
+      WHERE id = $1
+        AND created_by_user_id = $2
+      LIMIT 1
+      `,
+      [dashboardId, req.user.id]
+    );
+
+    if (dashboardResult.rows.length === 0) {
+      return res.status(404).json({ message: "Dashboard not found." });
+    }
+
+    for (const widget of widgets) {
+      const formError = getDashboardWidgetValidationError({
+        widgetKey: widget.widgetKey,
+        widgetName: widget.widgetName,
+        dataKey: widget.dataKey,
+      });
+
+      if (formError) {
+        return res.status(400).json({ message: formError });
+      }
+
+      if (String(widget.validationStatus || "").trim() !== "success") {
+        return res.status(400).json({
+          message: `Widget "${String(widget.widgetName || "").trim() || "Untitled Widget"}" must pass compatibility check before saving.`,
+        });
+      }
+    }
+
+    await client.query("BEGIN");
+
+    const oldWidgetsResult = await client.query(
+      `
+      SELECT
+        id,
+        widget_key,
+        widget_type,
+        widget_name,
+        data_key,
+        ino_file_name,
+        validation_status,
+        validation_message,
+        layout_x,
+        layout_y,
+        layout_w,
+        layout_h,
+        settings
+      FROM dashboard_widgets
+      WHERE dashboard_id = $1
+      `,
+      [dashboardId]
+    );
+
+    const oldWidgetIds = new Set(oldWidgetsResult.rows.map((row) => Number(row.id)));
+    const incomingExistingIds = new Set(
+      widgets
+        .map((widget) => Number(widget.id))
+        .filter((id) => Number.isInteger(id) && id > 0)
+    );
+
+    const removedWidgets = oldWidgetsResult.rows.filter(
+      (row) => !incomingExistingIds.has(Number(row.id))
+    );
+
+    await client.query(
+      `DELETE FROM dashboard_widgets WHERE dashboard_id = $1`,
+      [dashboardId]
+    );
+
+    const savedWidgets = [];
+
+    for (const widget of widgets) {
+      const layout = widget.layout || {};
+
+      const insertResult = await client.query(
+        `
+        INSERT INTO dashboard_widgets (
+          dashboard_id,
+          widget_key,
+          widget_type,
+          widget_name,
+          data_key,
+          ino_file_name,
+          validation_status,
+          validation_message,
+          layout_x,
+          layout_y,
+          layout_w,
+          layout_h,
+          settings
+        )
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+        RETURNING *
+        `,
+        [
+          dashboardId,
+          String(widget.widgetKey || "").trim(),
+          String(widget.widgetType || "").trim(),
+          String(widget.widgetName || "").trim(),
+          String(widget.dataKey || "").trim() || null,
+          String(widget.inoFileName || "").trim() || null,
+          widget.validationStatus === "success" ? "success" : "unchecked",
+          String(widget.validationMessage || "").trim(),
+          Number(layout.x || 0),
+          Number(layout.y || 0),
+          Math.max(4, Math.min(24, Number(layout.w || 6))),
+          Math.max(5, Math.min(18, Number(layout.h || 7))),
+          widget.settings || {},
+        ]
+      );
+
+      savedWidgets.push(mapDashboardWidgetRowToClient(insertResult.rows[0]));
+    }
+
+    const oldWidgetsById = new Map(
+      oldWidgetsResult.rows.map((row) => [Number(row.id), row])
+    );
+
+    const normalizeWidgetForLogCompare = (widget = {}) => ({
+      widgetKey: String(widget.widgetKey || widget.widget_key || "").trim(),
+      widgetType: String(widget.widgetType || widget.widget_type || "").trim(),
+      widgetName: String(widget.widgetName || widget.widget_name || "").trim(),
+      dataKey: String(widget.dataKey || widget.data_key || "").trim(),
+      inoFileName: String(widget.inoFileName || widget.ino_file_name || "").trim(),
+      validationStatus: String(widget.validationStatus || widget.validation_status || "").trim(),
+      validationMessage: String(widget.validationMessage || widget.validation_message || "").trim(),
+      layout: {
+        x: Number(widget.layout?.x ?? widget.layout_x ?? 0),
+        y: Number(widget.layout?.y ?? widget.layout_y ?? 0),
+        w: Number(widget.layout?.w ?? widget.layout_w ?? 6),
+        h: Number(widget.layout?.h ?? widget.layout_h ?? 7),
+      },
+      settings: widget.settings || {},
+    });
+
+    const isWidgetChanged = (oldWidget, newWidget) =>
+      JSON.stringify(normalizeWidgetForLogCompare(oldWidget)) !==
+      JSON.stringify(normalizeWidgetForLogCompare(newWidget));
+
+    const addedWidgets = widgets.filter((widget) => !oldWidgetIds.has(Number(widget.id)));
+
+    const updatedWidgets = widgets.filter((widget) => {
+      const widgetId = Number(widget.id);
+      const oldWidget = oldWidgetsById.get(widgetId);
+
+      return oldWidget && isWidgetChanged(oldWidget, widget);
+    });
+
+    const getWidgetLogLabel = (items = []) =>
+      `${items.length} widget${items.length > 1 ? "s" : ""}`;
+
+    const getWidgetLogDescription = (items = []) =>
+      items
+        .map((item) => String(item.widgetName || item.widget_name || "").trim())
+        .filter(Boolean)
+        .slice(0, 5)
+        .join(", ");
+
+    const insertWidgetActivityLog = async ({ actionType, widgetsList }) => {
+      if (widgetsList.length === 0) return;
+
+      const label = getWidgetLogLabel(widgetsList);
+
+      await insertActivityLog({
+        actionType,
+        actorUserId: actor.id,
+        actorName: getSafeLogActorName(actor),
+        actorEmail: actor.email,
+        actorRole: actor.role_label || "Administrator",
+        details: buildLogDetails({
+          actionType,
+          deviceId: label,
+        }),
+        deviceId: label,
+        deviceDescription: getWidgetLogDescription(widgetsList),
+        client,
+      });
+    };
+
+    await insertWidgetActivityLog({
+      actionType: LOG_ACTION_TYPES.WIDGET_ADDED,
+      widgetsList: addedWidgets,
+    });
+
+    await insertWidgetActivityLog({
+      actionType: LOG_ACTION_TYPES.WIDGET_UPDATED,
+      widgetsList: updatedWidgets,
+    });
+
+    await insertWidgetActivityLog({
+      actionType: LOG_ACTION_TYPES.WIDGET_REMOVED,
+      widgetsList: removedWidgets,
+    });
+
+    await client.query("COMMIT");
+
+    return res.status(200).json({ widgets: savedWidgets });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("DASHBOARD WIDGETS SAVE ERROR:", error);
+    return res.status(500).json({
+      message: error.message || "Unable to save dashboard widgets.",
+    });
+  } finally {
+    client.release();
+  }
+});
+
+app.delete("/dashboards/:dashboardId", authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+
+  try {
+    const actor = await requireAdministratorRequest(req, res);
+    if (!actor) return;
+
+    const dashboardId = Number(req.params.dashboardId);
+
+    if (!Number.isInteger(dashboardId) || dashboardId <= 0) {
+      return res.status(400).json({ message: "Invalid dashboard ID." });
+    }
+
+    await client.query("BEGIN");
+
+    const existingResult = await client.query(
+      `SELECT id, dashboard_name
+       FROM dashboards
+       WHERE id = $1 AND created_by_user_id = $2
+       LIMIT 1`,
+      [dashboardId, actor.id]
+    );
+
+    if (existingResult.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ message: "Dashboard was not found." });
+    }
+
+    const dashboardName = existingResult.rows[0].dashboard_name;
+
+    await client.query(
+      `DELETE FROM dashboards WHERE id = $1`,
+      [dashboardId]
+    );
+
+    await insertActivityLog({
+      actionType: LOG_ACTION_TYPES.DASHBOARD_REMOVED,
+      actorUserId: actor.id,
+      actorName: getSafeLogActorName(actor),
+      actorEmail: actor.email,
+      actorRole: actor.role_label || "Administrator",
+      details: buildLogDetails({
+        actionType: LOG_ACTION_TYPES.DASHBOARD_REMOVED,
+        deviceId: dashboardName,
+      }),
+      deviceId: String(dashboardId),
+      deviceDescription: dashboardName,
+      client,
+    });
+
+    await client.query("COMMIT");
+
+    return res.status(200).json({
+      message: "Dashboard deleted successfully.",
+    });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error("DASHBOARD DELETE ERROR:", error);
+
+    return res.status(500).json({
+      message: error.message || "Unable to delete dashboard right now.",
+    });
+  } finally {
+    client.release();
   }
 });
 
@@ -4542,6 +6237,10 @@ const startServer = async () => {
     await ensureDevicesTableSchema();
     await ensureLogsTableExists();
     await ensureLogsTableSchema();
+    await ensureDashboardsTableExists();
+    await ensureDashboardsTableSchema();
+    await ensureDashboardWidgetsTableExists();
+    await ensureDashboardWidgetsTableSchema();
 
     app.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);

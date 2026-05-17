@@ -1,8 +1,15 @@
 import React, { useState, useEffect } from "react";
 import "./Styles/WidgetStyle.css";
+import { fetchLatestTelemetry, sendOneWayRpc } from "../Utils/thingsboardApi";
 import { createActivityLog, ACTIVITY_LOG_TYPES } from "../Utils/activityLogsApi";
 
-function LEDIndicator({ instanceId = "widget-default" }) {
+function LEDIndicator({
+  title = "LED INDICATOR",
+  dataKey = "led",
+  rpcMethod = "setLED",
+  deviceId: assignedDeviceId = "",
+  readOnly = false,
+}) {
   const STORAGE_KEY = "avinya_devices";
 
   const [deviceId, setDeviceId] = useState(null);
@@ -10,14 +17,11 @@ function LEDIndicator({ instanceId = "widget-default" }) {
   const [ledState, setLedState] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [token, setToken] = useState(null);
   const [isToggling, setIsToggling] = useState(false);
 
-  const TB_BASE_URL = "https://thingsboard.cloud";
-  const TB_EMAIL = import.meta.env.VITE_TB_EMAIL;
-  const TB_PASSWORD = import.meta.env.VITE_TB_PASSWORD;
-
   const loadDefaultDevice = () => {
+    if (assignedDeviceId) return assignedDeviceId;
+
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return null;
@@ -29,52 +33,32 @@ function LEDIndicator({ instanceId = "widget-default" }) {
     }
   };
 
-  const login = async () => {
-    const res = await fetch(`${TB_BASE_URL}/api/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: TB_EMAIL, password: TB_PASSWORD }),
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(`Login failed (${res.status}): ${text}`);
-    }
-    const data = await res.json();
-    setToken(data.token);
-    return data.token;
-  };
-
-  const fetchLedState = async (devId, jwt) => {
+  const fetchLedState = async (devId) => {
     if (!devId) return;
-    const res = await fetch(
-      `${TB_BASE_URL}/api/plugins/telemetry/DEVICE/${devId}/values/timeseries?keys=led&useLatestTs=true`,
-      { headers: { "X-Authorization": `Bearer ${jwt}` } }
-    );
-    if (!res.ok) throw new Error(`Telemetry failed (${res.status})`);
-    const data = await res.json();
-    if (data.led?.length > 0) {
-      const latest = data.led[0].value;
+
+    const { data } = await fetchLatestTelemetry({
+      deviceId: devId,
+      keys: [dataKey],
+    });
+
+    if (data[dataKey]?.length > 0) {
+      const latest = data[dataKey][0].value;
       setLedState(latest === true || latest === "true" || latest === 1 || latest === "1");
     }
   };
 
   const handleToggle = async () => {
-    if (!deviceId || !isConnected || isToggling) return;
+    if (readOnly || !deviceId || !isConnected || isToggling) return;
     const newState = !ledState;
     setLedState(newState);
     setIsToggling(true);
     setError(null);
     try {
-      const jwt = token ?? (await login());
-      const res = await fetch(`${TB_BASE_URL}/api/plugins/rpc/oneway/${deviceId}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Authorization": `Bearer ${jwt}`,
-        },
-        body: JSON.stringify({ method: "setLED", params: newState }),
+      await sendOneWayRpc({
+        deviceId,
+        method: rpcMethod,
+        params: newState,
       });
-      if (!res.ok) throw new Error(`RPC failed (${res.status})`);
       createActivityLog({
         actionType: newState ? ACTIVITY_LOG_TYPES.LED_ON : ACTIVITY_LOG_TYPES.LED_OFF,
         deviceId,
@@ -101,8 +85,7 @@ function LEDIndicator({ instanceId = "widget-default" }) {
     setIsLoading(true);
     setError(null);
     try {
-      const jwt = await login();
-      await fetchLedState(defaultId, jwt);
+      await fetchLedState(defaultId);
       setIsConnected(true);
     } catch (err) {
       let msg = "Failed to connect";
@@ -122,7 +105,6 @@ function LEDIndicator({ instanceId = "widget-default" }) {
 
   const handleReconnect = () => {
     setIsConnected(false);
-    setToken(null);
     setError(null);
     connectToDefault();
   };
@@ -131,16 +113,17 @@ function LEDIndicator({ instanceId = "widget-default" }) {
 
   useEffect(() => {
     if (!isConnected || !deviceId) return;
+
     const interval = setInterval(async () => {
       try {
-        const jwt = token || (await login());
-        await fetchLedState(deviceId, jwt);
+        await fetchLedState(deviceId);
       } catch (err) {
-        console.error("Polling error:", err);
+        console.error("LED polling error:", err);
       }
     }, 5000);
+
     return () => clearInterval(interval);
-  }, [isConnected, deviceId, token]);
+  }, [isConnected, deviceId]);
 
   useEffect(() => {
     const handleStorageChange = (e) => {
@@ -149,7 +132,6 @@ function LEDIndicator({ instanceId = "widget-default" }) {
         if (newDefault && newDefault !== deviceId) {
           setDeviceId(newDefault);
           setIsConnected(false);
-          setToken(null);
           setTimeout(connectToDefault, 300);
         }
       }
@@ -167,7 +149,7 @@ function LEDIndicator({ instanceId = "widget-default" }) {
   return (
     <div className={`cs-widget led-widget ${ledState ? "led-widget--on" : ""}`}>
       <div className="cs-header">
-        <span className="cs-title">LED INDICATOR</span>
+        <span className="cs-title">{title}</span>
         <div className={`cs-status-dot ${isConnected ? "cs-status-dot--connected" : ""}`} />
       </div>
 
@@ -201,7 +183,7 @@ function LEDIndicator({ instanceId = "widget-default" }) {
           <button
             className={`led-bulb-btn ${ledState ? "led-bulb-btn--on" : ""} ${isToggling ? "led-bulb-btn--busy" : ""}`}
             onClick={handleToggle}
-            disabled={!isConnected || isToggling}
+            disabled={readOnly || !isConnected || isToggling}
             aria-pressed={ledState}
             aria-label={`LED is ${ledState ? "on" : "off"}, tap to toggle`}
           >
@@ -250,6 +232,12 @@ function LEDIndicator({ instanceId = "widget-default" }) {
           <span className={`led-state-label ${ledState ? "led-state-label--on" : ""}`}>
             {isToggling ? "Sending…" : ledState ? "On" : "Off"}
           </span>
+
+          {readOnly && (
+            <p className="cs-readonly-note">
+              View only. Control is available to the assigned user.
+            </p>
+          )}
 
           {error && (
             <div className="cs-error">

@@ -1,0 +1,48 @@
+:root {
+  --avinya-font-sans:
+    "Inter",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    "Helvetica Neue",
+    Arial,
+    sans-serif;
+
+  --avinya-font-mono:
+    "SF Mono",
+    "Roboto Mono",
+    "Cascadia Code",
+    "Consolas",
+    monospace;
+
+  --bs-font-sans-serif: var(--avinya-font-sans);
+  --bs-body-font-family: var(--avinya-font-sans);
+}
+
+html,
+body,
+#root {
+  font-family: var(--avinya-font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-synthesis-weight: auto;
+}
+
+body,
+button,
+input,
+textarea,
+select,
+a,
+.swal2-popup {
+  font-family: var(--avinya-font-sans);
+}
+
+code,
+pre,
+kbd,
+samp {
+  font-family: var(--avinya-font-mono);
+}

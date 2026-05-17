@@ -12,7 +12,7 @@ body,
 }
 
 body {
-  font-family: 'Poppins', sans-serif;
+  font-family: var(--avinya-font-sans);
   background: #f4f4f4;
 }
 
@@ -22,6 +22,8 @@ img {
 
 button,
 input,
+textarea,
+select,
 a {
   font: inherit;
 }
@@ -94,10 +96,28 @@ a {
 
 .login-title {
   margin: 0 0 8px;
+  font-family: var(--avinya-font-sans);
   font-size: 20px;
-  font-weight: 600;
-  line-height: 1.2;
+  font-weight: 800;
+  line-height: 1.18;
+  letter-spacing: 0.14em;
+  text-indent: 0.14em;
+  text-transform: uppercase;
   color: #1f1f1f;
+}
+
+@media (max-width: 360px) {
+  .login-title {
+    letter-spacing: 0.1em;
+    text-indent: 0.1em;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 540px) {
+  .login-title {
+    letter-spacing: 0.12em;
+    text-indent: 0.12em;
+  }
 }
 
 .login-text {
@@ -397,7 +417,27 @@ a {
 }
 
 .login-powered-brand {
-  font-weight: 700;
+  display: inline-block;
+  font-family: var(--avinya-font-sans);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.14em;
+  text-indent: 0.14em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 360px) {
+  .login-powered-brand {
+    letter-spacing: 0.1em;
+    text-indent: 0.1em;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 540px) {
+  .login-powered-brand {
+    letter-spacing: 0.12em;
+    text-indent: 0.12em;
+  }
 }
 
 .login-powered-logo {

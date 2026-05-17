@@ -115,6 +115,8 @@ function Login({ onLoginSuccess, onGoToRegister, onGoToForgotPassword }) {
 
       sessionStorage.removeItem('avinya-current-page')
       localStorage.removeItem('avinya-current-page')
+      sessionStorage.removeItem('avinya_selected_dashboard_view')
+      localStorage.removeItem('avinya_selected_dashboard_view')
 
       setStoredAuthSession({
         token: data.token,

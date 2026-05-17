@@ -791,6 +791,8 @@ const Users = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
 
     const nextUsersSearchQuery = usersSearchInput.trim()
 
+    if (!nextUsersSearchQuery) return
+
     setUsersTableLoadingTitle('Searching Users')
     setUsersLoadReason('search')
 
@@ -895,7 +897,9 @@ const Users = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
       usersStatusFilter === 'all' &&
       usersCountryCodeFilter === 'all' &&
       usersPhotoFilter === 'all' &&
-      usersSortBy === 'newest'
+      usersSortBy === 'newest' &&
+      !appliedUsersSearchQuery &&
+      !usersSearchInput.trim()
 
     setOpenUsersFilterDropdown('')
 
@@ -904,6 +908,8 @@ const Users = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     setUsersTableLoadingTitle('Filtering Users')
     setUsersLoadReason('filter')
     setCurrentUsersPage(1)
+    setUsersSearchInput('')
+    setAppliedUsersSearchQuery('')
     setUsersStatusFilter('all')
     setUsersCountryCodeFilter('all')
     setUsersPhotoFilter('all')
@@ -1541,25 +1547,51 @@ const Users = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     ? 'No matching users found.'
     : 'No users found.'
 
+  const areUsersFiltersAtDefault =
+    usersStatusFilter === 'all' &&
+    usersCountryCodeFilter === 'all' &&
+    usersPhotoFilter === 'all' &&
+    usersSortBy === 'newest' &&
+    !appliedUsersSearchQuery &&
+    !usersSearchInput.trim()
+
+  const isUsersToolbarDisabled =
+    isUsersLoading || isPreparingUsersPdfPreview || isDownloadingUsersPdf
+
   const isUsersSearchDisabled =
-    isUsersLoading ||
+    isUsersToolbarDisabled ||
+    usersSearchInput.trim().length === 0
+
+  const shouldShowUsersPageLoader =
+    (isUsersTableTransitioning && (hasUsersLoadedOnce || usersLoadReason !== 'initial')) ||
+    isPreparingEditUserModal ||
+    isSavingEditedUser ||
+    isPreparingDeleteUserModal ||
+    isDeletingUser ||
+    isDeleteUserRedirecting ||
+    removingUserId !== null ||
     isPreparingUsersPdfPreview ||
-    isDownloadingUsersPdf ||
-    (usersSearchInput.trim().length === 0 && appliedUsersSearchQuery.length === 0)
+    isDownloadingUsersPdf
+
+  const usersPageLoadingTitle =
+    isPreparingEditUserModal
+      ? 'Loading User'
+      : isSavingEditedUser
+        ? 'Saving User'
+        : isPreparingDeleteUserModal
+          ? 'Loading User'
+          : isDeletingUser || removingUserId !== null
+            ? 'Deleting User'
+            : isPreparingUsersPdfPreview
+              ? 'Preparing PDF'
+              : isDownloadingUsersPdf
+                ? 'Downloading PDF'
+                : usersTableLoadingTitle
 
   const usersPaginationItems = getUsersPaginationItems(
     currentUsersPage,
     usersTotalPages
   )
-
-  const areUsersFiltersAtDefault =
-    usersStatusFilter === 'all' &&
-    usersCountryCodeFilter === 'all' &&
-    usersPhotoFilter === 'all' &&
-    usersSortBy === 'newest'
-
-  const isUsersToolbarDisabled =
-    isUsersLoading || isPreparingUsersPdfPreview || isDownloadingUsersPdf
 
   const usersPdfPreviewTags = [
     `Search: ${appliedUsersSearchQuery || 'All users'}`,
@@ -1708,21 +1740,6 @@ const Users = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
               </span>
               <span className="dashboard-sidebar-link-label">Logs</span>
             </button>
-
-            {isAdministrator && (
-              <button type="button" className="dashboard-sidebar-link" data-tooltip="Reports" onClick={() => onNavigate('reports')}>
-                <span className="dashboard-sidebar-link-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                    <polyline points="14 2 14 8 20 8" />
-                    <line x1="16" y1="13" x2="8" y2="13" />
-                    <line x1="16" y1="17" x2="8" y2="17" />
-                    <polyline points="10 9 9 9 8 9" />
-                  </svg>
-                </span>
-                <span className="dashboard-sidebar-link-label">Reports</span>
-              </button>
-            )}
           </nav>
 
           <div className="dashboard-sidebar-footer">
@@ -1952,13 +1969,14 @@ const Users = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                   <div className="users-search-floating-control">
                     <input
                       id="users-search-input"
-                      type="search"
+                      type="text"
                       className="users-search-input users-search-floating-input"
                       placeholder=" "
                       value={usersSearchInput}
                       onChange={handleUsersSearchInputChange}
                       aria-label="Search users"
                       disabled={isUsersToolbarDisabled}
+                      autoComplete="off"
                     />
                     <label htmlFor="users-search-input" className="users-search-floating-label">
                       Search
@@ -2734,6 +2752,18 @@ const Users = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
         </div>
       )}
 
+      {shouldShowUsersPageLoader && (
+        <div className="dashboard-action-overlay" role="status" aria-live="polite" aria-busy="true">
+          <div className="dashboard-action-card">
+            <img src={logo} alt="Avinya Logo" className="dashboard-action-logo" />
+            <p className="dashboard-action-title">{usersPageLoadingTitle}</p>
+            <div className="dashboard-action-loader" aria-hidden="true">
+              <span className="dashboard-action-loader-bar"></span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {isUsersPdfPreviewModalOpen && (
         <div
           className={`account-photo-modal-overlay ${isUsersPdfPreviewModalClosing ? 'account-modal-closing' : ''}`}
@@ -2820,76 +2850,6 @@ const Users = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                 </span>
                 <span>Download PDF</span>
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {isPreparingEditUserModal && (
-        <div className="account-save-overlay" role="status" aria-live="polite" aria-busy="true">
-          <div className="account-save-card account-save-card-compact">
-            <img src={logo} alt="Avinya Logo" className="account-save-logo" />
-            <div className="account-save-loader" aria-hidden="true">
-              <span className="account-save-loader-bar"></span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {!isEditUserModalOpen && isSavingEditedUser && (
-        <div className="account-save-overlay" role="status" aria-live="polite" aria-busy="true">
-          <div className="account-save-card">
-            <img src={logo} alt="Avinya Logo" className="account-save-logo" />
-            <p className="account-save-title">Saving Changes</p>
-            <div className="account-save-loader" aria-hidden="true">
-              <span className="account-save-loader-bar"></span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {isPreparingDeleteUserModal && (
-        <div className="account-save-overlay" role="status" aria-live="polite" aria-busy="true">
-          <div className="account-save-card account-save-card-compact">
-            <img src={logo} alt="Avinya Logo" className="account-save-logo" />
-            <div className="account-save-loader" aria-hidden="true">
-              <span className="account-save-loader-bar"></span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {!isDeleteUserModalOpen && (isDeletingUser || isDeleteUserRedirecting) && (
-        <div className="account-save-overlay" role="status" aria-live="polite" aria-busy="true">
-          <div className="account-save-card">
-            <img src={logo} alt="Avinya Logo" className="account-save-logo" />
-            <p className="account-save-title">Deleting Account</p>
-            <div className="account-save-loader" aria-hidden="true">
-              <span className="account-save-loader-bar"></span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {isPreparingUsersPdfPreview && (
-        <div className="account-save-overlay" role="status" aria-live="polite" aria-busy="true">
-          <div className="account-save-card">
-            <img src={logo} alt="Avinya Logo" className="account-save-logo" />
-            <p className="account-save-title">Preparing PDF Preview</p>
-            <div className="account-save-loader" aria-hidden="true">
-              <span className="account-save-loader-bar"></span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {isUsersPdfPreviewModalOpen && isDownloadingUsersPdf && (
-        <div className="account-save-overlay" role="status" aria-live="polite" aria-busy="true">
-          <div className="account-save-card">
-            <img src={logo} alt="Avinya Logo" className="account-save-logo" />
-            <p className="account-save-title">Downloading PDF</p>
-            <div className="account-save-loader" aria-hidden="true">
-              <span className="account-save-loader-bar"></span>
             </div>
           </div>
         </div>

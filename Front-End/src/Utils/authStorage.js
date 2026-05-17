@@ -3,6 +3,8 @@ const PRIMARY_AUTH_KEYS = {
   user: 'authUser'
 }
 
+const DASHBOARD_SELECTED_VIEW_STORAGE_KEY = 'avinya_selected_dashboard_view'
+
 const LEGACY_AUTH_KEYS = {
   token: 'tbToken',
   user: 'tbUser',
@@ -57,5 +59,6 @@ export const clearStoredAuthSession = () => {
     storage.removeItem(LEGACY_AUTH_KEYS.token)
     storage.removeItem(LEGACY_AUTH_KEYS.user)
     storage.removeItem(LEGACY_AUTH_KEYS.refreshToken)
+    storage.removeItem(DASHBOARD_SELECTED_VIEW_STORAGE_KEY)
   })
 }

@@ -9,6 +9,7 @@ function ProgressWidget({
   min = 0,
   max = 100,
   color = "#980000",
+  deviceId: assignedDeviceId = "",
 }) {
   const STORAGE_KEY = "avinya_devices";
 
@@ -19,6 +20,8 @@ function ProgressWidget({
   const [error, setError] = useState(null);
 
   const loadDefaultDevice = () => {
+    if (assignedDeviceId) return assignedDeviceId;
+
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return null;
@@ -80,7 +83,9 @@ function ProgressWidget({
     void connectToDefault();
   };
 
-  useEffect(() => { void connectToDefault(); }, []);
+  useEffect(() => {
+    void connectToDefault();
+  }, [assignedDeviceId, dataKey]);
 
   useEffect(() => {
     if (!isConnected || !deviceId) return;

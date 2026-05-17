@@ -12,15 +12,12 @@ import {
   Filler,
 } from "chart.js";
 import "./Styles/WidgetStyle.css";
+import { fetchTelemetryHistory } from "../Utils/thingsboardApi";
 
 ChartJS.register(
   CategoryScale, LinearScale, PointElement,
   LineElement, Title, Tooltip, Legend, Filler
 );
-
-const TB_BASE_URL = "https://thingsboard.cloud";
-const TB_EMAIL    = import.meta.env.VITE_TB_EMAIL;
-const TB_PASSWORD = import.meta.env.VITE_TB_PASSWORD;
 
 /* Time-range presets */
 const RANGES = [
@@ -31,9 +28,10 @@ const RANGES = [
 ];
 
 function TimeSeriesChart({
-  title   = "Temperature History",
+  title = "Temperature History",
   dataKey = "temperature",
-  unit    = "°C",
+  unit = "",
+  deviceId: assignedDeviceId = "",
 }) {
   const STORAGE_KEY = "avinya_devices";
 
@@ -43,14 +41,12 @@ function TimeSeriesChart({
   const [isLoading,   setIsLoading]   = useState(true);
   const [isPolling,   setIsPolling]   = useState(false);
   const [error,       setError]       = useState(null);
-  const [token,       setToken]       = useState(null);
   const [rangeIdx,    setRangeIdx]    = useState(1); // default: 1h
   const [stats,       setStats]       = useState(null); // { min, max, avg, last }
   const [isDark,      setIsDark]      = useState(
     () => document.documentElement.getAttribute("data-theme") === "dark"
   );
 
-  const tokenRef   = useRef(null);
   const intervalRef = useRef(null);
 
   /* watch theme changes */
@@ -63,25 +59,14 @@ function TimeSeriesChart({
   }, []);
 
   const loadDefaultDevice = () => {
+    if (assignedDeviceId) return assignedDeviceId;
+
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return null;
       return JSON.parse(raw).defaultId ?? null;
     } catch { return null; }
   };
-
-  const login = useCallback(async () => {
-    const res = await fetch(`${TB_BASE_URL}/api/auth/login`, {
-      method:  "POST",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ username: TB_EMAIL, password: TB_PASSWORD }),
-    });
-    if (!res.ok) throw new Error(`Login failed (${res.status})`);
-    const data = await res.json();
-    setToken(data.token);
-    tokenRef.current = data.token;
-    return data.token;
-  }, []);
 
   const buildChartData = useCallback((points, key, label, unit, dark) => {
     if (!points?.length) return { labels: [], datasets: [], values: [] };
@@ -112,30 +97,32 @@ function TimeSeriesChart({
     };
   }, []);
 
-  const fetchTimeSeries = useCallback(async (devId, jwt, rIdx = rangeIdx) => {
+  const fetchTimeSeries = useCallback(async (devId, rIdx = rangeIdx) => {
     if (!devId) return;
+
     const range = RANGES[rIdx];
-    const endTs   = Date.now();
+    const endTs = Date.now();
     const startTs = endTs - range.ms;
 
-    const res = await fetch(
-      `${TB_BASE_URL}/api/plugins/telemetry/DEVICE/${devId}/values/timeseries` +
-      `?keys=${dataKey}&startTs=${startTs}&endTs=${endTs}&limit=${range.limit}`,
-      { headers: { "X-Authorization": `Bearer ${jwt}` } }
-    );
-    if (!res.ok) throw new Error(`Telemetry fetch failed (${res.status})`);
+    const data = await fetchTelemetryHistory({
+      deviceId: devId,
+      keys: [dataKey],
+      startTs,
+      endTs,
+      limit: range.limit,
+    });
 
-    const data = await res.json();
-    const points = data[dataKey] || [];
-    const built  = buildChartData(points, dataKey, title, unit, isDark);
+    const points = data.data?.[dataKey] || [];
+    const built = buildChartData(points, dataKey, title, unit, isDark);
 
     setChartData({ labels: built.labels, datasets: built.datasets });
 
     if (built.values.length) {
-      const mn  = Math.min(...built.values);
-      const mx  = Math.max(...built.values);
+      const mn = Math.min(...built.values);
+      const mx = Math.max(...built.values);
       const avg = built.values.reduce((s, v) => s + v, 0) / built.values.length;
       const last = built.values[built.values.length - 1];
+
       setStats({ min: mn, max: mx, avg, last });
     } else {
       setStats(null);
@@ -144,31 +131,40 @@ function TimeSeriesChart({
 
   const connectToDefault = useCallback(async (rIdx) => {
     const defaultId = loadDefaultDevice();
+
     if (!defaultId) {
       setError("No default device set. Go to Devices page to set one.");
       setIsConnected(false);
       setIsLoading(false);
       return;
     }
+
     setDeviceId(defaultId);
     setIsLoading(true);
     setError(null);
+
     try {
-      const jwt = await login();
-      await fetchTimeSeries(defaultId, jwt, rIdx ?? rangeIdx);
+      await fetchTimeSeries(defaultId, rIdx ?? rangeIdx);
       setIsConnected(true);
     } catch (err) {
       let msg = "Failed to connect.";
-      if (err.message.includes("401") || err.message.includes("403")) msg = "Invalid or expired session.";
-      else if (err.message.includes("404"))                            msg = "Device not found.";
-      else if (err.message.includes("Failed to fetch"))               msg = "Unable to reach server.";
-      else if (err.message)                                            msg = err.message;
+
+      if (err.message.includes("401") || err.message.includes("403")) {
+        msg = "Invalid or expired session.";
+      } else if (err.message.includes("404")) {
+        msg = "Device not found.";
+      } else if (err.message.includes("Failed to fetch")) {
+        msg = "Unable to reach server.";
+      } else if (err.message) {
+        msg = err.message;
+      }
+
       setError(msg);
       setIsConnected(false);
     } finally {
       setIsLoading(false);
     }
-  }, [login, fetchTimeSeries, rangeIdx]);
+  }, [assignedDeviceId, fetchTimeSeries, rangeIdx]);
 
   /* ── initial connect ── */
   useEffect(() => { void connectToDefault(rangeIdx); }, []);
@@ -180,21 +176,19 @@ function TimeSeriesChart({
     intervalRef.current = setInterval(async () => {
       try {
         setIsPolling(true);
-        const jwt = tokenRef.current || await login();
-        await fetchTimeSeries(deviceId, jwt, rangeIdx);
+        await fetchTimeSeries(deviceId, rangeIdx);
       } catch (err) { console.error("Chart polling error:", err); }
       finally { setIsPolling(false); }
     }, 10000);
     return () => clearInterval(intervalRef.current);
-  }, [isConnected, deviceId, rangeIdx, fetchTimeSeries, login]);
+  }, [isConnected, deviceId, rangeIdx, fetchTimeSeries]);
 
   /* ── re-fetch when range changes ── */
   const handleRangeChange = async (idx) => {
     setRangeIdx(idx);
     if (!isConnected || !deviceId) return;
     try {
-      const jwt = tokenRef.current || await login();
-      await fetchTimeSeries(deviceId, jwt, idx);
+      await fetchTimeSeries(deviceId, idx);
     } catch (err) { console.error("Range change error:", err); }
   };
 
@@ -206,7 +200,6 @@ function TimeSeriesChart({
       if (newId && newId !== deviceId) {
         setDeviceId(newId);
         setIsConnected(false);
-        setToken(null); tokenRef.current = null;
         setChartData({ labels: [], datasets: [] });
         setTimeout(() => void connectToDefault(rangeIdx), 300);
       }
@@ -218,7 +211,6 @@ function TimeSeriesChart({
   const handleReconnect = () => {
     if (intervalRef.current) clearInterval(intervalRef.current);
     setIsConnected(false);
-    setToken(null); tokenRef.current = null;
     setError(null);
     setChartData({ labels: [], datasets: [] });
     void connectToDefault(rangeIdx);

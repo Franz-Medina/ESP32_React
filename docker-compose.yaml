@@ -11,6 +11,8 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: mypassword
       POSTGRES_DB: authdb
+      TZ: Asia/Manila
+      PGTZ: Asia/Manila
 
 volumes:
   postgres_data:

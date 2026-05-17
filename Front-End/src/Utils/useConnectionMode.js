@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 
-const THINGSBOARD_URL = "https://mqtt.thingsboard.cloud";
-const BRIDGE_URL      = "ws://localhost:8080";
-const RECHECK_MS      = 15000;
+const BRIDGE_URL = "ws://localhost:8080";
+const RECHECK_MS = 15000;
+const ENABLE_COMMPORT_BRIDGE = import.meta.env.VITE_ENABLE_COMMPORT_BRIDGE === "true";
 
 let   cachedMode      = "detecting";
 const listeners       = new Set();
@@ -13,20 +13,15 @@ function setMode(mode) {
   listeners.forEach((fn) => fn(mode));
 }
 
-async function checkThingsBoard() {
-  try {
-    const res = await fetch(THINGSBOARD_URL, {
-      method: "HEAD",
-      mode:   "no-cors",
-      signal: AbortSignal.timeout(4000),
-    });
-    return true;
-  } catch {
-    return false;
-  }
+function checkThingsBoard() {
+  return navigator.onLine;
 }
 
 function checkBridge() {
+  if (!ENABLE_COMMPORT_BRIDGE) {
+    return Promise.resolve(false);
+  }
+
   return new Promise((resolve) => {
     const ws = new WebSocket(BRIDGE_URL);
     const timer = setTimeout(() => {
@@ -50,16 +45,20 @@ function checkBridge() {
 }
 
 async function detectMode() {
-  const [tbOk, bridgeOk] = await Promise.all([
-    checkThingsBoard(),
-    checkBridge(),
-  ]);
+  const bridgeOk = await checkBridge();
+  const tbOk = checkThingsBoard();
 
-  console.log(`[ConnectionMode] ThingsBoard: ${tbOk ? "✅" : "❌"}  Bridge: ${bridgeOk ? "✅" : "❌"}`);
+  if (bridgeOk) {
+    setMode("commport");
+    return;
+  }
 
-  if (tbOk)        setMode("thingsboard");
-  else if (bridgeOk) setMode("commport");
-  else               setMode("none");
+  if (tbOk) {
+    setMode("thingsboard");
+    return;
+  }
+
+  setMode("none");
 }
 
 let pollingStarted = false;

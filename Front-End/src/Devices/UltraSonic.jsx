@@ -113,7 +113,11 @@ const UltraSonicGauge = ({
   );
 };
 
-export default function UltraSonic() {
+export default function UltraSonic({
+  title = "ULTRASONIC",
+  dataKey = "distance",
+  deviceId: assignedDeviceId = "",
+}) {
   const STORAGE_KEY = "avinya_devices";
 
   const [deviceId, setDeviceId] = useState(null);
@@ -123,6 +127,8 @@ export default function UltraSonic() {
   const [error, setError] = useState(null);
 
   const loadDefaultDevice = () => {
+    if (assignedDeviceId) return assignedDeviceId;
+
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return null;
@@ -138,10 +144,10 @@ export default function UltraSonic() {
     if (!devId) return;
     const { data } = await fetchLatestTelemetry({
       deviceId: devId,
-      keys: ["distance"],
+      keys: [dataKey],
     });
-    if (data.distance?.length > 0) {
-      const latestValue = parseFloat(data.distance[0].value);
+    if (data[dataKey]?.length > 0) {
+      const latestValue = parseFloat(data[dataKey][0].value);
       setDistance(isNaN(latestValue) ? 0 : latestValue);
     } else {
       setDistance(0);
@@ -219,7 +225,7 @@ export default function UltraSonic() {
   return (
     <div className="cs-widget">
       <div className="cs-header">
-        <span className="cs-title">ULTRASONIC</span>
+        <span className="cs-title">{title}</span>
         <div className={`cs-status-dot ${connected ? "cs-status-dot--connected" : ""}`} />
       </div>
 

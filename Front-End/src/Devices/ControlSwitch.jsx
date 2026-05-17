@@ -8,6 +8,8 @@ function ControlSwitch({
   title        = "SWITCH",
   rpcMethod    = "setPump",
   telemetryKey = "pump",
+  deviceId: assignedDeviceId = "",
+  readOnly = false,
 }) {
   const STORAGE_KEY = "avinya_devices";
   const { mode, isDetecting, isCommPort, isThingsBoard, isNone, wsUrl } = useConnectionMode();
@@ -23,6 +25,8 @@ function ControlSwitch({
   const prevModeRef = useRef(null);
 
   const loadDefaultDevice = () => {
+    if (assignedDeviceId) return assignedDeviceId;
+
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return null;
@@ -157,9 +161,9 @@ function ControlSwitch({
   };
 
   const handleToggle = () => {
-    if (!isConnected || isToggling) return;
+    if (readOnly || !isConnected || isToggling) return;
     if (isCommPort) toggleCommPort();
-    else            toggleThingsBoard();
+    else toggleThingsBoard();
   };
 
   const handleReconnect = () => {
@@ -197,7 +201,7 @@ function ControlSwitch({
       setDeviceId(defaultId);
       void connectThingsBoard(defaultId);
     }
-  }, [mode, isDetecting, isCommPort, isThingsBoard, isNone, connectCommPort, connectThingsBoard]);
+  }, [mode, isDetecting, isCommPort, isThingsBoard, isNone, assignedDeviceId, connectCommPort, connectThingsBoard]);
 
   useEffect(() => {
     if (!isThingsBoard) return;
@@ -311,7 +315,7 @@ function ControlSwitch({
             <button
               className={`cs-toggle ${isOn ? "cs-toggle--on" : ""} ${isToggling ? "cs-toggle--busy" : ""}`}
               onClick={handleToggle}
-              disabled={!isConnected || isToggling}
+              disabled={readOnly || !isConnected || isToggling}
               aria-pressed={isOn}
               aria-label={`${title} is ${isOn ? "on" : "off"}`}
             >
@@ -322,6 +326,12 @@ function ControlSwitch({
             <span className={`cs-toggle-label ${isOn ? "cs-toggle-label--on" : ""}`}>
               {isOn ? "On" : "Off"}
             </span>
+
+            {readOnly && (
+              <p className="cs-readonly-note">
+                View only. Control is available to the assigned user.
+              </p>
+            )}
           </div>
 
           {error && (

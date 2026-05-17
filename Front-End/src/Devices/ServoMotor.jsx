@@ -1,8 +1,13 @@
 import React, { useState, useEffect } from "react";
 import "./Styles/WidgetStyle.css";
-import { sendOneWayRpc } from "../Utils/thingsboardApi";
+import { fetchLatestTelemetry, sendOneWayRpc } from "../Utils/thingsboardApi";
 
-export default function ServoMotor() {
+export default function ServoMotor({
+  title = "SERVO MOTOR",
+  dataKey = "servoAngle",
+  deviceId: assignedDeviceId = "",
+  readOnly = false,
+}) {
   const STORAGE_KEY = "avinya_devices";
 
   const [deviceId, setDeviceId] = useState(null);
@@ -13,6 +18,8 @@ export default function ServoMotor() {
   const [isSending, setIsSending] = useState(false);
 
   const loadDefaultDevice = () => {
+    if (assignedDeviceId) return assignedDeviceId;
+
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return null;
@@ -39,6 +46,7 @@ export default function ServoMotor() {
     setError(null);
 
     try {
+      await fetchServoAngle(defaultId);
       setConnected(true);
     } catch (err) {
       let msg = "Failed to connect";
@@ -58,7 +66,28 @@ export default function ServoMotor() {
     }
   };
 
+  const fetchServoAngle = async (targetDeviceId) => {
+    if (!targetDeviceId) return;
+
+    const { data } = await fetchLatestTelemetry({
+      deviceId: targetDeviceId,
+      keys: [dataKey],
+    });
+
+    const latestValue = data[dataKey]?.[0]?.value;
+
+    if (latestValue !== undefined) {
+      const numericValue = Number(latestValue);
+
+      if (Number.isFinite(numericValue)) {
+        setAngle(Math.max(0, Math.min(180, numericValue)));
+      }
+    }
+  };
+
   const sendAngle = async (value) => {
+    if (readOnly) return;
+
     const numericValue = Number(value);
     if (isNaN(numericValue) || numericValue < 0 || numericValue > 180) return;
 
@@ -139,7 +168,7 @@ export default function ServoMotor() {
   return (
     <div className="cs-widget sm-widget">
       <div className="cs-header">
-        <span className="cs-title">SERVO MOTOR</span>
+        <span className="cs-title">{title}</span>
         <div className={`cs-status-dot ${connected ? "cs-status-dot--connected" : ""}`} />
       </div>
 
@@ -212,7 +241,7 @@ export default function ServoMotor() {
               onChange={(e) => sendAngle(e.target.value)}
               className="sm-slider"
               style={{ "--sm-progress": `${progress}%` }}
-              disabled={!connected}
+              disabled={readOnly || !connected}
               aria-label="Servo angle"
               aria-valuemin={0}
               aria-valuemax={180}
@@ -226,13 +255,19 @@ export default function ServoMotor() {
                 key={preset}
                 className={`sm-preset-btn ${angle === preset ? "sm-preset-btn--active" : ""}`}
                 onClick={() => sendAngle(preset)}
-                disabled={!connected}
+                disabled={readOnly || !connected}
                 aria-label={`Set angle to ${preset} degrees`}
               >
                 {preset}°
               </button>
             ))}
           </div>
+
+          {readOnly && (
+            <p className="cs-readonly-note">
+              View only. Control is available to the assigned user.
+            </p>
+          )}
 
           {isSending && (
             <div className="sm-sending">
