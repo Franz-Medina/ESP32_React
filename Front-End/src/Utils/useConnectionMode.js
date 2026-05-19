@@ -1,64 +1,75 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 
-const BRIDGE_URL = "ws://localhost:8080";
-const RECHECK_MS = 15000;
-const ENABLE_COMMPORT_BRIDGE = import.meta.env.VITE_ENABLE_COMMPORT_BRIDGE === "true";
+const BRIDGE_URL      = "ws://localhost:8080";
+const THINGSBOARD_URL = "https://thingsboard.cloud";
+const RECHECK_MS      = 15000;
 
-let   cachedMode      = "detecting";
-const listeners       = new Set();
+let cachedMode = "detecting";
+const listeners = new Set();
 
 function setMode(mode) {
   if (cachedMode === mode) return;
   cachedMode = mode;
+  console.log(`[ConnectionMode] → ${mode}`);
   listeners.forEach((fn) => fn(mode));
 }
 
-function checkThingsBoard() {
-  return navigator.onLine;
+function checkBridge() {
+  return new Promise((resolve) => {
+    try {
+      const ws = new WebSocket(BRIDGE_URL);
+
+      const timer = setTimeout(() => {
+        ws.onopen = ws.onerror = ws.onclose = null;
+        try { ws.close(); } catch {}
+        resolve(false);
+      }, 3000);
+
+      ws.onopen = () => {
+        clearTimeout(timer);
+        ws.onopen = ws.onerror = ws.onclose = null;
+        try { ws.close(); } catch {}
+        resolve(true);
+      };
+
+      ws.onerror = () => {
+        clearTimeout(timer);
+        resolve(false);
+      };
+    } catch {
+      resolve(false);
+    }
+  });
 }
 
-function checkBridge() {
-  if (!ENABLE_COMMPORT_BRIDGE) {
-    return Promise.resolve(false);
+async function checkThingsBoard() {
+  try {
+    await fetch(THINGSBOARD_URL, {
+      method: "HEAD",
+      mode:   "no-cors",
+      signal: AbortSignal.timeout(4000),
+    });
+    return true;
+  } catch {
+    return false;
   }
-
-  return new Promise((resolve) => {
-    const ws = new WebSocket(BRIDGE_URL);
-    const timer = setTimeout(() => {
-      ws.onopen = ws.onerror = ws.onclose = null;
-      ws.close();
-      resolve(false);
-    }, 3000);
-
-    ws.onopen = () => {
-      clearTimeout(timer);
-      ws.onopen = ws.onerror = ws.onclose = null;
-      ws.close();
-      resolve(true);
-    };
-
-    ws.onerror = () => {
-      clearTimeout(timer);
-      resolve(false);
-    };
-  });
 }
 
 async function detectMode() {
   const bridgeOk = await checkBridge();
-  const tbOk = checkThingsBoard();
 
   if (bridgeOk) {
     setMode("commport");
     return;
   }
 
+  const tbOk = await checkThingsBoard();
+
   if (tbOk) {
     setMode("thingsboard");
-    return;
+  } else {
+    setMode("none");
   }
-
-  setMode("none");
 }
 
 let pollingStarted = false;
@@ -76,16 +87,15 @@ export function useConnectionMode() {
     listeners.add(setLocalMode);
     startPolling();
     setLocalMode(cachedMode);
-
     return () => listeners.delete(setLocalMode);
   }, []);
 
   return {
     mode,
-    isDetecting:    mode === "detecting",
-    isThingsBoard:  mode === "thingsboard",
-    isCommPort:     mode === "commport",
-    isNone:         mode === "none",
-    wsUrl:          BRIDGE_URL,
+    isDetecting:   mode === "detecting",
+    isThingsBoard: mode === "thingsboard",
+    isCommPort:    mode === "commport",
+    isNone:        mode === "none",
+    wsUrl:         BRIDGE_URL,
   };
 }

@@ -21,12 +21,15 @@ function ControlSwitch({
   const [error,       setError]       = useState(null);
   const [isToggling,  setIsToggling]  = useState(false);
 
-  const wsRef       = useRef(null);
-  const prevModeRef = useRef(null);
+  const wsRef          = useRef(null);
+  const prevModeRef    = useRef(null);
+  const reconnectRef   = useRef(null);
+
+  const isTogglingRef  = useRef(false);
+  const pendingStateRef = useRef(null);
 
   const loadDefaultDevice = () => {
     if (assignedDeviceId) return assignedDeviceId;
-
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return null;
@@ -43,6 +46,18 @@ function ControlSwitch({
     if (msg.includes("404"))                         return "Device not found.";
     if (msg.includes("Failed to fetch"))             return "Unable to reach server.";
     return msg || "Failed to connect.";
+  };
+
+  const lockToggle = (expectedState) => {
+    isTogglingRef.current  = true;
+    pendingStateRef.current = expectedState;
+    setIsToggling(true);
+  };
+
+  const unlockToggle = () => {
+    isTogglingRef.current  = false;
+    pendingStateRef.current = null;
+    setIsToggling(false);
   };
 
   const connectThingsBoard = useCallback(async (targetDeviceId) => {
@@ -75,7 +90,7 @@ function ControlSwitch({
   const toggleThingsBoard = async () => {
     const nextState = !isOn;
     setIsOn(nextState);
-    setIsToggling(true);
+    lockToggle(nextState);
     setError(null);
     try {
       await sendOneWayRpc({ deviceId, method: rpcMethod, params: nextState });
@@ -84,15 +99,24 @@ function ControlSwitch({
       setIsOn(!nextState);
       setError("Failed to send command.");
     } finally {
-      setIsToggling(false);
+      unlockToggle();
     }
   };
 
   const connectCommPort = useCallback(() => {
-    if (wsRef.current) {
-      wsRef.current.onclose = null;
-      wsRef.current.close();
+    if (reconnectRef.current) {
+      clearTimeout(reconnectRef.current);
+      reconnectRef.current = null;
     }
+    if (wsRef.current) {
+      wsRef.current.onopen    = null;
+      wsRef.current.onmessage = null;
+      wsRef.current.onerror   = null;
+      wsRef.current.onclose   = null;
+      try { wsRef.current.close(); } catch {}
+      wsRef.current = null;
+    }
+
     setIsLoading(true);
     setError(null);
     setDeviceId("commport");
@@ -109,9 +133,19 @@ function ControlSwitch({
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        if (data[telemetryKey] !== undefined) {
-          setIsOn(parseBool(data[telemetryKey]));
+        if (data[telemetryKey] === undefined) return;
+
+        const incoming = parseBool(data[telemetryKey]);
+
+        if (isTogglingRef.current) {
+          if (incoming === pendingStateRef.current) {
+            setIsOn(incoming);
+            unlockToggle();
+          }
+          return;
         }
+
+        setIsOn(incoming);
       } catch {
       }
     };
@@ -124,7 +158,12 @@ function ControlSwitch({
 
     ws.onclose = () => {
       setIsConnected(false);
-      setError("Bridge disconnected. Check USB cable and bridge.js.");
+      reconnectRef.current = setTimeout(() => {
+        if (wsRef.current === ws) {
+          setError(null);
+          connectCommPort();
+        }
+      }, 2000);
     };
   }, [wsUrl, telemetryKey]);
 
@@ -134,18 +173,27 @@ function ControlSwitch({
       setError("Not connected to bridge.");
       return;
     }
+
     const nextState = !isOn;
+
+    lockToggle(nextState);
     setIsOn(nextState);
-    setIsToggling(true);
+    setError(null);
+
     try {
       ws.send(JSON.stringify({ method: rpcMethod, params: nextState }));
       saveSwitchActivityLog(nextState);
     } catch {
       setIsOn(!nextState);
       setError("Failed to send command.");
-    } finally {
-      setIsToggling(false);
+      unlockToggle();
     }
+
+    setTimeout(() => {
+      if (isTogglingRef.current) {
+        unlockToggle();
+      }
+    }, 3000);
   };
 
   const saveSwitchActivityLog = async (nextState) => {
@@ -161,9 +209,9 @@ function ControlSwitch({
   };
 
   const handleToggle = () => {
-    if (readOnly || !isConnected || isToggling) return;
+    if (readOnly || !isConnected || isTogglingRef.current) return;
     if (isCommPort) toggleCommPort();
-    else toggleThingsBoard();
+    else            toggleThingsBoard();
   };
 
   const handleReconnect = () => {
@@ -183,14 +231,18 @@ function ControlSwitch({
     if (prevModeRef.current === mode) return;
     prevModeRef.current = mode;
 
-    console.log(`[ControlSwitch] Mode switched to: ${mode}`);
-
+    if (reconnectRef.current) {
+      clearTimeout(reconnectRef.current);
+      reconnectRef.current = null;
+    }
     if (wsRef.current) {
-      wsRef.current.onclose = null;
-      wsRef.current.close();
+      wsRef.current.onopen = wsRef.current.onmessage =
+      wsRef.current.onerror = wsRef.current.onclose = null;
+      try { wsRef.current.close(); } catch {}
       wsRef.current = null;
     }
 
+    unlockToggle();
     setIsConnected(false);
     setError(null);
 
@@ -201,7 +253,7 @@ function ControlSwitch({
       setDeviceId(defaultId);
       void connectThingsBoard(defaultId);
     }
-  }, [mode, isDetecting, isCommPort, isThingsBoard, isNone, assignedDeviceId, connectCommPort, connectThingsBoard]);
+  }, [mode, isDetecting, isCommPort, isThingsBoard, isNone, connectCommPort, connectThingsBoard]);
 
   useEffect(() => {
     if (!isThingsBoard) return;
@@ -220,20 +272,20 @@ function ControlSwitch({
 
   useEffect(() => {
     return () => {
+      if (reconnectRef.current) clearTimeout(reconnectRef.current);
       if (wsRef.current) {
-        wsRef.current.onclose = null;
-        wsRef.current.close();
+        wsRef.current.onopen = wsRef.current.onmessage =
+        wsRef.current.onerror = wsRef.current.onclose = null;
+        try { wsRef.current.close(); } catch {}
       }
     };
   }, []);
 
-  const shortDeviceId = !deviceId
-    ? null
-    : deviceId === "commport"
-      ? "COM Port"
-      : deviceId.length > 16
-        ? `${deviceId.slice(0, 8)}…${deviceId.slice(-6)}`
-        : deviceId;
+  const shortDeviceId = !deviceId ? null
+    : deviceId === "commport" ? "COM Port"
+    : deviceId.length > 16
+      ? `${deviceId.slice(0, 8)}…${deviceId.slice(-6)}`
+      : deviceId;
 
   const modeBadgeStyle = {
     fontSize: "9px", fontWeight: 700, letterSpacing: ".05em",
@@ -326,7 +378,6 @@ function ControlSwitch({
             <span className={`cs-toggle-label ${isOn ? "cs-toggle-label--on" : ""}`}>
               {isOn ? "On" : "Off"}
             </span>
-
             {readOnly && (
               <p className="cs-readonly-note">
                 View only. Control is available to the assigned user.

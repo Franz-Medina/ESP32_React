@@ -2,7 +2,7 @@ const { SerialPort }    = require("serialport");
 const { ReadlineParser } = require("@serialport/parser-readline");
 const WebSocket          = require("ws");
 
-const COM_PORT  = "COM3";
+const COM_PORT  = "COM8";
 const BAUD_RATE = 115200;
 const WS_PORT   = 8080;
 const port = new SerialPort({
@@ -13,12 +13,12 @@ const port = new SerialPort({
 const parser = port.pipe(new ReadlineParser({ delimiter: "\n" }));
 
 port.on("open", () => {
-  console.log(`\n✅ Serial port opened: ${COM_PORT} @ ${BAUD_RATE} baud`);
+  console.log(`\n Serial port opened: ${COM_PORT} @ ${BAUD_RATE} baud`);
   console.log(`   Waiting for ESP32 data...\n`);
 });
 
 port.on("error", (err) => {
-  console.error(`\n❌ Serial port error: ${err.message}`);
+  console.error(`\n Serial port error: ${err.message}`);
   console.error(`   Check that:`);
   console.error(`   • ESP32 is plugged in via USB`);
   console.error(`   • COM_PORT is set correctly (currently "${COM_PORT}")`);
@@ -29,8 +29,8 @@ const wss = new WebSocket.Server({ port: WS_PORT });
 let clients = [];
 
 wss.on("listening", () => {
-  console.log(`✅ WebSocket server running: ws://localhost:${WS_PORT}`);
-  console.log(`   Your website can now connect.\n`);
+  console.log(` WebSocket server running: ws://localhost:${WS_PORT}`);
+  console.log(` Your website can now connect.\n`);
 });
 
 wss.on("connection", (ws, req) => {
@@ -48,8 +48,8 @@ wss.on("connection", (ws, req) => {
     }
 
     port.write(str + "\n", (err) => {
-      if (err) console.error(`   ❌ Failed to write to Serial: ${err.message}`);
-      else     console.log(`   ✅ Sent to ESP32`);
+      if (err) console.error(`   Failed to write to Serial: ${err.message}`);
+      else     console.log(`   Sent to ESP32`);
     });
   });
 

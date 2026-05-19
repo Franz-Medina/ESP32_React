@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+/CommPort-Bridge/node_modules
 /.pnp
 .pnp.js
 
