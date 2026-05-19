@@ -1167,6 +1167,58 @@ const getDashboardDeviceAccessForRequest = async ({
   };
 };
 
+const getAuthenticatedUserRequest = async (req, res) => {
+  const result = await pool.query(
+    `SELECT id, first_name, last_name, email, role_label
+     FROM users
+     WHERE id = $1
+     LIMIT 1`,
+    [req.user.id]
+  );
+
+  if (result.rows.length === 0) {
+    res.status(404).json({
+      message: "User account not found.",
+    });
+    return null;
+  }
+
+  return result.rows[0];
+};
+
+const getDeviceForCurrentUser = async ({ userId, roleLabel, deviceId }) => {
+  if (roleLabel === "Administrator") {
+    const result = await pool.query(
+      `SELECT
+         id,
+         device_name,
+         thingsboard_device_id
+       FROM devices
+       WHERE id = $1
+         AND owner_user_id = $2
+       LIMIT 1`,
+      [deviceId, userId]
+    );
+
+    return result.rows[0] || null;
+  }
+
+  const result = await pool.query(
+    `SELECT
+       devices.id,
+       devices.device_name,
+       devices.thingsboard_device_id
+     FROM dashboards
+     JOIN devices ON devices.id = dashboards.device_id
+     WHERE dashboards.assigned_user_id = $1
+       AND devices.id = $2
+     LIMIT 1`,
+    [userId, deviceId]
+  );
+
+  return result.rows[0] || null;
+};
+
 const USERS_SORT_SQL = {
   newest: "created_at DESC, id DESC",
   oldest: "created_at ASC, id ASC",
@@ -3857,22 +3909,52 @@ app.get("/thingsboard/devices/resolve", authenticateToken, async (req, res) => {
 
 app.get("/devices", authenticateToken, async (req, res) => {
   try {
+    const actor = await getAuthenticatedUserRequest(req, res);
+    if (!actor) return;
+
+    if (actor.role_label === "Administrator") {
+      const result = await pool.query(
+        `SELECT
+          id,
+          device_name,
+          thingsboard_device_id,
+          created_at,
+          updated_at
+        FROM devices
+        WHERE owner_user_id = $1
+        ORDER BY created_at ASC, id ASC`,
+        [actor.id]
+      );
+
+      return res.status(200).json({
+        devices: result.rows.map(mapDeviceRowToClientDevice),
+        limit: MAX_DEVICES_PER_USER,
+      });
+    }
+
     const result = await pool.query(
-      `SELECT
-        id,
-        device_name,
-        thingsboard_device_id,
-        created_at,
-        updated_at
-      FROM devices
-      WHERE owner_user_id = $1
-      ORDER BY created_at ASC, id ASC`,
-      [req.user.id]
+      `SELECT DISTINCT ON (devices.id)
+        devices.id,
+        devices.device_name,
+        devices.thingsboard_device_id,
+        devices.created_at,
+        devices.updated_at,
+        dashboards.id AS dashboard_id,
+        dashboards.dashboard_name
+      FROM dashboards
+      JOIN devices ON devices.id = dashboards.device_id
+      WHERE dashboards.assigned_user_id = $1
+      ORDER BY devices.id, dashboards.updated_at DESC, dashboards.created_at DESC, dashboards.id DESC`,
+      [actor.id]
     );
 
     return res.status(200).json({
-      devices: result.rows.map(mapDeviceRowToClientDevice),
-      limit: MAX_DEVICES_PER_USER,
+      devices: result.rows.map((row) => ({
+        ...mapDeviceRowToClientDevice(row),
+        assignedDashboardId: row.dashboard_id,
+        assignedDashboardName: row.dashboard_name || "",
+      })),
+      limit: result.rows.length,
     });
   } catch (error) {
     console.error("DEVICES LIST ERROR:", error);
@@ -4204,6 +4286,9 @@ app.get("/devices/:deviceId/access-token", authenticateToken, async (req, res) =
 
 app.get("/devices/:deviceId/latest-telemetry", authenticateToken, async (req, res) => {
   try {
+    const actor = await getAuthenticatedUserRequest(req, res);
+    if (!actor) return;
+
     const targetDeviceId = Number.parseInt(req.params.deviceId, 10);
 
     if (!Number.isInteger(targetDeviceId) || targetDeviceId < 1) {
@@ -4212,15 +4297,17 @@ app.get("/devices/:deviceId/latest-telemetry", authenticateToken, async (req, re
       });
     }
 
-    const deviceAccess = await getDashboardDeviceAccessForRequest({
-      req,
-      res,
-      internalDeviceId: targetDeviceId,
+    const device = await getDeviceForCurrentUser({
+      userId: actor.id,
+      roleLabel: actor.role_label,
+      deviceId: targetDeviceId,
     });
 
-    if (!deviceAccess) return;
-
-    const device = deviceAccess.device;
+    if (!device) {
+      return res.status(404).json({
+        message: "Device not found.",
+      });
+    }
 
     const telemetry = await getThingsBoardDeviceLatestTelemetry(
       device.thingsboard_device_id
@@ -4277,6 +4364,23 @@ app.delete("/devices/:deviceId", authenticateToken, async (req, res) => {
     }
 
     const currentDevice = currentDeviceResult.rows[0];
+
+    const dashboardUsageResult = await client.query(
+      `SELECT COUNT(*)::int AS total_count
+       FROM dashboards
+       WHERE device_id = $1`,
+      [targetDeviceId]
+    );
+
+    const dashboardUsageCount = Number(dashboardUsageResult.rows[0]?.total_count || 0);
+
+    if (dashboardUsageCount > 0) {
+      await client.query("ROLLBACK");
+
+      return res.status(409).json({
+        message: "This device is currently used by a dashboard. Delete the assigned dashboard first before deleting this device.",
+      });
+    }
 
     await client.query(
       `DELETE FROM devices
@@ -4540,6 +4644,22 @@ app.get("/dashboards/options", authenticateToken, async (req, res) => {
 
 app.get("/dashboards/current", authenticateToken, async (req, res) => {
   try {
+    const rawDeviceId =
+      typeof req.query.deviceId === "string" ? req.query.deviceId.trim() : "";
+
+    const requestedDeviceId = rawDeviceId
+      ? Number.parseInt(rawDeviceId, 10)
+      : null;
+
+    if (
+      rawDeviceId &&
+      (!Number.isInteger(requestedDeviceId) || requestedDeviceId < 1)
+    ) {
+      return res.status(400).json({
+        message: "Invalid device.",
+      });
+    }
+
     const dashboardResult = await pool.query(
       `
       SELECT
@@ -4553,10 +4673,11 @@ app.get("/dashboards/current", authenticateToken, async (req, res) => {
       JOIN users u ON u.id = d.assigned_user_id
       JOIN devices dev ON dev.id = d.device_id
       WHERE d.assigned_user_id = $1
+        AND ($2::int IS NULL OR d.device_id = $2)
       ORDER BY d.updated_at DESC, d.created_at DESC
       LIMIT 1
       `,
-      [req.user.id]
+      [req.user.id, requestedDeviceId]
     );
 
     if (dashboardResult.rows.length === 0) {

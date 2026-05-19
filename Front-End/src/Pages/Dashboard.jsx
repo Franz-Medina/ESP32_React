@@ -775,11 +775,18 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   }, [isDashboardEditMode, savedDashboardWidgets, draftDashboardWidgets])
 
   useEffect(() => {
-    if (!isAdministrator || !hasDashboardLoadedOnce || selectedDashboardView) return
+    if (selectedDashboardView) return
 
     const storedDashboard = getStoredSelectedDashboardView()
 
     if (!storedDashboard?.id) return
+
+    if (!isAdministrator) {
+      setSelectedDashboardView(storedDashboard)
+      return
+    }
+
+    if (!hasDashboardLoadedOnce) return
 
     const matchedDashboard = dashboards.find(
       (dashboard) => String(dashboard.id) === String(storedDashboard.id)

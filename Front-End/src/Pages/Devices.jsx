@@ -14,7 +14,8 @@ import {
   CopyIcon,
   CheckIcon,
   AccessTokenIcon,
-  LatestTelemetryIcon
+  LatestTelemetryIcon,
+  ViewDashboardIcon
 } from '../Components/Icons.jsx'
 import {
   fetchDevices,
@@ -25,10 +26,12 @@ import {
   fetchDeviceAccessToken,
   fetchDeviceLatestTelemetry
 } from '../Utils/devicesApi'
+import { fetchCurrentDashboard } from '../Utils/dashboardApi'
 
 const MAX_DEVICES = 5
 const DEVICE_MODAL_TRANSITION_MS = 280
 const COPY_FEEDBACK_TIMEOUT_MS = 1600
+const DASHBOARD_SELECTED_VIEW_STORAGE_KEY = 'avinya_selected_dashboard_view'
 
 const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   const [isEntitiesOpen, setIsEntitiesOpen] = useState(true)
@@ -343,6 +346,18 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     setIsModalOpen(true)
   }
 
+  const storeSelectedDashboardView = (dashboard) => {
+    if (!dashboard) return
+
+    try {
+      window.sessionStorage.setItem(
+        DASHBOARD_SELECTED_VIEW_STORAGE_KEY,
+        JSON.stringify(dashboard)
+      )
+    } catch {
+    }
+  }
+
   const handleSubmitDevice = async () => {
     if (!canSubmitDevice) return
 
@@ -412,6 +427,38 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
         type: 'error',
         title: isEditMode ? 'Update Failed' : 'Add Failed',
         message: error.message || 'Something went wrong. Please try again.',
+      })
+    } finally {
+      setIsDeviceActionLoading(false)
+    }
+  }
+
+  const handleViewDeviceDashboard = async (device) => {
+    if (isDeviceActionLoading) return
+
+    setDeviceActionLoadingTitle('Opening Dashboard')
+    setIsDeviceActionLoading(true)
+
+    try {
+      const [data] = await Promise.all([
+        fetchCurrentDashboard(device.id),
+        new Promise((resolve) => window.setTimeout(resolve, 620)),
+      ])
+
+      if (!data.dashboard) {
+        throw new Error('No dashboard is assigned to this device yet.')
+      }
+
+      storeSelectedDashboardView(data.dashboard)
+
+      if (onNavigate) {
+        onNavigate('dashboard')
+      }
+    } catch (error) {
+      await showDevicesStatusAlert({
+        type: 'error',
+        title: 'Dashboard Unavailable',
+        message: error.message || 'Unable to open the assigned dashboard right now.',
       })
     } finally {
       setIsDeviceActionLoading(false)
@@ -525,17 +572,36 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     return Array.isArray(data.telemetry) ? data.telemetry : []
   }
 
-  const openLatestTelemetryModal = (device) => {
+  const openLatestTelemetryModal = async (device) => {
     if (isDeviceActionLoading || isTelemetryRefreshing) return
 
     setTelemetryDevice(device)
     setTelemetryRows([])
-    setHasCheckedTelemetry(false)
+    setHasCheckedTelemetry(!isAdministrator)
     setTelemetryError('')
     setIsTelemetryModalClosing(false)
-    setIsTelemetryLoading(false)
+    setIsTelemetryLoading(!isAdministrator)
     setIsTelemetryRefreshing(false)
     setIsTelemetryModalOpen(true)
+
+    if (isAdministrator) return
+
+    try {
+      const [rows] = await Promise.all([
+        loadLatestTelemetryForDevice(device),
+        new Promise((resolve) => window.setTimeout(resolve, 420)),
+      ])
+
+      setTelemetryRows(rows)
+      setTelemetryError('')
+      setHasCheckedTelemetry(true)
+    } catch (error) {
+      setTelemetryRows([])
+      setTelemetryError(error.message || 'Unable to load latest telemetry right now.')
+      setHasCheckedTelemetry(true)
+    } finally {
+      setIsTelemetryLoading(false)
+    }
   }
 
   const closeLatestTelemetryModal = async () => {
@@ -758,6 +824,9 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   }
 
   const atLimit = devices.length >= MAX_DEVICES
+  const devicesCounterLabel = isAdministrator
+    ? `${devices.length} of ${MAX_DEVICES} Devices Used`
+    : `${devices.length} ${devices.length === 1 ? 'Device' : 'Devices'} Assigned`
 
   return (
     <main className="dashboard-page devices-page">
@@ -991,27 +1060,29 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
 
             <div className="devices-panel-toolbar">
               <span className="devices-topbar-count">
-                {devices.length} of {MAX_DEVICES} Devices Used
+                {devicesCounterLabel}
               </span>
 
-              {!atLimit ? (
-                <button
-                  type="button"
-                  className="devices-add-btn"
-                  onClick={openAddModal}
-                  disabled={isDevicesLoading || isDeviceActionLoading}
-                >
-                  <span className="devices-add-btn-icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                      <path d="M12 5v14M5 12h14" />
-                    </svg>
+              {isAdministrator && (
+                !atLimit ? (
+                  <button
+                    type="button"
+                    className="devices-add-btn"
+                    onClick={openAddModal}
+                    disabled={isDevicesLoading || isDeviceActionLoading}
+                  >
+                    <span className="devices-add-btn-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <path d="M12 5v14M5 12h14" />
+                      </svg>
+                    </span>
+                    <span>Add Device</span>
+                  </button>
+                ) : (
+                  <span className="devices-limit-badge">
+                    Limit Reached ({MAX_DEVICES}/{MAX_DEVICES})
                   </span>
-                  <span>Add Device</span>
-                </button>
-              ) : (
-                <span className="devices-limit-badge">
-                  Limit Reached ({MAX_DEVICES}/{MAX_DEVICES})
-                </span>
+                )
               )}
             </div>
 
@@ -1025,8 +1096,25 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                   {devicesRequestError}
                 </div>
               ) : devices.length === 0 ? (
-                <div className="devices-empty-state" aria-live="polite">
-                  No devices found.
+                <div className="devices-empty-state devices-empty-state-polished" aria-live="polite">
+                  <span className="devices-empty-state-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="3" y="7" width="7" height="10" rx="1.5" />
+                      <rect x="14" y="7" width="7" height="10" rx="1.5" />
+                      <path d="M6.5 10.5h.01" />
+                      <path d="M17.5 10.5h.01" />
+                    </svg>
+                  </span>
+
+                  <strong>
+                    {isAdministrator ? 'No devices displayed yet' : 'No devices assigned yet'}
+                  </strong>
+
+                  <span>
+                    {isAdministrator
+                      ? 'Add a device to start connecting ThingsBoard Cloud devices.'
+                      : 'An administrator has not assigned a device to your dashboard yet.'}
+                  </span>
                 </div>
               ) : (
                 devices.map((device, index) => (
@@ -1056,58 +1144,90 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                     </div>
 
                     <div className="devices-slot-right">
-                      <div className="devices-slot-actions">
-                        <button
-                          type="button"
-                          className="devices-slot-action-btn devices-icon-action devices-slot-edit"
-                          onClick={() => openEditModal(device)}
-                          disabled={isDeviceActionLoading}
-                          data-devices-tooltip="Edit"
-                          aria-label="Edit device"
-                        >
-                          <span className="devices-slot-action-icon" aria-hidden="true">
-                            <EditIcon />
-                          </span>
-                        </button>
+                      <div className={`devices-slot-actions ${isAdministrator ? 'devices-slot-actions-admin' : 'devices-slot-actions-user'}`}>
+                        {isAdministrator ? (
+                          <>
+                            <button
+                              type="button"
+                              className="devices-slot-action-btn devices-icon-action devices-slot-edit"
+                              onClick={() => openEditModal(device)}
+                              disabled={isDeviceActionLoading}
+                              data-devices-tooltip="Edit"
+                              aria-label="Edit device"
+                            >
+                              <span className="devices-slot-action-icon" aria-hidden="true">
+                                <EditIcon />
+                              </span>
+                            </button>
 
-                        <button
-                          type="button"
-                          className="devices-slot-action-btn devices-icon-action devices-slot-token"
-                          onClick={() => void openAccessTokenModal(device)}
-                          disabled={isDeviceActionLoading}
-                          data-devices-tooltip="Access Token"
-                          aria-label="View access token"
-                        >
-                          <span className="devices-slot-action-icon" aria-hidden="true">
-                            <AccessTokenIcon />
-                          </span>
-                        </button>
+                            <button
+                              type="button"
+                              className="devices-slot-action-btn devices-icon-action devices-slot-token"
+                              onClick={() => void openAccessTokenModal(device)}
+                              disabled={isDeviceActionLoading}
+                              data-devices-tooltip="Access Token"
+                              aria-label="View access token"
+                            >
+                              <span className="devices-slot-action-icon" aria-hidden="true">
+                                <AccessTokenIcon />
+                              </span>
+                            </button>
 
-                        <button
-                          type="button"
-                          className="devices-slot-action-btn devices-icon-action devices-slot-telemetry"
-                          onClick={() => void openLatestTelemetryModal(device)}
-                          disabled={isDeviceActionLoading || isTelemetryRefreshing}
-                          data-devices-tooltip="Latest Telemetry"
-                          aria-label="View latest telemetry"
-                        >
-                          <span className="devices-slot-action-icon" aria-hidden="true">
-                            <LatestTelemetryIcon />
-                          </span>
-                        </button>
+                            <button
+                              type="button"
+                              className="devices-slot-action-btn devices-icon-action devices-slot-telemetry"
+                              onClick={() => void openLatestTelemetryModal(device)}
+                              disabled={isDeviceActionLoading || isTelemetryRefreshing}
+                              data-devices-tooltip="Latest Telemetry"
+                              aria-label="View latest telemetry"
+                            >
+                              <span className="devices-slot-action-icon" aria-hidden="true">
+                                <LatestTelemetryIcon />
+                              </span>
+                            </button>
 
-                        <button
-                          type="button"
-                          className="devices-slot-action-btn devices-icon-action devices-slot-delete"
-                          onClick={() => handleDeleteDevice(device)}
-                          disabled={isDeviceActionLoading}
-                          data-devices-tooltip="Delete"
-                          aria-label="Delete device"
-                        >
-                          <span className="devices-slot-action-icon" aria-hidden="true">
-                            <TrashIcon />
-                          </span>
-                        </button>
+                            <button
+                              type="button"
+                              className="devices-slot-action-btn devices-icon-action devices-slot-delete"
+                              onClick={() => handleDeleteDevice(device)}
+                              disabled={isDeviceActionLoading}
+                              data-devices-tooltip="Delete"
+                              aria-label="Delete device"
+                            >
+                              <span className="devices-slot-action-icon" aria-hidden="true">
+                                <TrashIcon />
+                              </span>
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              className="devices-slot-action-btn devices-icon-action devices-slot-view-dashboard"
+                              onClick={() => void handleViewDeviceDashboard(device)}
+                              disabled={isDeviceActionLoading}
+                              data-devices-tooltip="View Dashboard"
+                              aria-label="View dashboard"
+                            >
+                              <span className="devices-slot-action-icon" aria-hidden="true">
+                                <ViewDashboardIcon />
+                              </span>
+                            </button>
+
+                            <button
+                              type="button"
+                              className="devices-slot-action-btn devices-icon-action devices-slot-telemetry"
+                              onClick={() => void openLatestTelemetryModal(device)}
+                              disabled={isDeviceActionLoading || isTelemetryRefreshing}
+                              data-devices-tooltip="Latest Telemetry"
+                              aria-label="View latest telemetry"
+                            >
+                              <span className="devices-slot-action-icon" aria-hidden="true">
+                                <LatestTelemetryIcon />
+                              </span>
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1438,7 +1558,7 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                 <div className="devices-telemetry-state devices-telemetry-state-error" role="alert">
                   {telemetryError}
                 </div>
-              ) : !hasCheckedTelemetry ? (
+              ) : isAdministrator && !hasCheckedTelemetry ? (
                 <div className="devices-telemetry-state">
                   Click Check Latest Telemetry after uploading your Arduino code with the Access Token to view the latest data from ThingsBoard.
                 </div>
@@ -1453,7 +1573,7 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                       <tr>
                         <th>Key</th>
                         <th>Value</th>
-                        <th>Last Update Time</th>
+                        {isAdministrator && <th>Last Update Time</th>}
                       </tr>
                     </thead>
                     <tbody>
@@ -1464,8 +1584,14 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                           style={{ '--devices-telemetry-row-delay': `${Math.min(index, 9) * 28}ms` }}
                         >
                           <td>{row.key}</td>
-                          <td>{row.value || 'N/A'}</td>
-                          <td>{formatTelemetryLastUpdateTime(row.lastUpdateTimestamp)}</td>
+                          <td>
+                            {row.value === undefined || row.value === null || row.value === ''
+                              ? 'N/A'
+                              : String(row.value)}
+                          </td>
+                          {isAdministrator && (
+                            <td>{formatTelemetryLastUpdateTime(row.lastUpdateTimestamp)}</td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
@@ -1474,7 +1600,7 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
               )}
             </div>
 
-            <div className="devices-modal-footer devices-telemetry-modal-footer">
+            <div className={`devices-modal-footer devices-telemetry-modal-footer ${!isAdministrator ? 'devices-telemetry-modal-footer-user' : ''}`}>
               <button
                 type="button"
                 className="devices-modal-cancel-btn"
@@ -1484,19 +1610,21 @@ const Devices = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                 Close
               </button>
 
-              <button
-                type="button"
-                className="devices-modal-confirm-btn devices-check-telemetry-btn"
-                onClick={() => void handleCheckLatestTelemetry()}
-                disabled={isTelemetryLoading || isTelemetryRefreshing}
-              >
-                <span className="devices-modal-confirm-icon" aria-hidden="true">
-                  <LatestTelemetryIcon />
-                </span>
-                <span className="devices-check-telemetry-label">
-                  Check Latest Telemetry
-                </span>
-              </button>
+              {isAdministrator && (
+                <button
+                  type="button"
+                  className="devices-modal-confirm-btn devices-check-telemetry-btn"
+                  onClick={() => void handleCheckLatestTelemetry()}
+                  disabled={isTelemetryLoading || isTelemetryRefreshing}
+                >
+                  <span className="devices-modal-confirm-icon" aria-hidden="true">
+                    <LatestTelemetryIcon />
+                  </span>
+                  <span className="devices-check-telemetry-label">
+                    Check Latest Telemetry
+                  </span>
+                </button>
+              )}
             </div>
           </div>
         </div>

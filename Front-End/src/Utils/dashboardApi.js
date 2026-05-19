@@ -113,11 +113,23 @@ export const deleteDashboardById = async (dashboardId) => {
   return parseDashboardApiResponse(response, 'Unable to delete dashboard right now.')
 }
 
-export const fetchCurrentDashboard = async () => {
-  const response = await fetch(`${API_URL}/dashboards/current`, {
-    method: 'GET',
-    headers: buildDashboardAuthHeaders(),
-  })
+export const fetchCurrentDashboard = async (deviceId = '') => {
+  const params = new URLSearchParams()
+  const normalizedDeviceId = String(deviceId || '').trim()
+
+  if (normalizedDeviceId) {
+    params.set('deviceId', normalizedDeviceId)
+  }
+
+  const queryString = params.toString()
+
+  const response = await fetch(
+    `${API_URL}/dashboards/current${queryString ? `?${queryString}` : ''}`,
+    {
+      method: 'GET',
+      headers: buildDashboardAuthHeaders(),
+    }
+  )
 
   return parseDashboardApiResponse(response, 'Unable to load current dashboard right now.')
 }

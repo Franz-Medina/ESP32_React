@@ -2286,9 +2286,10 @@
   background: #c52a2a;
 }
 
-[data-theme='dark'] .dashboard-sidebar.collapsed [data-tooltip]::after {
-  background: #171b22;
-  color: #f5f7fb;
+[data-theme='dark'] .dashboard-page .dashboard-sidebar.collapsed [data-tooltip]::after {
+  background: #ffffff !important;
+  color: #111318 !important;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.26);
 }
 
 [data-theme='dark'] .avinya-swal-popup {
@@ -3395,10 +3396,11 @@
   color: #ffdddd;
 }
 
-[data-theme='dark'] .dashboard-card-delete:hover {
+[data-theme='dark'] .dashboard-card-delete:not(:disabled):hover {
   background: rgba(197, 42, 42, 0.22);
   border-color: rgba(197, 42, 42, 0.36);
   color: #ffffff;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.2);
 }
 
 [data-theme='dark'] .dashboard-modal-close {
@@ -4329,14 +4331,14 @@
   color: #717b8d !important;
 }
 
-[data-theme='dark'] .dashboard-icon-action::after,
-[data-theme='dark'] .dashboard-icon-action::before {
-  background: #171b22;
+[data-theme='dark'] .dashboard-page .dashboard-icon-action::after,
+[data-theme='dark'] .dashboard-page .dashboard-icon-action::before {
+  background: #ffffff !important;
 }
 
-[data-theme='dark'] .dashboard-icon-action::after {
-  color: #ffffff;
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.28);
+[data-theme='dark'] .dashboard-page .dashboard-icon-action::after {
+  color: #111318 !important;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.26);
 }
 
 .dashboard-home-page .dashboard-content-body {
@@ -5004,7 +5006,8 @@
 [data-theme='dark'] .dashboard-filter-reset-button:hover,
 [data-theme='dark'] .dashboard-list-filter-field:hover,
 [data-theme='dark'] .dashboard-search-field:hover,
-[data-theme='dark'] .dashboard-card-view:hover,
+[data-theme='dark'] .dashboard-card-view:not(:disabled):hover,
+[data-theme='dark'] .dashboard-card-edit:not(:disabled):hover,
 [data-theme='dark'] .dashboard-view-back-button:hover {
   background: #171b22;
   border-color: #323947;

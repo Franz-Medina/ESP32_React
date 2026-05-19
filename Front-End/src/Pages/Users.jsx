@@ -1185,6 +1185,9 @@ const Users = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
 
     const submittedEditUserForm = normalizeEditUserFormValues(editUserForm)
     const editedUserId = pendingEditUser.id
+    const currentPendingEditUser = pendingEditUser
+    const currentEditUserForm = { ...editUserForm }
+    const currentSavedEditUserFormSnapshot = { ...savedEditUserFormSnapshot }
 
     await closeEditUserModalForConfirm()
 
@@ -1211,7 +1214,12 @@ const Users = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     })
 
     if (!result.isConfirmed) {
-      resetEditUserState()
+      setPendingEditUser(currentPendingEditUser)
+      setEditUserForm(currentEditUserForm)
+      setSavedEditUserFormSnapshot(currentSavedEditUserFormSnapshot)
+      setIsEditUserModalClosing(false)
+      setIsEditCountryCodeOpen(false)
+      setIsEditUserModalOpen(true)
       return
     }
 
@@ -2375,7 +2383,7 @@ const Users = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                         disabled={isSavingEditedUser}
                       />
                       <label htmlFor="users-edit-first-name" className="account-floating-label">
-                        First Name
+                        First Name <span className="users-field-required">*</span>
                       </label>
                     </div>
                   </div>
@@ -2409,7 +2417,7 @@ const Users = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                         disabled={isSavingEditedUser}
                       />
                       <label htmlFor="users-edit-last-name" className="account-floating-label">
-                        Last Name
+                        Last Name <span className="users-field-required">*</span>
                       </label>
                     </div>
                   </div>
@@ -2443,7 +2451,7 @@ const Users = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                         disabled={isSavingEditedUser}
                       />
                       <label htmlFor="users-edit-email" className="account-floating-label">
-                        Email
+                        Email <span className="users-field-required">*</span>
                       </label>
                     </div>
                   </div>
@@ -2490,7 +2498,7 @@ const Users = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                         </span>
 
                         <span className="account-floating-label account-floating-label-static">
-                          Country Code
+                          Country Code <span className="users-field-required">*</span>
                         </span>
                       </div>
 
@@ -2549,7 +2557,7 @@ const Users = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                         disabled={isSavingEditedUser}
                       />
                       <label htmlFor="users-edit-phone-number" className="account-floating-label">
-                        Phone Number
+                        Phone Number <span className="users-field-required">*</span>
                       </label>
                     </div>
                   </div>

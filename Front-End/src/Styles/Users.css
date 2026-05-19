@@ -3360,3 +3360,11 @@
   position: relative;
   z-index: 1;
 }
+
+.users-field-required {
+  color: #c0392b;
+}
+
+[data-theme='dark'] .users-field-required {
+  color: #ff8b8b;
+}
