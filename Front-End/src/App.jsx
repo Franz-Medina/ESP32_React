@@ -205,8 +205,31 @@ function App() {
     })
   }
 
+  const isAuthPage = !isAuthenticated
+  const isDashboardPage = isAuthenticated && currentPage === 'dashboard'
+  const isDevicesPage = isAuthenticated && currentPage === 'devices'
+  const isUsersPage = isAuthenticated && currentPage === 'users'
+  const isLogsPage = isAuthenticated && currentPage === 'logs'
+  const isAccountPage = isAuthenticated && currentPage === 'account'
+
+  const appShellClassName = [
+    'app-shell',
+    isAuthPage && isSwitching ? 'auth-content-loading' : '',
+    isAuthPage && !isSwitching ? 'auth-content-ready' : '',
+    isDashboardPage && isSwitching ? 'dashboard-shell-loading' : '',
+    isDashboardPage && !isSwitching ? 'dashboard-shell-ready' : '',
+    isDevicesPage && isSwitching ? 'devices-shell-loading' : '',
+    isDevicesPage && !isSwitching ? 'devices-shell-ready' : '',
+    isUsersPage && isSwitching ? 'users-shell-loading' : '',
+    isUsersPage && !isSwitching ? 'users-shell-ready' : '',
+    isLogsPage && isSwitching ? 'logs-shell-loading' : '',
+    isLogsPage && !isSwitching ? 'logs-shell-ready' : '',
+    isAccountPage && isSwitching ? 'account-shell-loading' : '',
+    isAccountPage && !isSwitching ? 'account-shell-ready' : ''
+  ].filter(Boolean).join(' ')
+
   return (
-    <div className="app-shell">
+    <div className={appShellClassName}>
       {isAuthenticated ? (
         currentPage === 'devices' ? (
           <Devices

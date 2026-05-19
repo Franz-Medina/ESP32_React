@@ -1998,22 +1998,24 @@ const Users = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
             </div>
 
             <div className="users-table-shell">
-              {isUsersTableTransitioning && (hasUsersLoadedOnce || usersLoadReason !== 'initial') && (
-                <div
-                  className="users-table-loading-overlay"
-                  role="status"
-                  aria-live="polite"
-                  aria-busy="true"
-                >
-                  <div className="users-table-loading-card">
-                    <img src={logo} alt="Avinya Logo" className="users-table-loading-logo" />
-                    <p className="users-table-loading-title">{usersTableLoadingTitle}</p>
-                    <div className="users-table-loading-loader" aria-hidden="true">
-                      <span className="users-table-loading-loader-bar"></span>
+              {isUsersTableTransitioning &&
+                usersLoadReason !== 'pagination' &&
+                (hasUsersLoadedOnce || usersLoadReason !== 'initial') && (
+                  <div
+                    className="users-table-loading-overlay"
+                    role="status"
+                    aria-live="polite"
+                    aria-busy="true"
+                  >
+                    <div className="users-table-loading-card">
+                      <img src={logo} alt="Avinya Logo" className="users-table-loading-logo" />
+                      <p className="users-table-loading-title">{usersTableLoadingTitle}</p>
+                      <div className="users-table-loading-loader" aria-hidden="true">
+                        <span className="users-table-loading-loader-bar"></span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
+                )}
 
               <div
                 className={`users-table-scroll ${
@@ -2053,13 +2055,7 @@ const Users = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
                   </thead>
 
                   <tbody key={usersTableAnimationKey}>
-                    {isUsersLoading && hasUsersLoadedOnce && usersLoadReason === 'pagination' ? (
-                      <tr className="users-table-state-row">
-                        <td colSpan="9" className="users-table-state-cell">
-                          Loading users...
-                        </td>
-                      </tr>
-                    ) : usersLoadError ? (
+                    {usersLoadError ? (
                       <tr className="users-table-state-row">
                         <td colSpan="9" className="users-table-state-cell users-table-state-cell-error">
                           {usersLoadError}

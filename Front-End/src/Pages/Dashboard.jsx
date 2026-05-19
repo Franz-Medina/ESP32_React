@@ -2144,8 +2144,17 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     performReliableLogout(onLogout)
   }
 
+  const isDashboardPageTransitioning =
+    isDashboardActionLoading || isDashboardListTransitioning
+
+  const dashboardPageClassName = [
+    'dashboard-page',
+    'dashboard-home-page',
+    isDashboardPageTransitioning ? 'dashboard-page-loading' : 'dashboard-page-ready'
+  ].filter(Boolean).join(' ')
+
   return (
-    <main className="dashboard-page dashboard-home-page">
+    <main className={dashboardPageClassName}>
       <aside className={`dashboard-sidebar ${isSidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="dashboard-sidebar-panel">
           <div className="dashboard-sidebar-header">

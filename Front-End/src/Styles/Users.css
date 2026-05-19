@@ -2809,6 +2809,96 @@
   box-sizing: border-box;
 }
 
+.users-shell-loading .users-page .dashboard-sidebar-panel > *,
+.users-shell-loading .users-page .dashboard-content-body > * {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(10px) scale(0.99);
+  animation: none !important;
+}
+
+.users-shell-ready .users-page .dashboard-sidebar-panel > *,
+.users-shell-ready .users-page .dashboard-content-body > * {
+  visibility: visible;
+  pointer-events: auto;
+  animation: usersShellContentEnter 0.72s cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: opacity, transform;
+}
+
+.users-shell-ready .users-page .dashboard-sidebar-panel > *:nth-child(1) {
+  animation-delay: 0.04s;
+}
+
+.users-shell-ready .users-page .dashboard-sidebar-panel > *:nth-child(2) {
+  animation-delay: 0.1s;
+}
+
+.users-shell-ready .users-page .dashboard-sidebar-panel > *:nth-child(3) {
+  animation-delay: 0.16s;
+}
+
+.users-shell-ready .users-page .dashboard-sidebar-panel > *:nth-child(4) {
+  animation-delay: 0.22s;
+}
+
+.users-shell-ready .users-page .dashboard-content-body > *:nth-child(1) {
+  animation-delay: 0.08s;
+}
+
+.users-shell-ready .users-page .dashboard-content-body > *:nth-child(2) {
+  animation-delay: 0.14s;
+}
+
+.users-shell-ready .users-page .dashboard-content-body > *:nth-child(3) {
+  animation-delay: 0.2s;
+}
+
+.users-shell-ready .users-page .dashboard-content-body > *:nth-child(4) {
+  animation-delay: 0.26s;
+}
+
+@keyframes usersShellContentEnter {
+  0% {
+    opacity: 0;
+    transform: translateY(18px) scale(0.985);
+    filter: blur(6px);
+  }
+
+  60% {
+    opacity: 1;
+    filter: blur(0);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .users-shell-ready .users-page .dashboard-sidebar-panel > *,
+  .users-shell-ready .users-page .dashboard-content-body > * {
+    animation: none !important;
+    transition: none !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    transform: none !important;
+    filter: none !important;
+  }
+
+  .users-shell-loading .users-page .dashboard-sidebar-panel > *,
+  .users-shell-loading .users-page .dashboard-content-body > * {
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+    transform: none !important;
+    filter: none !important;
+    animation: none !important;
+  }
+}
+
 @media (max-width: 767px) and (min-height: 431px) {
   .users-page .dashboard-sidebar.collapsed + .dashboard-content {
     padding:

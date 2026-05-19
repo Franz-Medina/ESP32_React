@@ -80,6 +80,72 @@ a {
   text-align: center;
 }
 
+.auth-content-loading .login-right-content > * {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(10px) scale(0.99);
+  animation: none;
+}
+
+.auth-content-ready .login-right-content > * {
+  animation: authContentEnter 0.72s cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: opacity, transform;
+}
+
+.auth-content-ready .login-right-content > *:nth-child(1) {
+  animation-delay: 0.04s;
+}
+
+.auth-content-ready .login-right-content > *:nth-child(2) {
+  animation-delay: 0.1s;
+}
+
+.auth-content-ready .login-right-content > *:nth-child(3) {
+  animation-delay: 0.16s;
+}
+
+.auth-content-ready .login-right-content > *:nth-child(4) {
+  animation-delay: 0.22s;
+}
+
+.auth-content-ready .login-right-content > *:nth-child(5) {
+  animation-delay: 0.28s;
+}
+
+.auth-content-ready .login-form > * {
+  animation: authFormItemEnter 0.58s cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: opacity, transform;
+}
+
+.auth-content-ready .login-form > *:nth-child(1) {
+  animation-delay: 0.26s;
+}
+
+.auth-content-ready .login-form > *:nth-child(2) {
+  animation-delay: 0.32s;
+}
+
+.auth-content-ready .login-form > *:nth-child(3) {
+  animation-delay: 0.38s;
+}
+
+.auth-content-ready .login-form > *:nth-child(4) {
+  animation-delay: 0.44s;
+}
+
+.auth-content-ready .login-form > *:nth-child(5) {
+  animation-delay: 0.5s;
+}
+
+.auth-content-ready .login-form > *:nth-child(6) {
+  animation-delay: 0.56s;
+}
+
+.auth-content-ready .login-form > *:nth-child(7) {
+  animation-delay: 0.62s;
+}
+
 .login-logo {
   width: min(64vw, 220px);
   height: auto;
@@ -585,6 +651,37 @@ a {
   }
 }
 
+@keyframes authContentEnter {
+  0% {
+    opacity: 0;
+    transform: translateY(18px) scale(0.985);
+    filter: blur(6px);
+  }
+
+  60% {
+    opacity: 1;
+    filter: blur(0);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes authFormItemEnter {
+  0% {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .auth-swal-popup {
   width: min(92vw, 540px) !important;
   border-radius: 5px !important;
@@ -856,6 +953,25 @@ a {
 
 [data-theme='dark'] body {
   background: #0f1115;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-content-ready .login-right-content > *,
+  .auth-content-ready .login-form > * {
+    animation: none;
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+    filter: none;
+  }
+
+  .auth-content-loading .login-right-content > * {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: none;
+    filter: none;
+  }
 }
 
 [data-theme='dark'] .login-page {
