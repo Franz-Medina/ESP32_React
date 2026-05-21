@@ -68,6 +68,10 @@ const DASHBOARD_MODAL_TRANSITION_MS = 280
 const DASHBOARD_WIDGET_LIBRARY_MODAL_TRANSITION_MS = 280
 const DASHBOARD_NAME_MAX_LENGTH = 80
 const DASHBOARD_SELECTED_VIEW_STORAGE_KEY = 'avinya_selected_dashboard_view'
+const DASHBOARD_HARDWARE_READY_MESSAGE = 'Device is not ready yet. Check the USB connection, port, and uploaded Arduino code.'
+const DASHBOARD_HARDWARE_DATA_KEY_MESSAGE = 'Device is connected, but this widget data is not being sent yet.'
+const DASHBOARD_RUNTIME_RECHECK_MS = 10000
+const DASHBOARD_COMM_PORT_READY_TIMEOUT_MS = 5200
 
 const DASHBOARD_GRID_COLS = {
   lg: 24,
@@ -155,6 +159,9 @@ const getDashboardWidgetDuplicateSignature = (widget = {}) =>
     Number(widget.layout?.h || 8),
   ].join('|')
 
+const getDashboardWidgetStoredInoContent = (widget = {}) =>
+  String(widget.inoFileContent || widget.settings?.inoFileContent || '')
+
 const getUniqueDashboardWidgets = (widgets = []) => {
   const usedSignatures = new Set()
 
@@ -200,7 +207,10 @@ const normalizeDashboardWidgetForSave = (widget) => ({
     w: Number(widget.layout?.w || 6),
     h: Number(widget.layout?.h || 7),
   },
-  settings: widget.settings || {},
+    settings: {
+    ...(widget.settings || {}),
+    inoFileContent: getDashboardWidgetStoredInoContent(widget),
+  },
 })
 
 const normalizeDashboardWidgetForCompare = (widget) => ({
@@ -211,6 +221,7 @@ const normalizeDashboardWidgetForCompare = (widget) => ({
   widgetName: String(widget.widgetName || '').trim(),
   dataKey: String(widget.dataKey || '').trim(),
   inoFileName: String(widget.inoFileName || '').trim(),
+  inoFileContent: getDashboardWidgetStoredInoContent(widget),
   validationStatus: String(widget.validationStatus || '').trim(),
   validationMessage: String(widget.validationMessage || '').trim(),
   layout: {
@@ -418,7 +429,7 @@ const DashboardWidgetEditPreview = ({ widget }) => (
 
 const DashboardWidgetHardwareNotice = ({
   title = 'Hardware not ready',
-  message = 'Connect the device, run the verified Arduino code, upload it successfully, and wait for telemetry to appear.',
+  message = DASHBOARD_HARDWARE_READY_MESSAGE,
   isChecking = false,
 }) => (
   <div className="dashboard-widget-hardware-notice">
@@ -433,6 +444,74 @@ const DashboardWidgetHardwareNotice = ({
     <p>{message}</p>
   </div>
 )
+
+const collectCommPortTelemetryKeys = (wsUrl, timeoutMs = DASHBOARD_COMM_PORT_READY_TIMEOUT_MS) =>
+  new Promise((resolve, reject) => {
+    if (!wsUrl || typeof WebSocket === 'undefined') {
+      reject(new Error(DASHBOARD_HARDWARE_READY_MESSAGE))
+      return
+    }
+
+    let isSettled = false
+    let socket = null
+    let timeoutId = null
+
+    const finish = (callback) => {
+      if (isSettled) return
+
+      isSettled = true
+
+      if (timeoutId) {
+        window.clearTimeout(timeoutId)
+      }
+
+      if (socket) {
+        socket.onopen = null
+        socket.onmessage = null
+        socket.onerror = null
+        socket.onclose = null
+
+        try {
+          socket.close()
+        } catch {
+        }
+      }
+
+      callback()
+    }
+
+    timeoutId = window.setTimeout(() => {
+      finish(() => reject(new Error(DASHBOARD_HARDWARE_READY_MESSAGE)))
+    }, timeoutMs)
+
+    try {
+      socket = new WebSocket(wsUrl)
+
+      socket.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data)
+          const keys = Object.keys(payload || {})
+            .map((key) => String(key || '').trim())
+            .filter((key) => key && payload[key] !== undefined && payload[key] !== null)
+
+          if (keys.length > 0) {
+            finish(() => resolve(keys))
+          }
+        } catch {
+        }
+      }
+
+      socket.onerror = () => {
+        finish(() => reject(new Error(DASHBOARD_HARDWARE_READY_MESSAGE)))
+      }
+
+      socket.onclose = () => {
+        finish(() => reject(new Error(DASHBOARD_HARDWARE_READY_MESSAGE)))
+      }
+    } catch {
+      finish(() => reject(new Error(DASHBOARD_HARDWARE_READY_MESSAGE)))
+    }
+  })
 
 const DashboardFilterDropdown = ({
   id,
@@ -569,7 +648,10 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   const [isWidgetDataKeyDropdownOpen, setIsWidgetDataKeyDropdownOpen] = useState(false)
   const {
     isDetecting: isDashboardConnectionDetecting,
+    isCommPort: isDashboardCommPort,
+    isThingsBoard: isDashboardThingsBoard,
     isNone: isDashboardHardwareUnavailable,
+    wsUrl: dashboardBridgeWsUrl,
   } = useConnectionMode()
 
   const [savedDashboardWidgets, setSavedDashboardWidgets] = useState([])
@@ -1151,15 +1233,18 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
         isReady: false,
         isChecking: true,
         title: 'Checking hardware status',
-        message: 'Please wait while Avinya checks the assigned device telemetry.',
+        message: 'Checking if the assigned device is sending data.',
       }
     }
 
-    if (isDashboardHardwareUnavailable) {
+    if (
+      isDashboardHardwareUnavailable ||
+      (!isDashboardCommPort && !isDashboardThingsBoard)
+    ) {
       return {
         isReady: false,
-        title: 'Connection unavailable',
-        message: 'Connect the hardware device or check your internet connection, then try again.',
+        title: 'Hardware not ready',
+        message: DASHBOARD_HARDWARE_READY_MESSAGE,
       }
     }
 
@@ -1171,14 +1256,22 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
       }
     }
 
+    if (dashboardRuntimeTelemetryKeys.length === 0) {
+      return {
+        isReady: false,
+        title: 'Hardware not ready',
+        message: DASHBOARD_HARDWARE_READY_MESSAGE,
+      }
+    }
+
     if (!DASHBOARD_WIDGET_OPTIONAL_DATA_KEY.has(widget.widgetKey)) {
       const dataKey = String(widget.dataKey || '').trim()
 
       if (!dataKey || !dashboardRuntimeTelemetryKeySet.has(dataKey)) {
         return {
           isReady: false,
-          title: 'Hardware not ready',
-          message: 'Connect the device, run the verified Arduino code, upload it successfully, and wait for the required data key to appear.',
+          title: 'Data not available',
+          message: DASHBOARD_HARDWARE_DATA_KEY_MESSAGE,
         }
       }
     }
@@ -1187,10 +1280,13 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   }, [
     dashboardRuntimeError,
     dashboardRuntimeTelemetryKeySet,
+    dashboardRuntimeTelemetryKeys.length,
+    isDashboardCommPort,
     isDashboardConnectionDetecting,
     isDashboardEditMode,
     isDashboardHardwareUnavailable,
     isDashboardRuntimeChecking,
+    isDashboardThingsBoard,
     selectedDashboardDeviceThingsBoardId,
     selectedDashboardInternalDeviceId,
   ])
@@ -1203,6 +1299,13 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
       return
     }
 
+    if (isDashboardConnectionDetecting) {
+      setDashboardRuntimeTelemetryKeys([])
+      setDashboardRuntimeError('')
+      setIsDashboardRuntimeChecking(true)
+      return
+    }
+
     let isMounted = true
     let intervalId = null
 
@@ -1212,14 +1315,27 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
       }
 
       try {
-        const data = await fetchDeviceLatestTelemetry(selectedDashboardInternalDeviceId)
-        const keys = [
-          ...new Set(
-            (Array.isArray(data.telemetry) ? data.telemetry : [])
-              .map((row) => String(row.key || '').trim())
-              .filter(Boolean)
-          ),
-        ]
+        let keys = []
+
+        if (isDashboardCommPort) {
+          keys = await collectCommPortTelemetryKeys(dashboardBridgeWsUrl)
+        } else if (isDashboardThingsBoard) {
+          const data = await fetchDeviceLatestTelemetry(selectedDashboardInternalDeviceId)
+
+          keys = [
+            ...new Set(
+              (Array.isArray(data.telemetry) ? data.telemetry : [])
+                .map((row) => String(row.key || '').trim())
+                .filter(Boolean)
+            ),
+          ]
+        } else {
+          throw new Error(DASHBOARD_HARDWARE_READY_MESSAGE)
+        }
+
+        if (!keys.length) {
+          throw new Error(DASHBOARD_HARDWARE_READY_MESSAGE)
+        }
 
         if (!isMounted) return
 
@@ -1231,8 +1347,8 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
         setDashboardRuntimeTelemetryKeys([])
         setDashboardRuntimeError(
           error instanceof TypeError || error.message === 'Failed to fetch'
-            ? 'Unable to check the device right now. Please check the server, hardware connection, and ThingsBoard connection.'
-            : error.message || 'Unable to check the hardware status right now.'
+            ? DASHBOARD_HARDWARE_READY_MESSAGE
+            : error.message || DASHBOARD_HARDWARE_READY_MESSAGE
         )
       } finally {
         if (isMounted) {
@@ -1245,16 +1361,20 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
 
     intervalId = window.setInterval(() => {
       void loadRuntimeTelemetryKeys(false)
-    }, 10000)
+    }, DASHBOARD_RUNTIME_RECHECK_MS)
 
     return () => {
       isMounted = false
       window.clearInterval(intervalId)
     }
   }, [
+    dashboardBridgeWsUrl,
+    isDashboardCommPort,
+    isDashboardConnectionDetecting,
+    isDashboardEditMode,
+    isDashboardThingsBoard,
     selectedDashboardInternalDeviceId,
     selectedDashboardView?.id,
-    isDashboardEditMode,
   ])
 
   const isWidgetLibrarySearchDisabled =
@@ -1624,17 +1744,21 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
         Array.isArray(data.widgets) ? data.widgets : []
       )
 
-      setSavedDashboardWidgets(nextWidgets)
-      setDraftDashboardWidgets(nextWidgets)
-      setHasDashboardViewChanges(false)
-      setIsDashboardEditMode(false)
+      setIsDashboardActionLoading(false)
 
       await showDashboardStatusAlert({
         type: 'success',
         title: 'Dashboard Saved',
         message: 'The dashboard widgets have been saved successfully.',
       })
+
+      setSavedDashboardWidgets(nextWidgets)
+      setDraftDashboardWidgets(nextWidgets)
+      setHasDashboardViewChanges(false)
+      setIsDashboardEditMode(false)
     } catch (error) {
+      setIsDashboardActionLoading(false)
+
       await showDashboardStatusAlert({
         type: 'error',
         title: 'Save Failed',
@@ -1681,6 +1805,9 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     await new Promise((resolve) => window.setTimeout(resolve, 520))
 
     setIsDashboardActionLoading(false)
+
+    await new Promise((resolve) => window.setTimeout(resolve, 80))
+
     setIsWidgetLibraryModalClosing(false)
     setIsWidgetLibraryModalOpen(true)
   }
@@ -1843,6 +1970,14 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   const handleCheckWidgetCompatibility = async () => {
     if (!canCheckWidgetCompatibility || !selectedDashboardView?.id || !selectedWidgetType) return
 
+    const currentWidgetType = selectedWidgetType
+    const currentSetupForm = {
+      widgetName: normalizedWidgetSetupForm.widgetName,
+      dataKey: normalizedWidgetSetupForm.dataKey,
+      inoFileName: normalizedWidgetSetupForm.inoFileName,
+      inoFileContent: widgetSetupForm.inoFileContent,
+    }
+
     setIsWidgetChecking(true)
     setWidgetSetupError('')
     setWidgetSetupCheckStatus('checking')
@@ -1856,11 +1991,11 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     try {
       const [result] = await Promise.all([
         validateDashboardWidget(selectedDashboardView.id, {
-          widgetKey: selectedWidgetType.id,
-          widgetName: normalizedWidgetSetupForm.widgetName,
-          dataKey: normalizedWidgetSetupForm.dataKey,
-          inoFileName: normalizedWidgetSetupForm.inoFileName,
-          inoFileContent: widgetSetupForm.inoFileContent,
+          widgetKey: currentWidgetType.id,
+          widgetName: currentSetupForm.widgetName,
+          dataKey: currentSetupForm.dataKey,
+          inoFileName: currentSetupForm.inoFileName,
+          inoFileContent: currentSetupForm.inoFileContent,
         }),
         new Promise((resolve) => window.setTimeout(resolve, 850)),
       ])
@@ -1880,6 +2015,9 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     } finally {
       setIsDashboardActionLoading(false)
       setIsWidgetChecking(false)
+
+      await new Promise((resolve) => window.setTimeout(resolve, 80))
+
       setIsWidgetSetupModalClosing(false)
       setIsWidgetSetupModalOpen(true)
     }
@@ -1898,41 +2036,64 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
   const handleSubmitWidgetSetup = async () => {
     if (!canSubmitWidgetSetup || !selectedWidgetType) return
 
+    const currentWidgetType = selectedWidgetType
+    const currentEditingWidget = editingDashboardWidget
+    const currentSetupForm = { ...widgetSetupForm }
+    const currentCheckMessage = widgetSetupCheckMessage
+
     setIsWidgetSetupLoading(true)
 
-    await closeWidgetSetupModal()
+    await hideWidgetSetupModalTemporarily()
 
-    setDashboardActionLoadingTitle(editingDashboardWidget ? 'Updating Widget' : 'Adding Widget')
+    setDashboardActionLoadingTitle(currentEditingWidget ? 'Updating Widget' : 'Adding Widget')
     setIsDashboardActionLoading(true)
 
-    await new Promise((resolve) => window.setTimeout(resolve, 680))
+    try {
+      await new Promise((resolve) => window.setTimeout(resolve, 680))
 
-    const nextWidget = {
-      ...(editingDashboardWidget || {}),
-      clientId: editingDashboardWidget?.clientId || createDashboardWidgetClientId(),
-      widgetKey: selectedWidgetType.id,
-      widgetType: selectedWidgetType.type,
-      widgetName: widgetSetupForm.widgetName.trim(),
-      dataKey: widgetSetupForm.dataKey.trim(),
-      inoFileName: widgetSetupForm.inoFileName.trim(),
-      validationStatus: 'success',
-      validationMessage: widgetSetupCheckMessage,
-      layout: editingDashboardWidget?.layout || getNextWidgetLayout(selectedWidgetType.id),
-      settings: editingDashboardWidget?.settings || {},
+      const nextWidget = {
+        ...(currentEditingWidget || {}),
+        clientId: currentEditingWidget?.clientId || createDashboardWidgetClientId(),
+        widgetKey: currentWidgetType.id,
+        widgetType: currentWidgetType.type,
+        widgetName: currentSetupForm.widgetName.trim(),
+        dataKey: currentSetupForm.dataKey.trim(),
+        inoFileName: currentSetupForm.inoFileName.trim(),
+        inoFileContent: currentSetupForm.inoFileContent,
+        validationStatus: 'success',
+        validationMessage: currentCheckMessage,
+        layout: currentEditingWidget?.layout || getNextWidgetLayout(currentWidgetType.id),
+        settings: {
+          ...(currentEditingWidget?.settings || {}),
+          inoFileContent: currentSetupForm.inoFileContent,
+        },
+      }
+
+      setIsDashboardActionLoading(false)
+
+      setDraftDashboardWidgets((prev) =>
+        currentEditingWidget
+          ? prev.map((item) =>
+              getDashboardWidgetIdentity(item) === getDashboardWidgetIdentity(currentEditingWidget)
+                ? nextWidget
+                : item
+            )
+          : [...prev, nextWidget]
+      )
+
+      setSelectedWidgetType(null)
+      setEditingDashboardWidget(null)
+      setWidgetSetupForm(getInitialWidgetSetupForm())
+      setSavedWidgetSetupForm(getInitialWidgetSetupForm())
+      setWidgetSetupError('')
+      setWidgetSetupCheckStatus('idle')
+      setWidgetSetupCheckMessage('')
+      setDashboardTelemetryKeys([])
+      setIsWidgetDataKeyDropdownOpen(false)
+    } finally {
+      setIsDashboardActionLoading(false)
+      setIsWidgetSetupLoading(false)
     }
-
-    setDraftDashboardWidgets((prev) =>
-      editingDashboardWidget
-        ? prev.map((item) =>
-            getDashboardWidgetIdentity(item) === getDashboardWidgetIdentity(editingDashboardWidget)
-              ? nextWidget
-              : item
-          )
-        : [...prev, nextWidget]
-    )
-
-    setIsDashboardActionLoading(false)
-    setIsWidgetSetupLoading(false)
   }
 
   const handleEditDashboardWidget = async (widget) => {
@@ -1940,19 +2101,21 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
 
     if (!widgetType) return
 
+    const storedInoContent = getDashboardWidgetStoredInoContent(widget)
+
     setSelectedWidgetType(widgetType)
     setEditingDashboardWidget(widget)
     setWidgetSetupForm({
       widgetName: widget.widgetName || widgetType.name,
       dataKey: widget.dataKey || '',
       inoFileName: widget.inoFileName || '',
-      inoFileContent: '',
+      inoFileContent: storedInoContent,
     })
     setSavedWidgetSetupForm({
       widgetName: widget.widgetName || widgetType.name,
       dataKey: widget.dataKey || '',
       inoFileName: widget.inoFileName || '',
-      inoFileContent: '',
+      inoFileContent: storedInoContent,
     })
     setWidgetSetupError('')
     setWidgetSetupCheckStatus('success')
@@ -1975,6 +2138,13 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     if (!confirmation.isConfirmed) return
 
     const targetWidgetId = getDashboardWidgetIdentity(widget)
+
+    setDashboardActionLoadingTitle('Deleting Widget')
+    setIsDashboardActionLoading(true)
+
+    await new Promise((resolve) => window.setTimeout(resolve, 620))
+
+    setIsDashboardActionLoading(false)
 
     setDraftDashboardWidgets((prev) =>
       prev.filter((item) => getDashboardWidgetIdentity(item) !== targetWidgetId)
@@ -2004,8 +2174,13 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
     if (!validateDashboardForm()) return
 
     const isEditMode = dashboardModalMode === 'edit'
-    const draftForm = dashboardForm
+    const draftForm = { ...dashboardForm }
     const draftEditingDashboard = editingDashboard
+    const normalizedDraftDashboardForm = {
+      dashboardName: draftForm.dashboardName.trim(),
+      assignedUserId: String(draftForm.assignedUserId || '').trim(),
+      deviceId: String(draftForm.deviceId || '').trim(),
+    }
 
     await closeDashboardModal()
 
@@ -2013,7 +2188,7 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
       title: isEditMode ? 'Edit Dashboard?' : 'Add Dashboard?',
       text: isEditMode
         ? `Are you sure you want to save changes to "${draftEditingDashboard?.dashboardName}"?`
-        : `Are you sure you want to add "${normalizedDashboardForm.dashboardName}"?`,
+        : `Are you sure you want to add "${normalizedDraftDashboardForm.dashboardName}"?`,
     })
 
     if (!confirmation.isConfirmed) {
@@ -2043,9 +2218,9 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
 
     try {
       const payload = {
-        dashboardName: normalizedDashboardForm.dashboardName,
-        assignedUserId: Number(normalizedDashboardForm.assignedUserId),
-        deviceId: Number(normalizedDashboardForm.deviceId),
+        dashboardName: normalizedDraftDashboardForm.dashboardName,
+        assignedUserId: Number(normalizedDraftDashboardForm.assignedUserId),
+        deviceId: Number(normalizedDraftDashboardForm.deviceId),
       }
 
       const [data] = await Promise.all([
@@ -2055,11 +2230,7 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
         new Promise((resolve) => window.setTimeout(resolve, 680)),
       ])
 
-      setDashboards((prev) =>
-        isEditMode
-          ? prev.map((item) => (item.id === draftEditingDashboard.id ? data.dashboard : item))
-          : [data.dashboard, ...prev]
-      )
+      setIsDashboardActionLoading(false)
 
       await showDashboardStatusAlert({
         type: 'success',
@@ -2068,7 +2239,15 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
           ? 'The dashboard has been updated successfully.'
           : 'The dashboard has been added successfully.',
       })
+
+      setDashboards((prev) =>
+        isEditMode
+          ? prev.map((item) => (item.id === draftEditingDashboard.id ? data.dashboard : item))
+          : [data.dashboard, ...prev]
+      )
     } catch (error) {
+      setIsDashboardActionLoading(false)
+
       await showDashboardStatusAlert({
         type: 'error',
         title: isEditMode ? 'Update Failed' : 'Add Failed',
@@ -2098,14 +2277,18 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
         new Promise((resolve) => window.setTimeout(resolve, 680)),
       ])
 
-      setDashboards((prev) => prev.filter((item) => item.id !== dashboard.id))
+      setIsDashboardActionLoading(false)
 
       await showDashboardStatusAlert({
         type: 'success',
         title: 'Dashboard Deleted',
         message: 'The dashboard has been deleted successfully.',
       })
+
+      setDashboards((prev) => prev.filter((item) => item.id !== dashboard.id))
     } catch (error) {
+      setIsDashboardActionLoading(false)
+
       await showDashboardStatusAlert({
         type: 'error',
         title: 'Delete Failed',
@@ -3105,35 +3288,37 @@ const Dashboard = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
             <div className="dashboard-modal-footer dashboard-widget-setup-footer">
               <button
                 type="button"
-                className="dashboard-modal-cancel-btn"
-                onClick={() => void closeWidgetSetupModal()}
-                disabled={isWidgetChecking || isWidgetSetupLoading}
-              >
-                Cancel
-              </button>
-
-              <button
-                type="button"
-                className="dashboard-widget-check-btn"
+                className="dashboard-widget-check-btn dashboard-widget-action-button dashboard-widget-action-check"
                 onClick={() => void handleCheckWidgetCompatibility()}
                 disabled={!canCheckWidgetCompatibility}
               >
                 <span className="dashboard-modal-confirm-icon" aria-hidden="true">
                   <SearchIcon />
                 </span>
-                Check Compatibility
+                <span className="dashboard-widget-action-label">Check Compatibility</span>
               </button>
 
               <button
                 type="button"
-                className="dashboard-modal-confirm-btn"
+                className="dashboard-modal-cancel-btn dashboard-widget-action-button dashboard-widget-action-cancel"
+                onClick={() => void closeWidgetSetupModal()}
+                disabled={isWidgetChecking || isWidgetSetupLoading}
+              >
+                <span className="dashboard-widget-action-label">Cancel</span>
+              </button>
+
+              <button
+                type="button"
+                className="dashboard-modal-confirm-btn dashboard-widget-action-button dashboard-widget-action-save"
                 onClick={() => void handleSubmitWidgetSetup()}
                 disabled={!canSubmitWidgetSetup}
               >
                 <span className="dashboard-modal-confirm-icon" aria-hidden="true">
                   <SaveIcon />
                 </span>
-                {editingDashboardWidget ? 'Update Widget' : 'Add Widget'}
+                <span className="dashboard-widget-action-label">
+                  {editingDashboardWidget ? 'Update Widget' : 'Add Widget'}
+                </span>
               </button>
             </div>
           </div>

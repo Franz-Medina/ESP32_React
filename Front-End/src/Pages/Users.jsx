@@ -299,50 +299,30 @@ const getUsersPdfFileNameFromResponse = (response) => {
 }
 
 const getUsersPaginationItems = (currentPage, totalPages) => {
-  if (totalPages <= 1) {
-    return [1]
+  const safeTotalPages = Math.max(1, Number(totalPages || 1))
+  const safeCurrentPage = Math.min(
+    Math.max(1, Number(currentPage || 1)),
+    safeTotalPages
+  )
+
+  if (safeTotalPages <= USERS_VISIBLE_PAGE_BUTTONS) {
+    return Array.from({ length: safeTotalPages }, (_, index) => index + 1)
   }
 
-  const pages = new Set([1, totalPages])
+  const maxVisiblePages = USERS_VISIBLE_PAGE_BUTTONS
+  const lastPossibleStart = Math.max(1, safeTotalPages - maxVisiblePages + 1)
+  const startPage = Math.min(safeCurrentPage, lastPossibleStart)
+  const endPage = Math.min(safeTotalPages, startPage + maxVisiblePages - 1)
 
-  if (totalPages <= USERS_VISIBLE_PAGE_BUTTONS + 2) {
-    for (let page = 1; page <= totalPages; page += 1) {
-      pages.add(page)
-    }
-  } else if (currentPage <= 3) {
-    for (
-      let page = 1;
-      page <= Math.min(totalPages, USERS_VISIBLE_PAGE_BUTTONS);
-      page += 1
-    ) {
-      pages.add(page)
-    }
-  } else if (currentPage >= totalPages - 2) {
-    for (
-      let page = Math.max(1, totalPages - USERS_VISIBLE_PAGE_BUTTONS + 1);
-      page <= totalPages;
-      page += 1
-    ) {
-      pages.add(page)
-    }
-  } else {
-    for (let page = currentPage - 1; page <= currentPage + 1; page += 1) {
-      pages.add(page)
-    }
+  const items = Array.from(
+    { length: endPage - startPage + 1 },
+    (_, index) => startPage + index
+  )
+
+  if (endPage < safeTotalPages) {
+    items.push(`ellipsis-${endPage}-${safeTotalPages}`)
+    items.push(safeTotalPages)
   }
-
-  const sortedPages = [...pages].sort((a, b) => a - b)
-  const items = []
-
-  sortedPages.forEach((page, index) => {
-    const previousPage = sortedPages[index - 1]
-
-    if (index > 0 && page - previousPage > 1) {
-      items.push(`ellipsis-${previousPage}-${page}`)
-    }
-
-    items.push(page)
-  })
 
   return items
 }
@@ -2006,25 +1986,6 @@ const Users = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
             </div>
 
             <div className="users-table-shell">
-              {isUsersTableTransitioning &&
-                usersLoadReason !== 'pagination' &&
-                (hasUsersLoadedOnce || usersLoadReason !== 'initial') && (
-                  <div
-                    className="users-table-loading-overlay"
-                    role="status"
-                    aria-live="polite"
-                    aria-busy="true"
-                  >
-                    <div className="users-table-loading-card">
-                      <img src={logo} alt="Avinya Logo" className="users-table-loading-logo" />
-                      <p className="users-table-loading-title">{usersTableLoadingTitle}</p>
-                      <div className="users-table-loading-loader" aria-hidden="true">
-                        <span className="users-table-loading-loader-bar"></span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
               <div
                 className={`users-table-scroll ${
                   !isUsersLoading && !usersLoadError && users.length === 0

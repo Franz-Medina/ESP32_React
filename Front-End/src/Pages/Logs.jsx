@@ -181,27 +181,31 @@ const LogsFilterDropdown = ({
 }
 
 const getLogsPaginationItems = (currentPage, totalPages) => {
-  if (totalPages <= 1) return [1]
+  const safeTotalPages = Math.max(1, Number(totalPages || 1))
+  const safeCurrentPage = Math.min(
+    Math.max(1, Number(currentPage || 1)),
+    safeTotalPages
+  )
 
-  const pages = new Set([1, totalPages])
-
-  if (totalPages <= LOGS_VISIBLE_PAGE_BUTTONS + 2) {
-    for (let p = 1; p <= totalPages; p++) pages.add(p)
-  } else if (currentPage <= 3) {
-    for (let p = 1; p <= Math.min(totalPages, LOGS_VISIBLE_PAGE_BUTTONS); p++) pages.add(p)
-  } else if (currentPage >= totalPages - 2) {
-    for (let p = Math.max(1, totalPages - LOGS_VISIBLE_PAGE_BUTTONS + 1); p <= totalPages; p++) pages.add(p)
-  } else {
-    for (let p = currentPage - 1; p <= currentPage + 1; p++) pages.add(p)
+  if (safeTotalPages <= LOGS_VISIBLE_PAGE_BUTTONS) {
+    return Array.from({ length: safeTotalPages }, (_, index) => index + 1)
   }
 
-  const sorted = [...pages].sort((a, b) => a - b)
-  const items = []
-  sorted.forEach((page, idx) => {
-    const prev = sorted[idx - 1]
-    if (idx > 0 && page - prev > 1) items.push(`ellipsis-${prev}-${page}`)
-    items.push(page)
-  })
+  const maxVisiblePages = LOGS_VISIBLE_PAGE_BUTTONS
+  const lastPossibleStart = Math.max(1, safeTotalPages - maxVisiblePages + 1)
+  const startPage = Math.min(safeCurrentPage, lastPossibleStart)
+  const endPage = Math.min(safeTotalPages, startPage + maxVisiblePages - 1)
+
+  const items = Array.from(
+    { length: endPage - startPage + 1 },
+    (_, index) => startPage + index
+  )
+
+  if (endPage < safeTotalPages) {
+    items.push(`ellipsis-${endPage}-${safeTotalPages}`)
+    items.push(safeTotalPages)
+  }
+
   return items
 }
 
@@ -1110,23 +1114,6 @@ const Logs = ({ onLogout, onNavigate, isDarkMode, onThemeToggle }) => {
             </div>
 
             <div className="logs-table-shell">
-              {isLogsTableTransitioning && hasLogsLoadedOnce && (
-                <div
-                  className="logs-table-loading-overlay"
-                  role="status"
-                  aria-live="polite"
-                  aria-busy="true"
-                >
-                  <div className="logs-table-loading-card">
-                    <img src={logo} alt="Avinya Logo" className="logs-table-loading-logo" />
-                    <p className="logs-table-loading-title">{logsTableLoadingTitle}</p>
-                    <div className="logs-table-loading-loader" aria-hidden="true">
-                      <span className="logs-table-loading-loader-bar"></span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
               <div
                 className={`logs-table-scroll ${
                   !isLogsLoading && !logsRequestError && pageLogs.length === 0

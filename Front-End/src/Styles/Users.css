@@ -1238,6 +1238,7 @@
 .users-pagination-ellipsis {
   min-width: var(--users-inline-control-height);
   height: var(--users-inline-control-height);
+  padding: 0 4px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1580,17 +1581,18 @@
 
 .users-pdf-preview-tags {
   display: grid;
-  width: calc((var(--users-pdf-preview-tag-width) * 2) + var(--users-pdf-preview-tag-gap));
+  width: min(100%, calc((var(--users-pdf-preview-tag-width) * 2) + var(--users-pdf-preview-tag-gap)));
   max-width: 100%;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-template-areas:
     'search status'
     'country photo'
     'sort rows';
-  justify-content: start;
+  justify-content: center;
   justify-items: stretch;
   align-content: start;
-  gap: var(--users-pdf-preview-tag-gap);
+  column-gap: var(--users-pdf-preview-tag-gap);
+  row-gap: 8px;
 }
 
 .users-pdf-preview-tag {
@@ -3367,4 +3369,23 @@
 
 [data-theme='dark'] .users-field-required {
   color: #ff8b8b;
+}
+
+@media (max-width: 640px) {
+  .users-pdf-preview-tags {
+    width: 100%;
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      'search'
+      'status'
+      'country'
+      'photo'
+      'sort'
+      'rows';
+    row-gap: 8px;
+  }
+
+  .users-pdf-preview-tag {
+    width: 100%;
+  }
 }
